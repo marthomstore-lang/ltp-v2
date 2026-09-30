@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+
+# Binaries & tunnels
+*.exe
+cloudflared.exe
+
+# Database backups, dumps & sensitive local seed scripts
+*backup*.sql
+database_backup*.sql
+database/supabase_full_seed.sql
+backend/local_store.json
+backend/schema_and_seed_local.sql
+backend/schema_and_seed_mysql.sql
+backend/apply_official_emails.js
+backend/seed_57_staff.js
+backend/setup_edgardo_duplication.js
+backend/sync_profesores_jefes.js
+backend/src/migrate_venegas.js
+*.dump
+*.bak
+
+# Build and distribution
+dist/
+build/
+*/dist/
+*/build/
+.vercel/
+
+# Logs & scratch files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+scratch/
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

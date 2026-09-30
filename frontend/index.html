@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LICEO PRO — Sistema Escolar y Académico</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+      window.addEventListener('error', function(e) {
+        console.error('GLOBAL_ERROR:', e);
+        var r = document.getElementById('root');
+        if (r && (!r.innerHTML || r.innerHTML.trim() === '')) {
+          r.innerHTML = '<div style="margin:40px auto; max-width:600px; padding:25px; border-radius:12px; background:#fff1f2; border:2px solid #f43f5e; font-family:sans-serif; color:#881337;">' +
+            '<h2 style="margin:0 0 10px 0;">⚠️ Error de Carga en el Navegador</h2>' +
+            '<p style="font-size:14px; margin:0 0 15px 0;"><b>' + (e.message || 'Error no capturado') + '</b></p>' +
+            '<pre style="background:#fff; padding:10px; border-radius:6px; font-size:12px; overflow:auto; max-height:200px; border:1px solid #fecdd3;">' + (e.error ? e.error.stack : (e.filename + ':' + e.lineno)) + '</pre>' +
+            '<div style="margin-top:15px; display:flex; gap:10px;">' +
+            '<button onclick="localStorage.clear(); sessionStorage.clear(); location.reload();" style="padding:8px 16px; background:#e11d48; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">Limpiar Caché y Recargar</button>' +
+            '<button onclick="location.reload();" style="padding:8px 16px; background:#fff; color:#e11d48; border:1px solid #e11d48; border-radius:6px; font-weight:bold; cursor:pointer;">Recargar</button>' +
+            '</div>' +
+            '</div>';
+        }
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        console.error('GLOBAL_REJECTION:', e.reason);
+      });
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

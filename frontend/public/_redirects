@@ -1,0 +1,5 @@
+# Redirección de llamadas API al túnel activo de Cloudflare
+/api/* https://widespread-restoration-largely-documentary.trycloudflare.com/api/:splat 200
+
+# Redirección de rutas SPA de React
+/* /index.html 200
