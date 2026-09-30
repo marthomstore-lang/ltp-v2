@@ -494,6 +494,62 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       })
       .catch(err => console.error(err));
 
+    // Reglas de Cierre Semestral / Candados por Curso y Asignatura
+    fetch('/api/config/period-locks', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(locks => {
+        if (isCancelled) return;
+        if (!Array.isArray(locks) || locks.length === 0) {
+          setIsLocked(false);
+          return;
+        }
+        const targetCourse = normalizeStr(validLevel.name);
+        const targetSubj = normalizeStr(validSubject.name);
+        const targetPeriod = normalizeStr(period || '1er Semestre');
+
+        let matchedPriority = -1;
+        let lockedState = false;
+
+        for (const rule of locks) {
+          const rPeriod = normalizeStr(rule.period);
+          const periodMatch =
+            rPeriod === targetPeriod ||
+            rPeriod.includes('ambos') ||
+            rPeriod.includes('anual') ||
+            rPeriod === 'todos' ||
+            (targetPeriod.includes('final') && (rPeriod.includes('1er') || rPeriod.includes('2do')));
+          if (!periodMatch) continue;
+
+          const rCourse = normalizeStr(rule.level_name);
+          const rSubj = normalizeStr(rule.subject_name);
+          const isAllCourses = !rCourse || rCourse.includes('todos los cursos') || rCourse === 'todos' || rCourse === 'global';
+          const isAllSubjects = !rSubj || rSubj.includes('todas las asignaturas') || rSubj === 'todas' || rSubj === 'todos';
+
+          const courseMatches = isAllCourses || (targetCourse && (rCourse === targetCourse || targetCourse.includes(rCourse) || rCourse.includes(targetCourse)));
+          const subjMatches = isAllSubjects || (targetSubj && rSubj === targetSubj);
+
+          if (!courseMatches || !subjMatches) continue;
+
+          let priority = 0;
+          if (!isAllCourses && !isAllSubjects) priority = 3;
+          else if (!isAllCourses && isAllSubjects) priority = 2;
+          else if (isAllCourses && !isAllSubjects) priority = 1;
+          else priority = 0;
+
+          if (priority >= matchedPriority) {
+            matchedPriority = priority;
+            lockedState = Boolean(rule.is_locked);
+          }
+        }
+
+        setIsLocked(lockedState);
+      })
+      .catch(() => {
+        if (!isCancelled) setIsLocked(false);
+      });
+
     return () => {
       isCancelled = true;
     };
@@ -668,6 +724,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
   // RENOMBRAR LA COLUMNA / EVALUACIÓN
   const handleRenameColumn = async (col: GradeColumn) => {
+    if (isLocked) return;
     const { value: newTitle } = await Swal.fire({
       title: 'Renombrar Evaluación',
       text: `Escribe el nuevo nombre para "${col.title}":`,
@@ -706,6 +763,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
   // ELIMINAR COLUMNA DE EVALUACIÓN CON DOBLE VERIFICACIÓN POR CONTRASEÑA
   const handleDeleteColumn = async (col: GradeColumn) => {
+    if (isLocked) return;
     const result = await Swal.fire({
       title: '🔒 Doble Verificación de Seguridad',
       html: `
@@ -1231,8 +1289,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
         <button
           onClick={() => setShowReorderModal(true)}
-          disabled={isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#334155', fontWeight: 700, fontSize: '0.85rem', cursor: (isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 'not-allowed' : 'pointer', opacity: (isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 0.6 : 1, marginTop: 'auto' }}
+          disabled={isLocked || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#334155', fontWeight: 700, fontSize: '0.85rem', cursor: (isLocked || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 'not-allowed' : 'pointer', opacity: (isLocked || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 0.6 : 1, marginTop: 'auto' }}
           title="Modificar manualmente el número de lista u orden alfabético A-Z"
         >
           <ArrowUpDown size={16} color="#4f46e5" /> Reordenar Lista N°
@@ -1240,8 +1298,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
         <button
           onClick={handleAddColumn}
-          disabled={isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '8px', border: 'none', background: '#4f46e5', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: (isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 'not-allowed' : 'pointer', opacity: (isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 0.6 : 1, marginTop: 'auto' }}
+          disabled={isLocked || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '8px', border: 'none', background: '#4f46e5', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: (isLocked || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 'not-allowed' : 'pointer', opacity: (isLocked || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 0.6 : 1, marginTop: 'auto' }}
         >
           <Plus size={16} /> + Evaluación
         </button>
@@ -1249,7 +1307,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
         {!isConceptual && (
           <button
             onClick={handleAddCumulativeColumn}
-            disabled={isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0}
+            disabled={isLocked || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -1261,8 +1319,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               color: '#ffffff',
               fontWeight: 800,
               fontSize: '0.85rem',
-              cursor: (isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 'not-allowed' : 'pointer',
-              opacity: (isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 0.6 : 1,
+              cursor: (isLocked || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 'not-allowed' : 'pointer',
+              opacity: (isLocked || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 0.6 : 1,
               marginTop: 'auto',
               boxShadow: '0 2px 4px rgba(79, 70, 229, 0.25)'
             }}
@@ -1275,7 +1333,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
         {isConceptual && (
           <button
             onClick={handlePrefillPredominantConcepts}
-            disabled={isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0}
+            disabled={isLocked || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -1287,8 +1345,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               color: '#166534',
               fontWeight: 800,
               fontSize: '0.85rem',
-              cursor: (isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 'not-allowed' : 'pointer',
-              opacity: (isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 0.6 : 1,
+              cursor: (isLocked || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 'not-allowed' : 'pointer',
+              opacity: (isLocked || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 0.6 : 1,
               marginTop: 'auto',
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
             }}
@@ -1300,7 +1358,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
         <button
           onClick={handleSaveAllGrades}
-          disabled={savingAll || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0}
+          disabled={isLocked || savingAll || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -1312,8 +1370,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
             color: '#ffffff',
             fontWeight: 800,
             fontSize: '0.85rem',
-            cursor: (savingAll || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 'not-allowed' : 'pointer',
-            opacity: (savingAll || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 0.6 : 1,
+            cursor: (isLocked || savingAll || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 'not-allowed' : 'pointer',
+            opacity: (isLocked || savingAll || isParvulariaCourse(currentCourseName) || allowedSubjects.length === 0) ? 0.6 : 1,
             marginTop: 'auto',
             boxShadow: '0 2px 4px rgba(22, 163, 74, 0.3)'
           }}
@@ -1342,6 +1400,16 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           )}
         </div>
       </div>
+
+      {/* BANNER DE CIERRE SEMESTRAL / BLOQUEO ACTIVO */}
+      {isLocked && (
+        <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '10px', padding: '0.75rem 1.25rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '10px', color: '#991b1b', fontWeight: 700, fontSize: '0.86rem' }}>
+          <Lock size={18} color="#dc2626" />
+          <span>
+            <strong>Planilla Cerrada para Edición ({currentCourseName} — {currentSubjectName} — {period}):</strong> El bloqueo de notas por semestre o curso se encuentra activo. Para habilitar el ingreso de calificaciones, un Administrador puede desbloquearlo en <em>Configuración ➔ 6.8 Cierre Semestral</em>.
+          </span>
+        </div>
+      )}
 
       {/* BANNER INFORMATIVO PARA ASIGNATURA CONCEPTUAL (RELIGIÓN / ORIENTACIÓN) */}
       {isConceptual && (
@@ -1405,13 +1473,17 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                       <div
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', color: isCumulative ? '#6b21a8' : '#0f172a', fontWeight: 800 }}
                       >
-                        <span onClick={() => handleRenameColumn(col)} style={{ cursor: 'pointer' }} title="Renombrar evaluación">{col.title}</span>
-                        <span onClick={() => handleRenameColumn(col)} style={{ cursor: 'pointer', display: 'inline-flex' }} title="Renombrar evaluación">
-                          <Edit2 size={13} color={isCumulative ? '#9333ea' : '#4f46e5'} />
-                        </span>
-                        <span onClick={() => handleDeleteColumn(col)} style={{ cursor: 'pointer', display: 'inline-flex', marginLeft: '2px' }} title="Eliminar evaluación">
-                          <Trash2 size={13} color="#ef4444" />
-                        </span>
+                        <span onClick={() => !isLocked && handleRenameColumn(col)} style={{ cursor: isLocked ? 'default' : 'pointer' }} title={isLocked ? col.title : 'Renombrar evaluación'}>{col.title}</span>
+                        {!isLocked && (
+                          <>
+                            <span onClick={() => handleRenameColumn(col)} style={{ cursor: 'pointer', display: 'inline-flex' }} title="Renombrar evaluación">
+                              <Edit2 size={13} color={isCumulative ? '#9333ea' : '#4f46e5'} />
+                            </span>
+                            <span onClick={() => handleDeleteColumn(col)} style={{ cursor: 'pointer', display: 'inline-flex', marginLeft: '2px' }} title="Eliminar evaluación">
+                              <Trash2 size={13} color="#ef4444" />
+                            </span>
+                          </>
+                        )}
                       </div>
 
                       {isCumulative ? (

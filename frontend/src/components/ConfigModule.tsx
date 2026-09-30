@@ -883,24 +883,37 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
   // 6. Bloqueos Semestrales
   const [locksList, setLocksList] = useState<any[]>([]);
   const [showLockModal, setShowLockModal] = useState<boolean>(false);
-  const [newLockRule, setNewLockRule] = useState({ levelName: '', subjectName: '', period: '1er Semestre', isLocked: true });
+  const [newLockRule, setNewLockRule] = useState({ levelName: '', subjectName: 'Todas las Asignaturas', period: '1er Semestre', isLocked: true });
+  const [quickCourseLock, setQuickCourseLock] = useState({ courseName: '', period: '1er Semestre' });
 
   const savePeriodLocks = async (newList: any[]) => {
     setLocksList(newList);
     try {
-      await fetch('/api/config/period-locks', {
+      const res = await fetch('/api/config/period-locks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ locks: newList })
       });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.locks)) {
+          setLocksList(data.locks);
+        }
+      }
     } catch (_) {}
   };
 
-  const toggleLock = (idx: number) => {
-    const updated = [...locksList];
-    updated[idx].is_locked = !updated[idx].is_locked;
-    savePeriodLocks(updated);
-    Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: `Bloqueo ${updated[idx].is_locked ? 'Activado' : 'Desactivado'}`, timer: 1200, showConfirmButton: false });
+  const toggleLock = async (idx: number) => {
+    const updated = locksList.map((item, i) => (i === idx ? { ...item, is_locked: !item.is_locked } : item));
+    await savePeriodLocks(updated);
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: updated[idx].is_locked ? 'warning' : 'success',
+      title: `${updated[idx].level_name} (${updated[idx].subject_name} - ${updated[idx].period}): ${updated[idx].is_locked ? '🔒 Bloqueado' : '🔓 Habilitado'}`,
+      timer: 1800,
+      showConfirmButton: false
+    });
   };
 
   const handleGlobalPeriodLock = (period: string, lock: boolean) => {
@@ -914,14 +927,30 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
       confirmButtonColor: lock ? '#ef4444' : '#16a34a',
       confirmButtonText: lock ? 'Sí, Bloquear Todo' : 'Sí, Habilitar Todo',
       cancelButtonText: 'Cancelar'
-    }).then(result => {
+    }).then(async result => {
       if (result.isConfirmed) {
-        const updated = locksList.map(l => l.period === period ? { ...l, is_locked: lock } : l);
-        savePeriodLocks(updated);
+        const globalId = `global_${period.replace(/\s+/g, '_').toLowerCase()}`;
+        const hasGlobal = locksList.some(
+          l => l.period === period && l.level_name === 'Todos los Cursos' && l.subject_name === 'Todas las Asignaturas'
+        );
+        let updated = locksList.map(l => (l.period === period ? { ...l, is_locked: lock } : l));
+        if (!hasGlobal) {
+          updated = [
+            {
+              id: globalId,
+              level_name: 'Todos los Cursos',
+              subject_name: 'Todas las Asignaturas',
+              period,
+              is_locked: lock
+            },
+            ...updated
+          ];
+        }
+        await savePeriodLocks(updated);
         Swal.fire({
           icon: 'success',
           title: `¡${period} ${lock ? 'Bloqueado' : 'Habilitado'}!`,
-          text: `Las calificaciones del ${period} están ahora ${lock ? 'bloqueadas para edición' : 'habilitadas para ingreso de notas'}.`,
+          text: `Las calificaciones del ${period} están ahora ${lock ? 'bloqueadas para edición en todos los cursos' : 'habilitadas para ingreso de notas'}.`,
           timer: 1800,
           showConfirmButton: false
         });
@@ -929,23 +958,83 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
     });
   };
 
-  const handleAddLockRule = (e: React.FormEvent) => {
+  const handleQuickCourseLock = async (lock: boolean) => {
+    if (!quickCourseLock.courseName) {
+      Swal.fire('Atención', 'Seleccione un curso para aplicar el bloqueo o habilitación.', 'warning');
+      return;
+    }
+    const targetCourse = quickCourseLock.courseName;
+    const targetPeriod = quickCourseLock.period;
+
+    const existingIdx = locksList.findIndex(
+      l => l.level_name === targetCourse && l.subject_name === 'Todas las Asignaturas' && l.period === targetPeriod
+    );
+
+    let updated = [...locksList];
+    if (existingIdx >= 0) {
+      updated[existingIdx] = { ...updated[existingIdx], is_locked: lock };
+    } else {
+      updated = [
+        {
+          id: `lock_course_${Date.now()}`,
+          level_name: targetCourse,
+          subject_name: 'Todas las Asignaturas',
+          period: targetPeriod,
+          is_locked: lock
+        },
+        ...updated
+      ];
+    }
+
+    // También actualizar cualquier regla específica de asignaturas de ese mismo curso y semestre
+    updated = updated.map(l =>
+      l.level_name === targetCourse && l.period === targetPeriod ? { ...l, is_locked: lock } : l
+    );
+
+    await savePeriodLocks(updated);
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: lock ? 'warning' : 'success',
+      title: `${targetCourse} (${targetPeriod}): ${lock ? '🔒 Curso Bloqueado' : '🔓 Curso Habilitado'}`,
+      timer: 2000,
+      showConfirmButton: false
+    });
+  };
+
+  const handleAddLockRule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLockRule.levelName || !newLockRule.subjectName) {
       Swal.fire('Atención', 'Curso y Asignatura son obligatorios.', 'warning');
       return;
     }
-    const newRule = {
-      id: `lock_${Date.now()}`,
-      level_name: newLockRule.levelName,
-      subject_name: newLockRule.subjectName,
-      period: newLockRule.period,
-      is_locked: newLockRule.isLocked
-    };
-    savePeriodLocks([...locksList, newRule]);
+    const existingIdx = locksList.findIndex(
+      l =>
+        l.level_name === newLockRule.levelName &&
+        l.subject_name === newLockRule.subjectName &&
+        l.period === newLockRule.period
+    );
+
+    let updated: any[];
+    if (existingIdx >= 0) {
+      updated = locksList.map((item, i) =>
+        i === existingIdx ? { ...item, is_locked: newLockRule.isLocked } : item
+      );
+    } else {
+      const newRule = {
+        id: `lock_${Date.now()}`,
+        level_name: newLockRule.levelName,
+        subject_name: newLockRule.subjectName,
+        period: newLockRule.period,
+        is_locked: newLockRule.isLocked
+      };
+      updated = [...locksList, newRule];
+    }
+
+    await savePeriodLocks(updated);
     setShowLockModal(false);
-    setNewLockRule({ levelName: '', subjectName: '', period: '1er Semestre', isLocked: true });
-    Swal.fire('Regla Creada', 'La regla de bloqueo ha sido registrada en el sistema.', 'success');
+    setNewLockRule({ levelName: '', subjectName: 'Todas las Asignaturas', period: '1er Semestre', isLocked: true });
+    Swal.fire('Regla Guardada', 'La regla de bloqueo semestral ha sido aplicada y guardada en la base de datos.', 'success');
   };
 
   const confirmDelete = (title: string, onDelete: () => void) => {
@@ -3059,11 +3148,27 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
           </div>
 
           {/* CONTROLES GLOBALES DE CIERRE SEMESTRAL */}
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.1rem 1.25rem', marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.1rem 1.25rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
             <div>
-              <h4 style={{ margin: '0 0 0.25rem 0', color: '#0f172a', fontWeight: 800, fontSize: '0.95rem' }}>
-                🔒 Control Global de Bloqueo por Semestre
-              </h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
+                <h4 style={{ margin: 0, color: '#0f172a', fontWeight: 800, fontSize: '0.95rem' }}>
+                  🔒 Control Global de Bloqueo por Semestre
+                </h4>
+                {(() => {
+                  const s1Global = locksList.find(l => l.level_name === 'Todos los Cursos' && l.subject_name === 'Todas las Asignaturas' && l.period === '1er Semestre');
+                  const s2Global = locksList.find(l => l.level_name === 'Todos los Cursos' && l.subject_name === 'Todas las Asignaturas' && l.period === '2do Semestre');
+                  return (
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '0.15rem 0.55rem', borderRadius: '9999px', background: s1Global?.is_locked ? '#fee2e2' : '#dcfce7', color: s1Global?.is_locked ? '#991b1b' : '#15803d', border: `1px solid ${s1Global?.is_locked ? '#fca5a5' : '#86efac'}` }}>
+                        1er Sem: {s1Global?.is_locked ? '🔒 BLOQUEADO' : '🔓 HABILITADO'}
+                      </span>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '0.15rem 0.55rem', borderRadius: '9999px', background: s2Global?.is_locked ? '#fee2e2' : '#dcfce7', color: s2Global?.is_locked ? '#991b1b' : '#15803d', border: `1px solid ${s2Global?.is_locked ? '#fca5a5' : '#86efac'}` }}>
+                        2do Sem: {s2Global?.is_locked ? '🔒 BLOQUEADO' : '🔓 HABILITADO'}
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
               <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
                 Cierra o habilita la edición de planillas de calificaciones para todo el establecimiento con un solo clic.
               </span>
@@ -3073,30 +3178,83 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
               <button
                 onClick={() => handleGlobalPeriodLock('1er Semestre', true)}
                 className="btn"
-                style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', padding: '0.45rem 0.85rem', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}
+                style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', padding: '0.45rem 0.85rem', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
               >
                 <Lock size={14} /> Bloquear 1er Semestre
               </button>
               <button
                 onClick={() => handleGlobalPeriodLock('1er Semestre', false)}
                 className="btn"
-                style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', padding: '0.45rem 0.85rem', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}
+                style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', padding: '0.45rem 0.85rem', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
               >
                 <Unlock size={14} /> Habilitar 1er Semestre
               </button>
               <button
                 onClick={() => handleGlobalPeriodLock('2do Semestre', true)}
                 className="btn"
-                style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', padding: '0.45rem 0.85rem', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}
+                style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', padding: '0.45rem 0.85rem', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
               >
                 <Lock size={14} /> Bloquear 2do Semestre
               </button>
               <button
                 onClick={() => handleGlobalPeriodLock('2do Semestre', false)}
                 className="btn"
-                style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', padding: '0.45rem 0.85rem', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}
+                style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', padding: '0.45rem 0.85rem', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
               >
                 <Unlock size={14} /> Habilitar 2do Semestre
+              </button>
+            </div>
+          </div>
+
+          {/* BLOQUEO RÁPIDO POR CURSO COMPLETO Y SEMESTRE */}
+          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '1rem 1.25rem', marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <h4 style={{ margin: '0 0 0.2rem 0', color: '#1e3a8a', fontWeight: 800, fontSize: '0.92rem' }}>
+                🏫 Bloqueo Rápido por Curso Completo (Todas las Asignaturas)
+              </h4>
+              <span style={{ fontSize: '0.78rem', color: '#3b82f6' }}>
+                Seleccione un curso y semestre para bloquear o habilitar todas las notas de ese curso inmediatamente.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <select
+                value={quickCourseLock.courseName}
+                onChange={e => setQuickCourseLock({ ...quickCourseLock, courseName: e.target.value })}
+                style={{ padding: '0.45rem 0.7rem', borderRadius: '8px', border: '1px solid #93c5fd', fontWeight: 700, fontSize: '0.8rem', background: '#ffffff', color: '#0f172a', outline: 'none' }}
+              >
+                <option value="">-- Seleccionar Curso --</option>
+                <option value="Todos los Cursos">🌐 Todos los Cursos (Establecimiento Completo)</option>
+                {sortCoursesList(coursesList).map(c => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+
+              <select
+                value={quickCourseLock.period}
+                onChange={e => setQuickCourseLock({ ...quickCourseLock, period: e.target.value })}
+                style={{ padding: '0.45rem 0.7rem', borderRadius: '8px', border: '1px solid #93c5fd', fontWeight: 700, fontSize: '0.8rem', background: '#ffffff', color: '#0f172a', outline: 'none' }}
+              >
+                <option value="1er Semestre">1er Semestre</option>
+                <option value="2do Semestre">2do Semestre</option>
+                <option value="Ambos Semestres">Ambos Semestres (Anual)</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={() => handleQuickCourseLock(true)}
+                className="btn"
+                style={{ background: '#dc2626', color: '#ffffff', border: 'none', padding: '0.45rem 0.85rem', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', borderRadius: '8px' }}
+              >
+                <Lock size={14} /> Bloquear Curso
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickCourseLock(false)}
+                className="btn"
+                style={{ background: '#16a34a', color: '#ffffff', border: 'none', padding: '0.45rem 0.85rem', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', borderRadius: '8px' }}
+              >
+                <Unlock size={14} /> Habilitar Curso
               </button>
             </div>
           </div>
@@ -3187,6 +3345,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                     required
                   >
                     <option value="">-- Seleccionar Curso --</option>
+                    <option value="Todos los Cursos">🌐 Todos los Cursos (Establecimiento Completo)</option>
                     {sortCoursesList(coursesList).map(c => (
                       <option key={c.id} value={c.name}>{c.name}</option>
                     ))}
@@ -3201,7 +3360,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                     style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none', fontWeight: 600 }}
                     required
                   >
-                    <option value="">-- Seleccionar Asignatura --</option>
+                    <option value="Todas las Asignaturas">📚 Todas las Asignaturas (Curso Completo)</option>
                     {subjectsList.map(s => (
                       <option key={s.id} value={s.name}>{s.name}</option>
                     ))}
@@ -3217,6 +3376,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                   >
                     <option value="1er Semestre">1er Semestre</option>
                     <option value="2do Semestre">2do Semestre</option>
+                    <option value="Ambos Semestres">Ambos Semestres (Anual)</option>
                   </select>
                 </div>
 

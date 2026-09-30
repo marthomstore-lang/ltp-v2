@@ -2260,36 +2260,136 @@ router.post('/config/course-subject-order', authMiddleware, checkRoles(['Admin']
   }
 });
 
-// GESTIÓN DE CANDADOS Y BLOQUEO SEMESTRAL
-router.get('/config/period-locks', authMiddleware, async (req: Request, res: Response) => {
+// GESTIÓN DE CANDADOS Y BLOQUEO SEMESTRAL (PERSISTIDO EN SUPABASE / POSTGRESQL system_settings)
+const DEFAULT_PERIOD_LOCKS = [
+  { id: '1', level_name: '1° Medio A', subject_name: 'Matemática', period: '1er Semestre', is_locked: false },
+  { id: '2', level_name: '3° Medio Industrial (Mecánica Industrial) A', subject_name: 'Taller de Especialidad TP', period: '1er Semestre', is_locked: false }
+];
+
+async function getSavedPeriodLocks(): Promise<any[]> {
+  try {
+    const dbRes = await query("SELECT config_value FROM system_settings WHERE id = 'SET-PERIOD-LOCKS' OR config_key = 'period_locks' ORDER BY updated_at DESC LIMIT 1");
+    if (dbRes.rows && dbRes.rows.length > 0 && dbRes.rows[0].config_value) {
+      const parsed = JSON.parse(dbRes.rows[0].config_value);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (_) {}
+
   try {
     const storePath = path.join(__dirname, '../../local_store.json');
-    let store: any = {};
     if (fs.existsSync(storePath)) {
-      store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+      const store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+      if (Array.isArray(store.period_locks)) return store.period_locks;
     }
-    const locks = store.period_locks || [
-      { id: '1', level_name: '1° Medio A', subject_name: 'Matemática', period: '1er Semestre', is_locked: false },
-      { id: '2', level_name: '3° Medio Industrial (Mecánica Industrial) A', subject_name: 'Taller de Especialidad TP', period: '1er Semestre', is_locked: false }
-    ];
+  } catch (_) {}
+
+  return DEFAULT_PERIOD_LOCKS;
+}
+
+async function isGradeEntryLocked(levelId: any, subjectId: any, period: string): Promise<boolean> {
+  try {
+    const locks = await getSavedPeriodLocks();
+    if (!Array.isArray(locks) || locks.length === 0) return false;
+
+    let courseName = '';
+    let subjectName = '';
+    if (levelId) {
+      const lRes = await query('SELECT name FROM levels WHERE id = $1 LIMIT 1', [levelId]).catch(() => ({ rows: [] }));
+      if (lRes.rows.length > 0) courseName = String(lRes.rows[0].name || '').trim();
+    }
+    if (subjectId) {
+      const sRes = await query('SELECT name FROM subjects WHERE id = $1 LIMIT 1', [subjectId]).catch(() => ({ rows: [] }));
+      if (sRes.rows.length > 0) subjectName = String(sRes.rows[0].name || '').trim();
+    }
+
+    const norm = (s: any) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const targetCourse = norm(courseName);
+    const targetSubj = norm(subjectName);
+    const targetPeriod = norm(period || '1er Semestre');
+
+    // Precedence: 3 = exact course + exact subject, 2 = exact course + all subjects, 1 = all courses + exact subject, 0 = global all courses + all subjects
+    let matchedPriority = -1;
+    let lockedState = false;
+
+    for (const rule of locks) {
+      const rPeriod = norm(rule.period);
+      const periodMatch = rPeriod === targetPeriod || rPeriod.includes('ambos') || rPeriod.includes('anual') || rPeriod === 'todos';
+      if (!periodMatch) continue;
+
+      const rCourse = norm(rule.level_name);
+      const rSubj = norm(rule.subject_name);
+      const isAllCourses = !rCourse || rCourse.includes('todos los cursos') || rCourse === 'todos' || rCourse === 'global';
+      const isAllSubjects = !rSubj || rSubj.includes('todas las asignaturas') || rSubj === 'todas' || rSubj === 'todos';
+
+      const courseMatches = isAllCourses || (targetCourse && (rCourse === targetCourse || targetCourse.includes(rCourse) || rCourse.includes(targetCourse)));
+      const subjMatches = isAllSubjects || (targetSubj && (rSubj === targetSubj));
+
+      if (!courseMatches || !subjMatches) continue;
+
+      let priority = 0;
+      if (!isAllCourses && !isAllSubjects) priority = 3;
+      else if (!isAllCourses && isAllSubjects) priority = 2;
+      else if (isAllCourses && !isAllSubjects) priority = 1;
+      else priority = 0;
+
+      if (priority >= matchedPriority) {
+        matchedPriority = priority;
+        lockedState = Boolean(rule.is_locked);
+      }
+    }
+
+    return lockedState;
+  } catch (_) {
+    return false;
+  }
+}
+
+router.get('/config/period-locks', authMiddleware, async (_req: Request, res: Response) => {
+  try {
+    const locks = await getSavedPeriodLocks();
     res.json(locks);
   } catch (err) {
     res.status(500).json({ error: 'Error al obtener reglas de bloqueo.' });
   }
 });
 
-router.post('/config/period-locks', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
+router.post('/config/period-locks', authMiddleware, checkRoles(['Admin', 'Director', 'UTP']), async (req: Request, res: Response) => {
   try {
     const { locks } = req.body;
-    const storePath = path.join(__dirname, '../../local_store.json');
-    let store: any = {};
-    if (fs.existsSync(storePath)) {
-      store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+    const normalizedLocks = Array.isArray(locks) ? locks : [];
+    const serialized = JSON.stringify(normalizedLocks);
+
+    // 1. Persistir en PostgreSQL / MySQL (system_settings)
+    try {
+      const existing = await query("SELECT id FROM system_settings WHERE id = 'SET-PERIOD-LOCKS' OR config_key = 'period_locks' LIMIT 1");
+      if (existing.rows && existing.rows.length > 0) {
+        await query(
+          "UPDATE system_settings SET config_value = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 OR config_key = 'period_locks'",
+          [serialized, existing.rows[0].id]
+        );
+      } else {
+        await query(
+          "INSERT INTO system_settings (id, config_key, config_value, updated_at) VALUES ('SET-PERIOD-LOCKS', 'period_locks', $1, CURRENT_TIMESTAMP)",
+          [serialized]
+        );
+      }
+    } catch (dbErr) {
+      console.error('Error guardando period_locks en system_settings:', dbErr);
     }
-    store.period_locks = Array.isArray(locks) ? locks : [];
-    fs.writeFileSync(storePath, JSON.stringify(store, null, 2), 'utf-8');
-    await logAudit(req, 'UPDATE_PERIOD_LOCKS', 'Reglas de candados y cierre semestral actualizadas');
-    res.json({ success: true, locks: store.period_locks });
+
+    // 2. Persistir en local_store.json si el sistema de archivos es escribible (entorno local)
+    try {
+      const storePath = path.join(__dirname, '../../local_store.json');
+      let store: any = {};
+      if (fs.existsSync(storePath)) {
+        store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+      }
+      store.period_locks = normalizedLocks;
+      fs.writeFileSync(storePath, JSON.stringify(store, null, 2), 'utf-8');
+    } catch (_) {}
+
+    await logAudit(req, 'UPDATE_PERIOD_LOCKS', `Reglas de candados y cierre semestral actualizadas (${normalizedLocks.length} reglas)`);
+    res.json({ success: true, locks: normalizedLocks });
   } catch (err) {
     res.status(500).json({ error: 'Error al guardar reglas de bloqueo.' });
   }
@@ -3215,7 +3315,12 @@ router.get('/grades', authMiddleware, async (req: Request, res: Response) => {
 router.post('/grades', authMiddleware, checkRoles(['Admin', 'Docente']), async (req: Request, res: Response) => {
   const { studentId, gradeColumnId, gradeValue, period, levelId, subjectId, academicYear } = req.body;
   try {
-    // REGLA MINEDUC: Si un estudiante está retirado, no admite nuevas calificaciones
+    // 1. Verificar bloqueo semestral / por curso / asignatura
+    if (await isGradeEntryLocked(levelId, subjectId, period || '1er Semestre')) {
+      return res.status(403).json({ error: `El ingreso y edición de calificaciones para ${period || 'este semestre'} se encuentra bloqueado por Cierre Semestral.` });
+    }
+
+    // 2. REGLA MINEDUC: Si un estudiante está retirado, no admite nuevas calificaciones
     const stCheck = await query('SELECT is_retired, status, withdrawal_date FROM students WHERE id = $1 OR run = $1 LIMIT 1', [studentId]);
     if (stCheck.rows.length > 0 && isStudentRetiredHelper(stCheck.rows[0])) {
       return res.status(400).json({ error: 'No se pueden registrar calificaciones para un estudiante retirado.' });
@@ -3251,6 +3356,11 @@ router.post('/grades/batch', authMiddleware, checkRoles(['Admin', 'Docente']), a
   }
 
   try {
+    const sample = grades[0];
+    if (sample && (await isGradeEntryLocked(sample.levelId, sample.subjectId, sample.period || '1er Semestre'))) {
+      return res.status(403).json({ error: `El ingreso y edición de calificaciones para ${sample.period || 'este semestre'} se encuentra bloqueado por Cierre Semestral.` });
+    }
+
     // Excluir automáticamente a cualquier estudiante retirado
     const validGrades: any[] = [];
     for (const g of grades) {
@@ -4944,35 +5054,6 @@ router.get('/subjects', authMiddleware, async (req: Request, res: Response) => {
     storeSubjects.forEach((s: any) => { if (s && (s.name || s.nombre)) map.set(s.name || s.nombre, { id: s.id, name: s.name || s.nombre }); });
 
     res.json(Array.from(map.values()));
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get('/config/period-locks', authMiddleware, async (req: Request, res: Response) => {
-  try {
-    const storePath = getStorePath();
-    if (fs.existsSync(storePath)) {
-      const store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
-      return res.json(store.period_locks || []);
-    }
-    res.json([]);
-  } catch (_) {
-    res.json([]);
-  }
-});
-
-router.post('/config/period-locks', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
-  try {
-    const { locks } = req.body;
-    const storePath = getStorePath();
-    let store: any = {};
-    if (fs.existsSync(storePath)) {
-      store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
-    }
-    store.period_locks = Array.isArray(locks) ? locks : [];
-    fs.writeFileSync(storePath, JSON.stringify(store, null, 2), 'utf-8');
-    res.json({ success: true, locks: store.period_locks });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
