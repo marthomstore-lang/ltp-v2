@@ -27,7 +27,7 @@ function escapePgValue(val, mysqlType) {
   if (val === null || val === undefined) return 'NULL';
   const t = String(mysqlType || '').toLowerCase();
   if (val instanceof Date) {
-    if (isNaN(val.getTime())) return 'NULL';
+    if (isNaN(val.getTime()) || val.getFullYear() < 1920) return 'NULL';
     if (t === 'date') {
       return `'${val.toISOString().slice(0, 10)}'`;
     }
@@ -39,8 +39,11 @@ function escapePgValue(val, mysqlType) {
   if (typeof val === 'boolean') {
     return val ? '1' : '0';
   }
-  const str = String(val).replace(/'/g, "''");
-  return `'${str}'`;
+  const str = String(val).trim();
+  if (t === 'date' && (str === '' || str.startsWith('0000') || str.startsWith('1899') || str.startsWith('1900'))) {
+    return 'NULL';
+  }
+  return `'${String(val).replace(/'/g, "''")}'`;
 }
 
 async function run() {

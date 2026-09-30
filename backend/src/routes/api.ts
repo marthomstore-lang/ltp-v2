@@ -249,7 +249,7 @@ ensureTablesExist();
 // -----------------------------------------------------------------------------
 router.get('/stats', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const studentsRes = await query('SELECT COUNT(*) as total, SUM(CASE WHEN status = \'Active\' THEN 1 ELSE 0 END) as vigentes, SUM(CASE WHEN status = \'Withdrawn\' THEN 1 ELSE 0 END) as retirados FROM students');
+    const studentsRes = await query("SELECT COUNT(*) as total, SUM(CASE WHEN (is_retired = 0 OR is_retired IS NULL) AND status NOT IN ('Retirado', 'Withdrawn') THEN 1 ELSE 0 END) as vigentes, SUM(CASE WHEN is_retired = 1 OR status IN ('Retirado', 'Withdrawn') THEN 1 ELSE 0 END) as retirados FROM students");
     const interviewsRes = await query('SELECT COUNT(*) as total FROM interviews');
     const usersRes = await query('SELECT COUNT(*) as total FROM users');
     const assignmentsRes = await query('SELECT COUNT(*) as total FROM teacher_assignments');
@@ -1639,9 +1639,15 @@ router.get('/students', authMiddleware, async (req: Request, res: Response) => {
         const cName = getStudentCourseHelper(s);
         pj = courseTeacherMap[cName] || courseTeacherMap[s.desc_grado] || null;
       }
+      const rawWd = s.withdrawal_date ? String(s.withdrawal_date).trim() : '';
+      const isInvalidWd = !rawWd || rawWd.startsWith('1899') || rawWd.startsWith('1900') || rawWd.startsWith('0000') || rawWd === 'null' || rawWd === 'Invalid Date';
+      const isRetiredFlag = s.is_retired === 1 || s.is_retired === '1' || s.is_retired === true || String(s.status || '').toLowerCase().includes('retirad') || String(s.status || '').toLowerCase() === 'withdrawn';
       return {
         ...s,
-        profesor_jefe: pj
+        profesor_jefe: pj,
+        is_retired: isRetiredFlag ? 1 : 0,
+        status: isRetiredFlag ? 'Retirado' : (s.status || 'Active'),
+        withdrawal_date: (!isRetiredFlag || isInvalidWd) ? null : s.withdrawal_date
       };
     });
 
@@ -2733,9 +2739,12 @@ const sortCoursesListHelper = (courses: string[]): string[] => {
 const isStudentRetiredHelper = (s: any): boolean => {
   if (!s) return false;
   if (s.is_retired === 1 || s.is_retired === '1' || s.is_retired === true || s.is_retired === 'true') return true;
-  if (s.withdrawal_date && String(s.withdrawal_date).trim() !== '' && String(s.withdrawal_date) !== 'null' && String(s.withdrawal_date) !== 'Invalid Date') return true;
-  if (s.fecha_retiro && String(s.fecha_retiro).trim() !== '' && String(s.fecha_retiro) !== 'null') return true;
-  if (s.status && (String(s.status).toLowerCase().includes('retirad') || String(s.status).toLowerCase().includes('inactive'))) return true;
+  if (s.status && (String(s.status).toLowerCase().includes('retirad') || String(s.status).toLowerCase().includes('inactive') || String(s.status).toLowerCase() === 'withdrawn')) return true;
+  if (s.is_retired === 0 && String(s.status || '').toLowerCase() === 'active') return false;
+  const wd = s.withdrawal_date ? String(s.withdrawal_date).trim() : '';
+  if (wd && wd !== 'null' && wd !== 'Invalid Date' && !wd.startsWith('1899') && !wd.startsWith('1900') && !wd.startsWith('0000')) return true;
+  const fr = s.fecha_retiro ? String(s.fecha_retiro).trim() : '';
+  if (fr && fr !== 'null' && !fr.startsWith('1899') && !fr.startsWith('1900') && !fr.startsWith('0000')) return true;
   return false;
 };
 
