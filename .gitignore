@@ -20,6 +20,9 @@ cloudflared.exe
 *backup*.sql
 database_backup*.sql
 database/supabase_full_seed.sql
+respaldo_kyrjuenufdnqoemvdjqq/
+Respaldo_Proyecto_kyrjuenufdnqoemvdjqq.zip
+frontend/public/Respaldo_Proyecto_kyrjuenufdnqoemvdjqq.zip
 backend/local_store.json
 backend/schema_and_seed_local.sql
 backend/schema_and_seed_mysql.sql
