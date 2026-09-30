@@ -1,0 +1,12 @@
+node_modules/
+*/node_modules/
+respaldo_kyrjuenufdnqoemvdjqq/
+*.zip
+frontend/public/*.zip
+database/supabase_full_seed.sql
+backend/schema_and_seed_local.sql
+backend/schema_and_seed_mysql.sql
+backend/local_store.json
+backend/*.sqlite
+*.exe
+scratch/
