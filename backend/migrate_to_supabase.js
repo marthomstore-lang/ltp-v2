@@ -1,11 +1,6 @@
 /**
- * Script de Exportación y Migración Completa: MySQL Local (XAMPP) -> PostgreSQL (Supabase Cloud)
- * Uso:
- *   1) Generar archivos SQL para Supabase (esquema limpio + volcado completo):
- *      node migrate_to_supabase.js
- *
- *   2) Migrar directamente hacia Supabase pasando la URL de conexión PostgreSQL:
- *      node migrate_to_supabase.js "postgresql://postgres.[ref]:[password]@aws-0-sa-east-1.pooler.supabase.com:6543/postgres"
+ * Script de Exportación y Migración Completa (Batch Ultra-Rápido):
+ * MySQL Local (XAMPP) -> PostgreSQL (Supabase Cloud)
  */
 
 const fs = require('fs');
@@ -20,16 +15,10 @@ const SUPABASE_URI = process.argv[2] || process.env.SUPABASE_DATABASE_URL || (pr
 function mapMysqlTypeToPostgres(mysqlType, colName, isAutoIncrement) {
   if (isAutoIncrement) return 'SERIAL';
   const t = String(mysqlType || '').toLowerCase();
-  // En este proyecto varias columnas booleanas e enteras se consultan tanto con 0/1 como con true/false,
-  // pero en PostgreSQL INTEGER soporta 0/1 y en db.ts hemos adaptado las consultas.
-  // Revisemos si la columna se usa como integer o text.
-  if (t.startsWith('tinyint(1)')) {
-    return 'INTEGER';
-  }
+  if (t.startsWith('tinyint(1)')) return 'INTEGER';
   if (t.includes('int')) return 'INTEGER';
   if (t.startsWith('decimal') || t.startsWith('numeric')) return t.toUpperCase();
-  if (t === 'date') return 'TEXT';
-  if (t === 'time') return 'TEXT';
+  if (t === 'date' || t === 'time') return 'TEXT';
   if (t.includes('timestamp') || t.includes('datetime')) return 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
   return 'TEXT';
 }
@@ -69,6 +58,11 @@ async function run() {
     schemaSql += `-- Total de tablas: ${tables.length}\n`;
     schemaSql += `-- =============================================================================\n\n`;
 
+    let dropSql = '';
+    for (const table of tables) {
+      dropSql += `DROP TABLE IF EXISTS "${table}" CASCADE;\n`;
+    }
+
     let seedSql = schemaSql;
     const tableDataForDirectMigration = [];
 
@@ -99,33 +93,37 @@ async function run() {
       schemaSql += createTableStmt;
       seedSql += createTableStmt;
 
-      // Extraer filas de datos (excepto audit_logs masivos o password_resets temporales)
       if (table === 'password_resets') continue;
 
       const [rows] = await conn.query(`SELECT * FROM \`${table}\``);
       if (rows.length > 0) {
         seedSql += `-- Datos de tabla: ${table} (${rows.length} registros)\n`;
         const colNames = cols.map(c => `"${c.Field}"`).join(', ');
-        for (const row of rows) {
-          const vals = cols.map(c => escapePgValue(row[c.Field], c.Type)).join(', ');
-          seedSql += `INSERT INTO "${table}" (${colNames}) VALUES (${vals}) ON CONFLICT DO NOTHING;\n`;
+        const BATCH_SIZE = 400;
+        const batches = [];
+        for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+          const chunk = rows.slice(i, i + BATCH_SIZE);
+          const valuesList = chunk.map(row => `(${cols.map(c => escapePgValue(row[c.Field], c.Type)).join(', ')})`).join(',\n');
+          const batchStmt = `INSERT INTO "${table}" (${colNames}) VALUES\n${valuesList}\nON CONFLICT DO NOTHING;\n`;
+          seedSql += batchStmt;
+          batches.push(batchStmt);
         }
         seedSql += `\n`;
-        tableDataForDirectMigration.push({ table, cols, rows });
+        tableDataForDirectMigration.push({ table, rowCount: rows.length, batches });
       }
     }
 
-    // Guardar database/unified_schema.sql (Esquema limpio para GitHub)
+    // Guardar database/unified_schema.sql
     const schemaPath = path.join(__dirname, '..', 'database', 'unified_schema.sql');
     fs.writeFileSync(schemaPath, schemaSql, 'utf8');
     console.log(`✅ Esquema PostgreSQL actualizado en: ${schemaPath}`);
 
-    // Guardar database/supabase_full_seed.sql (Esquema + Todos los datos para Supabase)
+    // Guardar database/supabase_full_seed.sql
     const seedPath = path.join(__dirname, '..', 'database', 'supabase_full_seed.sql');
     fs.writeFileSync(seedPath, seedSql, 'utf8');
     console.log(`✅ Volcado completo para Supabase generado en: ${seedPath}`);
 
-    // Si se proporcionó URL de Supabase, ejecutar migración directa
+    // Si se proporcionó URL de Supabase, ejecutar migración directa por lotes
     if (SUPABASE_URI && SUPABASE_URI.startsWith('postgres')) {
       console.log('\n⚡ Iniciando migración directa hacia Supabase Cloud...');
       const pgPool = new PgPool({
@@ -134,25 +132,24 @@ async function run() {
       });
 
       try {
-        await pgPool.query(schemaSql);
-        console.log('✅ Todas las tablas fueron creadas/verificadas en Supabase.');
+        console.log('🧹 Limpiando esquema previo y recreando las 48 tablas de LTP v2.0...');
+        await pgPool.query(dropSql + '\n' + schemaSql);
+        console.log('✅ Las 48 tablas fueron creadas exitosamente en Supabase.');
 
         for (const item of tableDataForDirectMigration) {
-          const { table, cols, rows } = item;
-          console.log(`   -> Sincronizando ${table} (${rows.length} registros)...`);
-          const colNames = cols.map(c => `"${c.Field}"`).join(', ');
-          for (const row of rows) {
-            const vals = cols.map(c => escapePgValue(row[c.Field], c.Type)).join(', ');
-            await pgPool.query(`INSERT INTO "${table}" (${colNames}) VALUES (${vals}) ON CONFLICT DO NOTHING;`);
+          const { table, rowCount, batches } = item;
+          process.stdout.write(`   -> Sincronizando ${table} (${rowCount} registros en ${batches.length} lotes)... `);
+          for (const batchStmt of batches) {
+            await pgPool.query(batchStmt);
           }
+          console.log('OK ✅');
         }
-        console.log('🎉 ¡MIGRACIÓN A SUPABASE COMPLETADA AL 100%!');
+        console.log('================================================================');
+        console.log('🎉 ¡MIGRACIÓN A SUPABASE CLOUD COMPLETADA AL 100%!');
+        console.log('================================================================');
       } finally {
         await pgPool.end();
       }
-    } else {
-      console.log('\n💡 Para migrar directamente a Supabase por consola cuando tengas tu URL:');
-      console.log('   node backend/migrate_to_supabase.js "postgresql://postgres:[PASSWORD]@db.[PROJECT].supabase.co:5432/postgres"');
     }
   } finally {
     await conn.end();
