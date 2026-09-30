@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowUpDown, ArrowUp, ArrowDown, Check, X, RefreshCw, Save, GripVertical } from 'lucide-react';
 import Swal from 'sweetalert2';
-import { sortCoursesList, getStudentCourse } from '../utils/course';
+import { sortCoursesList, sortStudentsList, getStudentCourse } from '../utils/course';
 
 interface ReorderModalProps {
   students: any[];
@@ -12,7 +12,7 @@ interface ReorderModalProps {
 
 export const ReorderStudentsModal: React.FC<ReorderModalProps> = ({ students, token, onClose, onSuccess }) => {
   const [list, setList] = useState<any[]>(() => {
-    return [...students].sort((a, b) => (a.list_number || 999) - (b.list_number || 999));
+    return sortStudentsList(students);
   });
 
   const [selectedCourse, setSelectedCourse] = useState<string>('Todos');
@@ -24,10 +24,7 @@ export const ReorderStudentsModal: React.FC<ReorderModalProps> = ({ students, to
 
   const filteredList = selectedCourse === 'Todos' 
     ? list 
-    : list.filter(s => {
-        const courseName = s.level_name || (s.desc_grado ? `${s.desc_grado} ${s.letra_curso || ''}`.trim() : '');
-        return courseName === selectedCourse;
-      });
+    : list.filter(s => getStudentCourse(s) === selectedCourse);
 
   // 1. REORDENAMIENTO AUTOMÁTICO A-Z POR APELLIDOS
   const handleAutoReorderAZ = () => {

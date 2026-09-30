@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Award, AlertTriangle, CheckCircle, ShieldAlert, Plus, Filter, Users, Clock } from 'lucide-react';
 import Swal from 'sweetalert2';
-import { getStudentCourse, sortCoursesList } from '../utils/course';
+import { getStudentCourse, sortCoursesList, sortStudentsList } from '../utils/course';
 
 interface ObservationsModuleProps {
   token: string;
@@ -72,17 +72,13 @@ export const ObservationsModule: React.FC<ObservationsModuleProps> = ({ token })
     return sortCoursesList(unique);
   }, [students]);
 
-  // Filtrar estudiantes pertenecientes al curso seleccionado
+  // Filtrar estudiantes pertenecientes al curso seleccionado y ordenar por Curso y N° de Lista (N/L)
   const filteredStudents = useMemo(() => {
     let list = students;
     if (selectedCourse !== 'Todos') {
       list = students.filter(s => getStudentCourse(s) === selectedCourse);
     }
-    return [...list].sort((a, b) => {
-      const nameA = a.full_name || a.Nombres || '';
-      const nameB = b.full_name || b.Nombres || '';
-      return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
-    });
+    return sortStudentsList(list);
   }, [students, selectedCourse]);
 
   // Si cambia el curso y el estudiante seleccionado no pertenece a ese curso, re-seleccionar 'Todos' o el primero

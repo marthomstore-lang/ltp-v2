@@ -148,6 +148,29 @@ export const sortCoursesList = <T extends any>(courses: T[]): T[] => {
   });
 };
 
+export const sortStudentsList = <T extends any>(students: T[]): T[] => {
+  return [...students].sort((a: any, b: any) => {
+    const courseA = getStudentCourse(a);
+    const courseB = getStudentCourse(b);
+    const rankA = getCourseSortRank(courseA);
+    const rankB = getCourseSortRank(courseB);
+    if (rankA !== rankB) {
+      return rankA - rankB;
+    }
+    const rawNumA = typeof a?.list_number === 'number' ? a.list_number : parseInt(String(a?.list_number || 0), 10);
+    const rawNumB = typeof b?.list_number === 'number' ? b.list_number : parseInt(String(b?.list_number || 0), 10);
+    const numA = rawNumA > 0 ? rawNumA : 9999;
+    const numB = rawNumB > 0 ? rawNumB : 9999;
+    if (numA !== numB) {
+      return numA - numB;
+    }
+    const nameA = String(a?.full_name || a?.Nombres || a?.name || '');
+    const nameB = String(b?.full_name || b?.Nombres || b?.name || '');
+    return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+  });
+};
+
+
 /**
  * Utility helper to determine if a student is retired
  */

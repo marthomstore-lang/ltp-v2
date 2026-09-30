@@ -78,8 +78,10 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
   // FUNCIÓN PARA ORDENAR ALUMNOS STRICTAMENTE POR NÚMERO DE LISTA (NUMÉRICO)
   const sortStudentsByListNumber = (arr: Student[]) => {
     return [...arr].sort((a, b) => {
-      const numA = typeof a.list_number === 'number' ? a.list_number : parseInt(String(a.list_number || 9999), 10);
-      const numB = typeof b.list_number === 'number' ? b.list_number : parseInt(String(b.list_number || 9999), 10);
+      const rawA = typeof a.list_number === 'number' ? a.list_number : parseInt(String(a.list_number || 0), 10);
+      const rawB = typeof b.list_number === 'number' ? b.list_number : parseInt(String(b.list_number || 0), 10);
+      const numA = rawA > 0 ? rawA : 9999;
+      const numB = rawB > 0 ? rawB : 9999;
       if (numA !== numB) return numA - numB;
       return (a.full_name || '').localeCompare(b.full_name || '', 'es', { sensitivity: 'base' });
     });

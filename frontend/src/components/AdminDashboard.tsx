@@ -26,7 +26,7 @@ import { InspectorPassesModule } from './InspectorPassesModule';
 import { MineducReportsModule } from './MineducReportsModule';
 import { CourseMessageModal } from './CourseMessageModal';
 import { PedagogicalTripsModule } from './PedagogicalTripsModule';
-import { getStudentCourse, isStudentRetired, getStudentWithdrawalDate, sortCoursesList, getStudentYear } from '../utils/course';
+import { getStudentCourse, isStudentRetired, getStudentWithdrawalDate, sortCoursesList, sortStudentsList, getStudentYear } from '../utils/course';
 
 export const AdminDashboard: React.FC = () => {
   const { user, token, logout, switchRole, restoreOriginalRole, isSuperAdmin, isImpersonating } = useAuth();
@@ -357,26 +357,28 @@ export const AdminDashboard: React.FC = () => {
   const yearStudents = students.filter(s => getStudentYear(s) === selectedYear);
   const availableCourses = sortCoursesList(Array.from(new Set(yearStudents.map(getStudentCourse))).filter(Boolean) as string[]);
 
-  const filteredStudents = yearStudents.filter(s => {
-    const rawTerm = searchTerm.toLowerCase().trim();
-    const studentCourse = getStudentCourse(s);
-    const matchCourse = courseFilter === 'Todos' || studentCourse === courseFilter;
+  const filteredStudents = sortStudentsList(
+    yearStudents.filter(s => {
+      const rawTerm = searchTerm.toLowerCase().trim();
+      const studentCourse = getStudentCourse(s);
+      const matchCourse = courseFilter === 'Todos' || studentCourse === courseFilter;
 
-    if (!rawTerm) return matchCourse;
+      if (!rawTerm) return matchCourse;
 
-    const cleanTermRun = rawTerm.replace(/[\.\-]/g, '');
-    const sRun = String(s.run || s.RUT || '').toLowerCase();
-    const cleanSRun = sRun.replace(/[\.\-]/g, '');
-    const sName = String(s.full_name || s.Nombres || '').toLowerCase();
+      const cleanTermRun = rawTerm.replace(/[\.\-]/g, '');
+      const sRun = String(s.run || s.RUT || '').toLowerCase();
+      const cleanSRun = sRun.replace(/[\.\-]/g, '');
+      const sName = String(s.full_name || s.Nombres || '').toLowerCase();
 
-    const matchSearch =
-      sName.includes(rawTerm) ||
-      sRun.includes(rawTerm) ||
-      cleanSRun.includes(cleanTermRun) ||
-      studentCourse.toLowerCase().includes(rawTerm);
+      const matchSearch =
+        sName.includes(rawTerm) ||
+        sRun.includes(rawTerm) ||
+        cleanSRun.includes(cleanTermRun) ||
+        studentCourse.toLowerCase().includes(rawTerm);
 
-    return matchSearch && matchCourse;
-  });
+      return matchSearch && matchCourse;
+    })
+  );
 
   const filteredAuditLogs = auditLogs.filter((a: any) => {
     if (!searchTerm) return true;
