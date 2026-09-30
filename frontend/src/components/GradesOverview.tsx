@@ -107,6 +107,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
   // CARGA DINÁMICA DE CURSOS Y ALUMNOS DESDE LA BASE DE DATOS
   const [coursesList, setCoursesList] = useState<string[]>([]);
   const [realStudents, setRealStudents] = useState<any[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState<boolean>(true);
 
   const normalizeStr = (str: any) =>
     String(str || '')
@@ -125,12 +126,27 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
 
     if (c === uName) return true;
     if (uId && c === uId) return true;
-    if (uRun && cRun && uRun === cRun) return true;
+    if (uRun && cRun && uRun === cRun && uRun.length >= 6) return true;
     if (c.length > 5 && (uName.includes(c) || c.includes(uName))) return true;
+
+    // Comparación independiente del orden de palabras (ej: "APELLIDOS NOMBRES" vs "NOMBRES APELLIDOS")
+    const cWords = c.split(/\s+/).filter(w => w.length >= 3 && !['del', 'las', 'los', 'san'].includes(w));
+    const uWords = uName.split(/\s+/).filter(w => w.length >= 3 && !['del', 'las', 'los', 'san'].includes(w));
+    if (cWords.length >= 2 && uWords.length >= 2) {
+      const matchCount = cWords.filter(cw =>
+        uWords.includes(cw) ||
+        (cw === 'insotroza' && uWords.includes('inostroza')) ||
+        (cw === 'inostroza' && uWords.includes('insotroza'))
+      ).length;
+      const minRequired = Math.min(cWords.length, uWords.length);
+      if (matchCount >= minRequired || matchCount >= 3) return true;
+    }
+
     return false;
   };
 
   React.useEffect(() => {
+    setLoadingCourses(true);
     Promise.all([
       fetch(`/api/students?year=${selectedYear}`, { headers: { Authorization: `Bearer ${authToken}` } }).then(r => r.json()).catch(() => []),
       fetch(`/api/courses`, { headers: { Authorization: `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ courses: [] }))
@@ -149,8 +165,8 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
       if (!isAdmin && user) {
         combined = combined.filter(cName => {
           const nCourse = normalizeStr(cName);
-          const cObj = rawCourses.find((c: any) => normalizeStr(c.name) === nCourse);
-          if (cObj && isUserMatch(cObj.teacher)) return true;
+          const matchingCourseObjs = rawCourses.filter((c: any) => normalizeStr(c.name) === nCourse);
+          if (matchingCourseObjs.some((cObj: any) => isUserMatch(cObj.teacher))) return true;
 
           const sMatch = Array.isArray(studentsData) && studentsData.some((s: any) => {
             const sCourse = normalizeStr(getStudentCourse(s));
@@ -170,7 +186,9 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
         setCoursesList([]);
         setSelectedCourse('');
       }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => {
+      setLoadingCourses(false);
+    });
   }, [authToken, selectedYear, isAdmin, user]);
 
   // MODAL DE DETALLE DE ALUMNO Y EXPANSIONES
@@ -224,6 +242,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
   const [loadingDb, setLoadingDb] = useState<boolean>(false);
 
   const refreshDataFromDatabase = () => {
+    if (!selectedCourse) return;
     setLoadingDb(true);
     fetch(`/api/grades/course-overview?courseName=${encodeURIComponent(selectedCourse)}&year=${selectedYear}&period=${encodeURIComponent(selectedPeriod)}&onlyRed=${onlyRedGrades}`, {
       headers: { Authorization: `Bearer ${authToken}` }
@@ -239,7 +258,9 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
   };
 
   React.useEffect(() => {
-    refreshDataFromDatabase();
+    if (selectedCourse) {
+      refreshDataFromDatabase();
+    }
   }, [selectedCourse, selectedYear, selectedPeriod, onlyRedGrades, authToken]);
 
   const handleRefresh = () => {
@@ -249,6 +270,18 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
   const handlePrint = () => {
     window.print();
   };
+
+  if (loadingCourses && coursesList.length === 0) {
+    return (
+      <div style={{ background: '#ffffff', borderRadius: '14px', padding: '3.5rem 2rem', textAlign: 'center', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', marginTop: '1rem', fontFamily: 'Inter, sans-serif' }}>
+        <RefreshCw size={40} color="#4f46e5" style={{ margin: '0 auto 1rem' }} />
+        <h3 style={{ color: '#1e293b', marginBottom: '0.5rem', fontWeight: 700, fontSize: '1.15rem' }}>Cargando Informe de Jefatura...</h3>
+        <p style={{ color: '#64748b', maxWidth: '480px', margin: '0 auto', fontSize: '0.9rem' }}>
+          Consultando cursos y calificaciones asignadas...
+        </p>
+      </div>
+    );
+  }
 
   if (coursesList.length === 0 && !isAdmin) {
     return (

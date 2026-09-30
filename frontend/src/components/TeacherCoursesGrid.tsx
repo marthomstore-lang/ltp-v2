@@ -101,8 +101,22 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
 
     if (c === uName) return true;
     if (uId && c === uId) return true;
-    if (uRun && cRun && uRun === cRun) return true;
+    if (uRun && cRun && uRun === cRun && uRun.length >= 6) return true;
     if (c.length > 5 && (uName.includes(c) || c.includes(uName))) return true;
+
+    // Comparación independiente del orden de palabras (ej: "APELLIDOS NOMBRES" vs "NOMBRES APELLIDOS")
+    const cWords = c.split(/\s+/).filter(w => w.length >= 3 && !['del', 'las', 'los', 'san'].includes(w));
+    const uWords = uName.split(/\s+/).filter(w => w.length >= 3 && !['del', 'las', 'los', 'san'].includes(w));
+    if (cWords.length >= 2 && uWords.length >= 2) {
+      const matchCount = cWords.filter(cw =>
+        uWords.includes(cw) ||
+        (cw === 'insotroza' && uWords.includes('inostroza')) ||
+        (cw === 'inostroza' && uWords.includes('insotroza'))
+      ).length;
+      const minRequired = Math.min(cWords.length, uWords.length);
+      if (matchCount >= minRequired || matchCount >= 3) return true;
+    }
+
     return false;
   };
 
@@ -129,8 +143,8 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
     if (!user || !courseName) return false;
     const nCourse = normalizeStr(courseName);
 
-    const cObj = coursesInfo.find(c => normalizeStr(c.name) === nCourse);
-    if (cObj && isUserMatch(cObj.teacher)) return true;
+    const cObjs = coursesInfo.filter(c => normalizeStr(c.name) === nCourse);
+    if (cObjs.some(cObj => isUserMatch(cObj.teacher))) return true;
 
     const sMatch = rawStudents.find(s => {
       const sC = normalizeStr(getStudentCourse(s));

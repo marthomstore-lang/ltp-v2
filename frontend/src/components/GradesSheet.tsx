@@ -104,8 +104,22 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
     if (c === uName) return true;
     if (uId && c === uId) return true;
-    if (uRun && cRun && uRun === cRun) return true;
+    if (uRun && cRun && uRun === cRun && uRun.length >= 6) return true;
     if (c.length > 5 && (uName.includes(c) || c.includes(uName))) return true;
+
+    // Comparación independiente del orden de palabras (ej: "APELLIDOS NOMBRES" vs "NOMBRES APELLIDOS")
+    const cWords = c.split(/\s+/).filter(w => w.length >= 3 && !['del', 'las', 'los', 'san'].includes(w));
+    const uWords = uName.split(/\s+/).filter(w => w.length >= 3 && !['del', 'las', 'los', 'san'].includes(w));
+    if (cWords.length >= 2 && uWords.length >= 2) {
+      const matchCount = cWords.filter(cw =>
+        uWords.includes(cw) ||
+        (cw === 'insotroza' && uWords.includes('inostroza')) ||
+        (cw === 'inostroza' && uWords.includes('insotroza'))
+      ).length;
+      const minRequired = Math.min(cWords.length, uWords.length);
+      if (matchCount >= minRequired || matchCount >= 3) return true;
+    }
+
     return false;
   };
 
@@ -116,8 +130,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
     const nCourse = normalizeStr(courseName);
 
     // 1. En tabla courses (campo teacher)
-    const courseMatch = coursesInfo.find(c => normalizeStr(c.name) === nCourse);
-    if (courseMatch && isUserMatch(courseMatch.teacher)) return true;
+    const courseMatches = coursesInfo.filter(c => normalizeStr(c.name) === nCourse);
+    if (courseMatches.some(c => isUserMatch(c.teacher))) return true;
 
     // 2. En nómina de alumnos (campo profesor_jefe)
     const studentMatch = rawStudents.find(s => {
@@ -207,27 +221,62 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
     }
 
     // 1. Obtener las asignaturas oficiales que aplican a este curso específico
-    let courseSubs: { id: number; name: string }[] = [];
+    const nCourse = normalizeStr(currentCourseName);
+    const findSubjectInDb = (nameOrId: any, fallbackId?: any) => {
+      const n = normalizeStr(nameOrId);
+      let found = allSubjects.find(sub => String(sub.id) === String(fallbackId) || String(sub.id) === String(nameOrId) || normalizeStr(sub.name) === n);
+      if (!found && n.includes('historia')) {
+        found = allSubjects.find(sub => normalizeStr(sub.name).includes('historia'));
+      }
+      return found;
+    };
+
+    const courseAssigns = teacherAssignments.filter(a => {
+      const aLevel = normalizeStr(a.level_name || a.level_id);
+      const isSameCourse = aLevel === nCourse || nCourse.includes(aLevel) || aLevel.includes(nCourse);
+      if (!isSameCourse) return false;
+      const tName = String(a.teacher_name || '').trim();
+      return Boolean(tName && tName.toLowerCase() !== 'sin asignar');
+    });
+
+    const subMap = new Map<number, { id: number; name: string }>();
+
+    // Si existe un orden personalizado para este curso, agregarlo primero
     if (courseSubjectOrders[currentCourseName] && Array.isArray(courseSubjectOrders[currentCourseName]) && courseSubjectOrders[currentCourseName].length > 0) {
-      courseSubs = courseSubjectOrders[currentCourseName].map((s: any, idx: number) => {
-        const found = allSubjects.find(sub => normalizeStr(sub.name) === normalizeStr(s.name));
+      courseSubjectOrders[currentCourseName].forEach((s: any, idx: number) => {
+        const found = findSubjectInDb(s.name, s.id);
         const numId = found ? Number(found.id) : (parseInt(String(s.id), 10) || (idx + 1));
-        return {
-          id: numId,
-          name: s.name
-        };
-      });
-    } else {
-      // Usar currículum oficial MINEDUC correspondiente al nivel del curso
-      const defaultNames = getDefaultSubjectsForCourse(currentCourseName);
-      courseSubs = defaultNames.map((name, idx) => {
-        const found = allSubjects.find(sub => normalizeStr(sub.name) === normalizeStr(name));
-        return {
-          id: found ? Number(found.id) : (idx + 1),
-          name: name
-        };
+        const subName = found ? found.name : s.name;
+        if (subName && !subMap.has(numId)) {
+          subMap.set(numId, { id: numId, name: subName });
+        }
       });
     }
+
+    // Agregar todas las asignaturas realmente asignadas a docentes en este curso (con su ID real de BD)
+    courseAssigns.forEach((a: any, idx: number) => {
+      const found = findSubjectInDb(a.subject_name, a.subject_id);
+      const numId = found ? Number(found.id) : (parseInt(String(a.subject_id), 10) || (idx + 100));
+      const subName = found ? found.name : (a.subject_name || `Asignatura ${numId}`);
+      if (subName && !subMap.has(numId)) {
+        subMap.set(numId, { id: numId, name: subName });
+      }
+    });
+
+    // Si aún no hay asignaturas (o para completar el plan base), usar currículum oficial MINEDUC del nivel
+    if (subMap.size === 0) {
+      const defaultNames = getDefaultSubjectsForCourse(currentCourseName);
+      defaultNames.forEach((name, idx) => {
+        const found = findSubjectInDb(name);
+        const numId = found ? Number(found.id) : (idx + 1);
+        const subName = found ? found.name : name;
+        if (!subMap.has(numId)) {
+          subMap.set(numId, { id: numId, name: subName });
+        }
+      });
+    }
+
+    let courseSubs: { id: number; name: string }[] = Array.from(subMap.values());
 
     // Si aún así no hay ninguna configurada para este curso, fallback a allSubjects
     if (courseSubs.length === 0) {
@@ -240,7 +289,6 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
     }
 
     // 3. SI NO ES PROFESOR JEFE NI ADMIN -> SOLO VE LAS ASIGNATURAS QUE TIENE ASIGNADAS EN ESTE CURSO
-    const nCourse = normalizeStr(currentCourseName);
     const myAssignmentsInCourse = teacherAssignments.filter(a => {
       const matchTeacher = isUserMatch(a.teacher_name || a.teacher_id) || isUserMatch(a.teacher_name_2 || a.teacher_id_2);
       if (!matchTeacher) return false;

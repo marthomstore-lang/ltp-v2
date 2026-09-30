@@ -297,15 +297,13 @@ export const getDefaultSubjectsForCourse = (courseName: string): string[] => {
     (low.includes('mecanica') || low.includes('mecánica') || low.includes('industrial') || low.includes('510'))
   ) {
     return [
-      'Lenguaje y Comunicación',
+      'Lengua y Literatura',
       'Matemática',
       'Inglés',
-      'Historia, Geografía y CCSS',
+      'Educación Ciudadana',
       'Filosofía',
-      'Educación Física y Salud',
-      'Mecanizado y Soldadura',
-      'Mantenimiento Electromecánico',
-      'Dibujo Técnico Industrial'
+      'Ciencias Para La Ciudadanía',
+      'Educación Física y Salud'
     ];
   }
 
@@ -315,31 +313,30 @@ export const getDefaultSubjectsForCourse = (courseName: string): string[] => {
     (low.includes('párvulo') || low.includes('parvulo') || low.includes('niños') || low.includes('tecnico') || low.includes('técnico') || low.includes('610'))
   ) {
     return [
-      'Lenguaje y Comunicación',
+      'Lengua y Literatura',
       'Matemática',
       'Inglés',
-      'Historia, Geografía y CCSS',
+      'Educación Ciudadana',
       'Filosofía',
-      'Educación Física y Salud',
-      'Material Didáctico y de Ambientación',
-      'Salud y Alimentación del Párvulo',
-      'Expresión Artística Infantil'
+      'Ciencias Para La Ciudadanía',
+      'Educación Física y Salud'
     ];
   }
 
   // 4. 1° y 2° Medio (Formación General Científico-Humanista / TP Común - Sin Filosofía)
   if (low.includes('1° medio') || low.includes('2° medio') || low.includes('1 medio') || low.includes('2 medio')) {
     return [
-      'Lenguaje y Comunicación',
+      'Lengua y Literatura',
       'Matemática',
-      'Historia, Geografía y CCSS',
+      'Historia, Geografía Y Cs. Sociales',
       'Ciencias Naturales',
-      'Inglés',
+      'Idioma Extranjero Ingles',
       'Educación Física y Salud',
       'Artes Visuales',
       'Música',
-      'Tecnología',
-      'Orientación'
+      'Educación Tecnológica',
+      'Orientación',
+      'Religión'
     ];
   }
 
@@ -348,13 +345,14 @@ export const getDefaultSubjectsForCourse = (courseName: string): string[] => {
     'Lenguaje y Comunicación',
     'Matemática',
     'Ciencias Naturales',
-    'Historia, Geografía y CCSS',
+    'Historia, Geografía Y Cs. Sociales',
     'Inglés',
     'Educación Física y Salud',
     'Artes Visuales',
     'Música',
     'Tecnología',
-    'Orientación'
+    'Orientación',
+    'Religión'
   ];
 };
 

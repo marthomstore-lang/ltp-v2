@@ -2853,12 +2853,16 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
     const assignTeacherMap = new Map<string, string>();
 
     courseAssigns.forEach((a: any) => {
+      const rawTeacher = (a.teacher_name || '').trim();
+      const isAssigned = Boolean(rawTeacher && rawTeacher.toLowerCase() !== 'sin asignar');
       const sName = (a.subject_name || '').trim().toLowerCase();
-      if (sName) assignedSubjectNames.add(sName);
-      if (a.subject_id) assignedSubjectIds.add(String(a.subject_id));
-      const tName = a.teacher_name_2 ? `${a.teacher_name} / ${a.teacher_name_2}` : (a.teacher_name || 'Sin Asignar');
-      if (sName && !assignTeacherMap.has(sName)) assignTeacherMap.set(sName, tName);
-      if (a.subject_id && !assignTeacherMap.has(String(a.subject_id))) assignTeacherMap.set(String(a.subject_id), tName);
+      if (isAssigned) {
+        if (sName) assignedSubjectNames.add(sName);
+        if (a.subject_id) assignedSubjectIds.add(String(a.subject_id));
+      }
+      const tName = a.teacher_name_2 ? `${a.teacher_name} / ${a.teacher_name_2}` : (rawTeacher || 'Sin Asignar');
+      if (sName && (!assignTeacherMap.has(sName) || assignTeacherMap.get(sName) === 'Sin Asignar')) assignTeacherMap.set(sName, tName);
+      if (a.subject_id && (!assignTeacherMap.has(String(a.subject_id)) || assignTeacherMap.get(String(a.subject_id)) === 'Sin Asignar')) assignTeacherMap.set(String(a.subject_id), tName);
     });
 
     if (!isAllCourses && courseOrdersMap[course] && Array.isArray(courseOrdersMap[course])) {
@@ -4585,13 +4589,13 @@ router.get('/courses', authMiddleware, async (req: Request, res: Response) => {
         });
       }
     });
-    dbCourses.forEach((c: any) => {
+    storeCourses.forEach((c: any) => {
       if (c && c.name) {
         const existing = courseMap.get(c.name) || {};
         courseMap.set(c.name, { ...existing, ...c, capacity: Number(c.capacity) || existing.capacity || 45 });
       }
     });
-    storeCourses.forEach((c: any) => {
+    dbCourses.forEach((c: any) => {
       if (c && c.name) {
         const existing = courseMap.get(c.name) || {};
         courseMap.set(c.name, { ...existing, ...c, capacity: Number(c.capacity) || existing.capacity || 45 });
