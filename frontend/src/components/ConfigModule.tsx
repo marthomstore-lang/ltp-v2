@@ -97,32 +97,90 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
     }
   };
 
+  const normalizeRoleId = (r: any): string => {
+    const raw = String(r || '').trim();
+    const low = raw.toLowerCase();
+    if (!raw) return 'Docente';
+    if (low === 'admin' || low === 'administrador') return 'Admin';
+    if (low === 'director' || low === 'directivo' || low === 'directivo / utp' || low === 'utp') return 'Director';
+    if (low === 'docente' || low === 'profesor' || low === 'docente de aula') return 'Docente';
+    if (low === 'entrevistador' || low === 'convivencia') return 'Entrevistador';
+    if (low === 'asistente' || low === 'asistente de la educación' || low === 'asistente de la educacion' || low === 'asistente ed.') return 'Asistente';
+    if (low === 'administrativo' || low === 'inspector' || low === 'inspector/a' || low === 'secretario/a') return 'Administrativo';
+    if (low === 'profesionales' || low === 'profesional pie' || low === 'pie') return 'Profesionales';
+    if (low === 'apoderado') return 'Apoderado';
+    if (low === 'visita') return 'Visita';
+    return raw;
+  };
+
+  const parseRolesList = (rawRoles: any, fallbackRole?: any): string[] => {
+    const primary = normalizeRoleId(fallbackRole || 'Docente');
+    let list: string[] = [];
+    if (Array.isArray(rawRoles)) {
+      list = rawRoles.map(normalizeRoleId).filter(Boolean);
+    } else if (typeof rawRoles === 'string' && rawRoles.trim() !== '' && rawRoles.trim() !== 'null') {
+      try {
+        const parsed = JSON.parse(rawRoles);
+        if (Array.isArray(parsed)) {
+          list = parsed.map(normalizeRoleId).filter(Boolean);
+        }
+      } catch (_) {
+        list = rawRoles
+          .replace(/^\[|\]$/g, '')
+          .replace(/"/g, '')
+          .split(',')
+          .map(s => normalizeRoleId(s))
+          .filter(Boolean);
+      }
+    }
+    if (list.length === 0) {
+      list = [primary];
+    } else if (fallbackRole && !list.includes(primary)) {
+      list = [primary, ...list];
+    }
+    return Array.from(new Set(list));
+  };
+
   const fetchUsers = () => {
     fetch('/api/staff', { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
-          setUsersList(data.map(s => ({
-            id: s.id || s.user_id,
-            run: s.run,
-            name: s.full_name || s.name,
-            email: s.email || '',
-            role: s.role || 'Docente',
-            staff_type: s.staff_type || 'Docente',
-            job_function: s.job_function || 'Docente de Aula',
-            password_plain: s.password_plain || 'Profe2026!'
-          })));
+          setUsersList(data.map(s => {
+            const primaryRole = normalizeRoleId(s.role || 'Docente');
+            const parsedRoles = parseRolesList(s.roles, primaryRole);
+            const cleanEmail = s.email && String(s.email) !== 'null' ? String(s.email) : '';
+            return {
+              id: s.user_id || s.id,
+              staff_id: s.staff_id || s.id,
+              run: s.run,
+              name: s.full_name || s.name,
+              email: cleanEmail,
+              role: primaryRole,
+              roles: parsedRoles,
+              staff_type: s.staff_type || (primaryRole === 'Administrativo' || primaryRole === 'Asistente' ? 'Asistente de la Educación' : 'Docente'),
+              job_function: s.job_function || 'Docente de Aula',
+              password_plain: s.password_plain || 'Profe2026!'
+            };
+          }));
         } else {
           // Fallback a /api/users
           fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } })
             .then(r => r.json())
             .then(usrData => {
               if (Array.isArray(usrData)) {
-                setUsersList(usrData.map(u => ({
-                  ...u,
-                  staff_type: u.role === 'Administrativo' ? 'Asistente' : 'Docente',
-                  job_function: 'Docente de Aula'
-                })));
+                setUsersList(usrData.map(u => {
+                  const primaryRole = normalizeRoleId(u.role || 'Docente');
+                  const parsedRoles = parseRolesList(u.roles, primaryRole);
+                  return {
+                    ...u,
+                    email: u.email && String(u.email) !== 'null' ? String(u.email) : '',
+                    role: primaryRole,
+                    roles: parsedRoles,
+                    staff_type: u.staff_type || (primaryRole === 'Administrativo' || primaryRole === 'Asistente' ? 'Asistente de la Educación' : 'Docente'),
+                    job_function: u.job_function || 'Docente de Aula'
+                  };
+                }));
               }
             })
             .catch(() => {});
@@ -1058,25 +1116,30 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
     setShowPlainPassword(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // GUARDAR EDICIÓN DE USUARIOS EN SUPABASE
+  // GUARDAR EDICIÓN DE USUARIOS EN BASE DE DATOS
   const handleSaveUserEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingUser.run || !editingUser.name) {
+    if (!editingUser || !editingUser.run || !editingUser.name) {
       Swal.fire('Atención', 'RUT y Nombre son requeridos', 'warning');
       return;
     }
 
+    const targetUser = { ...editingUser };
+    const isNew = !!targetUser.isNew;
+    const url = isNew ? '/api/users' : `/api/users/${encodeURIComponent(targetUser.id)}`;
+    const method = isNew ? 'POST' : 'PUT';
+
+    const userEmail = targetUser.email && String(targetUser.email) !== 'null' ? String(targetUser.email).trim() : '';
+    const userName = String(targetUser.name).trim();
+    const rolesToSave = parseRolesList(targetUser.roles, targetUser.role);
+    const primaryRole = targetUser.role ? normalizeRoleId(targetUser.role) : (rolesToSave[0] || 'Docente');
+    if (!rolesToSave.includes(primaryRole)) rolesToSave.unshift(primaryRole);
+
+    const staffTypeToSave = targetUser.staff_type || (primaryRole === 'Administrativo' || primaryRole === 'Asistente' ? 'Asistente de la Educación' : 'Docente');
+    const jobFunctionToSave = targetUser.job_function || 'Docente de Aula';
+    const passwordToSave = targetUser.password_plain || targetUser.password || 'Ltp2026!';
+
     try {
-      const isNew = editingUser.isNew;
-      const url = isNew ? '/api/users' : `/api/users/${editingUser.id}`;
-      const method = isNew ? 'POST' : 'PUT';
-
-      const userEmail = editingUser.email || '';
-      const userName = editingUser.name;
-
-      // CERRAR LA VENTANA DE EDICIÓN PRIMERO
-      setEditingUser(null);
-
       const res = await fetch(url, {
         method,
         headers: {
@@ -1084,34 +1147,83 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          run: editingUser.run,
+          run: targetUser.run,
           name: userName,
-          role: editingUser.role || (editingUser.roles && editingUser.roles[0]) || 'Docente',
-          roles: Array.isArray(editingUser.roles) && editingUser.roles.length > 0
-            ? editingUser.roles
-            : [editingUser.role || 'Docente'],
-          staff_type: editingUser.staff_type || (editingUser.role === 'Administrativo' ? 'Asistente de la Educación' : 'Docente'),
-          job_function: editingUser.job_function || 'Docente de Aula',
+          role: primaryRole,
+          roles: rolesToSave,
+          staff_type: staffTypeToSave,
+          job_function: jobFunctionToSave,
           email: userEmail,
-          password: editingUser.password_plain || editingUser.password || 'Ltp2026!'
+          password: passwordToSave
         })
       });
 
       if (res.ok) {
+        // Actualizar estado en memoria inmediatamente para reflejar los múltiples perfiles sin demora
+        setUsersList(prev => {
+          if (isNew) {
+            return [
+              ...prev,
+              {
+                id: `USR-${String(targetUser.run).replace(/[^0-9kK]/g, '')}`,
+                run: targetUser.run,
+                name: userName,
+                email: userEmail,
+                role: primaryRole,
+                roles: rolesToSave,
+                staff_type: staffTypeToSave,
+                job_function: jobFunctionToSave,
+                password_plain: passwordToSave
+              }
+            ];
+          }
+          return prev.map(u =>
+            (u.id === targetUser.id || u.run === targetUser.run)
+              ? {
+                  ...u,
+                  run: targetUser.run,
+                  name: userName,
+                  email: userEmail || u.email,
+                  role: primaryRole,
+                  roles: rolesToSave,
+                  staff_type: staffTypeToSave,
+                  job_function: jobFunctionToSave,
+                  password_plain: passwordToSave
+                }
+              : u
+          );
+        });
+
+        // Si el usuario editado es el usuario con sesión iniciada, sincronizar localStorage
+        try {
+          const savedSessionUser = localStorage.getItem('ltp_user');
+          if (savedSessionUser) {
+            const parsedSession = JSON.parse(savedSessionUser);
+            const cleanSessionRun = String(parsedSession.run || '').replace(/\./g, '').trim();
+            const cleanTargetRun = String(targetUser.run || '').replace(/\./g, '').trim();
+            if (parsedSession.id === targetUser.id || (cleanSessionRun && cleanSessionRun === cleanTargetRun)) {
+              parsedSession.roles = rolesToSave;
+              localStorage.setItem('ltp_user', JSON.stringify(parsedSession));
+            }
+          }
+        } catch (_) {}
+
+        setEditingUser(null);
+
         Swal.fire({
           icon: 'success',
-          title: '¡Datos Guardados Exitosamente!',
-          text: `Los datos del funcionario ${userName} han sido actualizados correctamente en la base de datos.`,
+          title: '¡Perfiles y Datos Guardados!',
+          text: `Los datos y perfiles [${rolesToSave.join(', ')}] de ${userName} se guardaron correctamente.`,
           confirmButtonColor: '#4f46e5',
           confirmButtonText: 'Aceptar'
         });
         fetchUsers();
       } else {
-        const errData = await res.json();
+        const errData = await res.json().catch(() => ({}));
         Swal.fire('Error', errData.error || 'No se pudo guardar el usuario.', 'error');
       }
     } catch (err) {
-      Swal.fire('Error', 'Error de conexión con la base de datos de la base de datos.', 'error');
+      Swal.fire('Error', 'Error de conexión con el servidor local.', 'error');
     }
   };
 
@@ -2021,7 +2133,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
               </button>
 
               <button
-                onClick={() => setEditingUser({ isNew: true, run: '', name: '', role: 'Docente', staff_type: 'Docente', job_function: 'Docente de Aula', password_plain: 'Profe2026!' })}
+                onClick={() => setEditingUser({ isNew: true, run: '', name: '', role: 'Docente', roles: ['Docente'], staff_type: 'Docente', job_function: 'Docente de Aula', password_plain: 'Profe2026!' })}
                 className="btn btn-primary"
                 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 700 }}
               >
@@ -2242,7 +2354,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                       <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>
                         {(() => {
                           const isAsist = u.staff_type === 'Asistente de la Educación' || u.staff_type === 'Asistente' || u.role === 'Administrativo';
-                          const userRoles: string[] = Array.isArray(u.roles) && u.roles.length > 0 ? u.roles : [u.role || 'Docente'];
+                          const userRoles: string[] = parseRolesList(u.roles, u.role);
                           return (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                               <span style={{
@@ -2302,7 +2414,15 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                       <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap', textAlign: 'center' }}>
                         <div style={{ display: 'inline-flex', gap: '0.4rem', justifyContent: 'center' }}>
                           <button
-                            onClick={() => setEditingUser({ ...u })}
+                            onClick={() => {
+                              const initRoles = parseRolesList(u.roles, u.role);
+                              const initPrimary = normalizeRoleId(u.role || initRoles[0] || 'Docente');
+                              setEditingUser({
+                                ...u,
+                                role: initPrimary,
+                                roles: initRoles
+                              });
+                            }}
                             className="btn btn-primary"
                             style={{ padding: '0.35rem 0.7rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
                           >
@@ -3571,82 +3691,115 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
       {/* MODAL 1: EDICIÓN / ALTA DE USUARIOS Y CLAVES (SUB-VENTANA 6.3) */}
       {editingUser && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.75)', zIndex: 3000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem' }}>
-          <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.75rem', width: '100%', maxWidth: '480px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#4f46e5' }}>
-                {editingUser.isNew ? 'Crear Nuevo Usuario' : 'Editar Usuario / Funcionario'}
+          <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.35rem 1.5rem', width: '100%', maxWidth: '520px', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.6rem', borderBottom: '1px solid #e2e8f0' }}>
+              <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#4f46e5', margin: 0, fontSize: '1.15rem' }}>
+                {editingUser.isNew ? 'Crear Nuevo Usuario / Funcionario' : 'Editar Usuario / Funcionario'}
               </h3>
-              <button onClick={() => setEditingUser(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+              <button type="button" onClick={() => setEditingUser(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
             </div>
 
             <form onSubmit={handleSaveUserEdit}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>RUT Funcionario</label>
-                <input
-                  type="text"
-                  value={editingUser.run || ''}
-                  onChange={e => setEditingUser({ ...editingUser, run: formatRut(e.target.value) })}
-                  placeholder="12.345.678-9"
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '145px 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.2rem' }}>RUT Funcionario</label>
+                  <input
+                    type="text"
+                    value={editingUser.run || ''}
+                    onChange={e => {
+                      const val = formatRut(e.target.value);
+                      setEditingUser((prev: any) => ({ ...prev, run: val }));
+                    }}
+                    placeholder="12.345.678-9"
+                    style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '0.85rem' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.2rem' }}>Nombre Completo</label>
+                  <input
+                    type="text"
+                    value={editingUser.name || ''}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setEditingUser((prev: any) => ({ ...prev, name: val }));
+                    }}
+                    placeholder="Nombre y Apellidos"
+                    style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.85rem' }}
+                  />
+                </div>
               </div>
 
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>Nombre Completo</label>
-                <input
-                  type="text"
-                  value={editingUser.name || ''}
-                  onChange={e => setEditingUser({ ...editingUser, name: e.target.value })}
-                  placeholder="Nombre y Apellidos"
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                />
-              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.2rem' }}>Estamento / Categoría</label>
+                  <select
+                    value={editingUser.staff_type || (editingUser.role === 'Administrativo' || editingUser.role === 'Asistente' ? 'Asistente de la Educación' : 'Docente')}
+                    onChange={e => {
+                      const newType = e.target.value;
+                      setEditingUser((prev: any) => {
+                        const prevRoles = parseRolesList(prev.roles, prev.role);
+                        return {
+                          ...prev,
+                          staff_type: newType,
+                          roles: prevRoles
+                        };
+                      });
+                    }}
+                    style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none', fontWeight: 700, background: '#f8fafc', fontSize: '0.82rem' }}
+                  >
+                    <option value="Docente">👩‍🏫 Docente / Directivo</option>
+                    <option value="Asistente de la Educación">🛠️ Asistente de la Educación</option>
+                  </select>
+                </div>
 
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.2rem' }}>Estamento / Categoría de Funcionario</label>
-                <select
-                  value={editingUser.staff_type || (editingUser.role === 'Administrativo' ? 'Asistente de la Educación' : 'Docente')}
-                  onChange={e => {
-                    const newType = e.target.value;
-                    setEditingUser({
-                      ...editingUser,
-                      staff_type: newType,
-                      role: newType === 'Asistente de la Educación' ? 'Administrativo' : (editingUser.role === 'Administrativo' ? 'Docente' : editingUser.role)
-                    });
-                  }}
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none', fontWeight: 700, background: '#f8fafc' }}
-                >
-                  <option value="Docente">👩‍🏫 Docente / Directivo</option>
-                  <option value="Asistente de la Educación">🛠️ Asistente de la Educación</option>
-                </select>
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>Función / Cargo Específico</label>
-                <input
-                  type="text"
-                  value={editingUser.job_function || ''}
-                  onChange={e => setEditingUser({ ...editingUser, job_function: e.target.value })}
-                  placeholder="Ej: Asistente Social, Psicólogo/a, Auxiliar de Aseo, Docente de Aula..."
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                />
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.2rem' }}>Función / Cargo Específico</label>
+                  <input
+                    type="text"
+                    value={editingUser.job_function || ''}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setEditingUser((prev: any) => ({ ...prev, job_function: val }));
+                    }}
+                    placeholder="Ej: Inspector/a, Psicólogo/a, Docente..."
+                    style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                  />
+                </div>
               </div>
 
               {/* SELECTOR MÚLTIPLE DE PERFILES Y ROLES */}
-              <div style={{ marginBottom: '1.25rem', background: '#f8fafc', padding: '0.9rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <div style={{ marginBottom: '0.9rem', background: '#f8fafc', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.4rem' }}>
                   <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1e293b' }}>
                     🔀 Perfiles Asignados (Multi-Rol):
                   </label>
-                  <span style={{ fontSize: '0.72rem', color: '#4f46e5', fontWeight: 800, background: '#eef2ff', padding: '2px 8px', borderRadius: '10px' }}>
-                    {((editingUser.roles && editingUser.roles.length > 0) ? editingUser.roles : [editingUser.role || 'Docente']).length} perfil(es) asignado(s)
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allRoleIds = ['Docente', 'Director', 'Entrevistador', 'Asistente', 'Administrativo', 'Profesionales', 'Admin', 'Apoderado'];
+                        setEditingUser((prev: any) => ({
+                          ...prev,
+                          roles: allRoleIds,
+                          role: prev.role || 'Docente'
+                        }));
+                      }}
+                      style={{ fontSize: '0.68rem', fontWeight: 700, color: '#4338ca', background: '#e0e7ff', border: '1px solid #c7d2fe', borderRadius: '6px', padding: '2px 7px', cursor: 'pointer' }}
+                      title="Marcar todos los perfiles"
+                    >
+                      Marcar Todos
+                    </button>
+                    <span style={{ fontSize: '0.72rem', color: '#4f46e5', fontWeight: 800, background: '#eef2ff', padding: '2px 8px', borderRadius: '10px', border: '1px solid #c7d2fe' }}>
+                      {parseRolesList(editingUser.roles, editingUser.role).length} perfil(es) asignado(s)
+                    </span>
+                  </div>
                 </div>
-                <p style={{ margin: '0 0 0.65rem 0', fontSize: '0.74rem', color: '#64748b', lineHeight: '1.3' }}>
+                <p style={{ margin: '0 0 0.6rem 0', fontSize: '0.74rem', color: '#64748b', lineHeight: '1.3' }}>
                   Marca todos los perfiles que desempeñará este funcionario. El usuario podrá alternar entre ellos desde la barra superior.
                 </p>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.4rem', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem', marginBottom: '0.7rem' }}>
                   {[
                     { id: 'Docente', label: 'Docente', icon: '👨‍🏫' },
                     { id: 'Director', label: 'Directivo / UTP', icon: '🎓' },
@@ -3657,9 +3810,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                     { id: 'Admin', label: 'Administrador', icon: '👑' },
                     { id: 'Apoderado', label: 'Apoderado', icon: '👨‍👩‍👧' }
                   ].map(r => {
-                    const currentRoles: string[] = Array.isArray(editingUser.roles) && editingUser.roles.length > 0
-                      ? editingUser.roles
-                      : [editingUser.role || 'Docente'];
+                    const currentRoles: string[] = parseRolesList(editingUser.roles, editingUser.role);
                     const isChecked = currentRoles.includes(r.id);
 
                     return (
@@ -3667,89 +3818,109 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                         type="button"
                         key={r.id}
                         onClick={() => {
-                          let nextRoles: string[];
-                          if (isChecked) {
-                            if (currentRoles.length <= 1) {
-                              Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'El usuario debe mantener al menos 1 perfil activo.', timer: 2000, showConfirmButton: false });
-                              return;
+                          setEditingUser((prev: any) => {
+                            const prevRoles = parseRolesList(prev.roles, prev.role);
+                            const alreadyChecked = prevRoles.includes(r.id);
+                            let nextRoles: string[];
+                            if (alreadyChecked) {
+                              if (prevRoles.length <= 1) {
+                                Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'El usuario debe mantener al menos 1 perfil activo.', timer: 2000, showConfirmButton: false });
+                                return prev;
+                              }
+                              nextRoles = prevRoles.filter(x => x !== r.id);
+                            } else {
+                              nextRoles = [...prevRoles, r.id];
                             }
-                            nextRoles = currentRoles.filter(x => x !== r.id);
-                          } else {
-                            nextRoles = [...currentRoles, r.id];
-                          }
-                          const newPrimary = nextRoles.includes(editingUser.role) ? editingUser.role : nextRoles[0];
-                          setEditingUser({
-                            ...editingUser,
-                            roles: nextRoles,
-                            role: newPrimary
+                            const prevPrimary = normalizeRoleId(prev.role || nextRoles[0]);
+                            const newPrimary = nextRoles.includes(prevPrimary) ? prevPrimary : nextRoles[0];
+                            return {
+                              ...prev,
+                              roles: nextRoles,
+                              role: newPrimary
+                            };
                           });
                         }}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '0.35rem',
-                          padding: '0.4rem 0.55rem',
+                          gap: '0.4rem',
+                          padding: '0.42rem 0.6rem',
                           borderRadius: '8px',
                           border: isChecked ? '2px solid #4f46e5' : '1px solid #cbd5e1',
                           background: isChecked ? '#eef2ff' : '#ffffff',
                           color: isChecked ? '#3730a3' : '#475569',
                           fontWeight: isChecked ? 800 : 600,
-                          fontSize: '0.78rem',
+                          fontSize: '0.8rem',
                           cursor: 'pointer',
                           textAlign: 'left',
-                          transition: 'all 0.15s ease'
+                          transition: 'all 0.12s ease'
                         }}
                       >
                         <span style={{ fontSize: '0.95rem' }}>{r.icon}</span>
                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
-                        {isChecked && <Check size={13} color="#4f46e5" strokeWidth={3} />}
+                        {isChecked && <Check size={14} color="#4f46e5" strokeWidth={3} />}
                       </button>
                     );
                   })}
                 </div>
 
                 {/* SELECTOR DE ROL PRINCIPAL / PREDETERMINADO */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderTop: '1px dashed #cbd5e1', paddingTop: '0.6rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderTop: '1px dashed #cbd5e1', paddingTop: '0.55rem' }}>
                   <label style={{ fontSize: '0.76rem', fontWeight: 800, color: '#334155', whiteSpace: 'nowrap' }}>
                     ⭐ Perfil Principal:
                   </label>
                   <select
-                    value={editingUser.role || (editingUser.roles && editingUser.roles[0]) || 'Docente'}
-                    onChange={e => setEditingUser({ ...editingUser, role: e.target.value })}
+                    value={normalizeRoleId(editingUser.role || parseRolesList(editingUser.roles, editingUser.role)[0] || 'Docente')}
+                    onChange={e => {
+                      const newPrimary = normalizeRoleId(e.target.value);
+                      setEditingUser((prev: any) => {
+                        const prevRoles = parseRolesList(prev.roles, prev.role);
+                        const nextRoles = prevRoles.includes(newPrimary) ? prevRoles : [newPrimary, ...prevRoles];
+                        return { ...prev, role: newPrimary, roles: nextRoles };
+                      });
+                    }}
                     style={{ flex: 1, padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.78rem', fontWeight: 700, color: '#1e293b', background: '#ffffff' }}
                   >
-                    {(Array.isArray(editingUser.roles) && editingUser.roles.length > 0 ? editingUser.roles : [editingUser.role || 'Docente']).map((r: string) => (
+                    {parseRolesList(editingUser.roles, editingUser.role).map((r: string) => (
                       <option key={r} value={r}>{r} (Predeterminado al entrar)</option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>Correo Electrónico Institucional</label>
-                <input
-                  type="email"
-                  value={editingUser.email || ''}
-                  onChange={e => setEditingUser({ ...editingUser, email: e.target.value })}
-                  placeholder="ejemplo@eduvallediguillin.gob.cl"
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.2rem' }}>Correo Institucional</label>
+                  <input
+                    type="email"
+                    value={editingUser.email || ''}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setEditingUser((prev: any) => ({ ...prev, email: val }));
+                    }}
+                    placeholder="ejemplo@eduvallediguillin.gob.cl"
+                    style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.2rem' }}>Contraseña Secreta</label>
+                  <input
+                    type="text"
+                    value={editingUser.password_plain || ''}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setEditingUser((prev: any) => ({ ...prev, password_plain: val }));
+                    }}
+                    placeholder="Contraseña del usuario"
+                    style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem', fontFamily: 'monospace' }}
+                  />
+                </div>
               </div>
 
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>Contraseña Secreta</label>
-                <input
-                  type="text"
-                  value={editingUser.password_plain || ''}
-                  onChange={e => setEditingUser({ ...editingUser, password_plain: e.target.value })}
-                  placeholder="Contraseña del usuario"
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" onClick={() => setEditingUser(null)} className="btn" style={{ background: '#cbd5e1' }}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0', position: 'sticky', bottom: 0, background: '#ffffff' }}>
+                <button type="button" onClick={() => setEditingUser(null)} className="btn" style={{ background: '#e2e8f0', color: '#334155', fontWeight: 700 }}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 800, padding: '0.55rem 1.2rem' }}>
                   <Save size={16} /> Guardar Cambios
                 </button>
               </div>

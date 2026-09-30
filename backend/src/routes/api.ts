@@ -71,6 +71,10 @@ async function ensureTablesExist() {
       const alterCols = [
         'ALTER TABLE users ADD COLUMN phone VARCHAR(255)',
         'ALTER TABLE users ADD COLUMN email VARCHAR(255)',
+        'ALTER TABLE users ADD COLUMN roles TEXT',
+        'ALTER TABLE users ADD COLUMN staff_type VARCHAR(100)',
+        'ALTER TABLE users ADD COLUMN job_function VARCHAR(150)',
+        'ALTER TABLE staff_profiles ADD COLUMN roles TEXT',
         'ALTER TABLE students ADD COLUMN profesor_jefe VARCHAR(255)',
         'ALTER TABLE students ADD COLUMN enrollment_number VARCHAR(255)',
         'ALTER TABLE students ADD COLUMN list_number INT',
@@ -142,6 +146,10 @@ async function ensureTablesExist() {
     await query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS roles TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_type TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS job_function TEXT;
+      ALTER TABLE staff_profiles ADD COLUMN IF NOT EXISTS roles TEXT;
       ALTER TABLE students ADD COLUMN IF NOT EXISTS profesor_jefe TEXT;
       ALTER TABLE students ADD COLUMN IF NOT EXISTS enrollment_number TEXT;
       ALTER TABLE students ADD COLUMN IF NOT EXISTS list_number INTEGER;
@@ -1193,32 +1201,71 @@ router.get('/usuarios', authMiddleware, checkRoles(['Admin', 'Director']), async
   }
 });
 
+const normalizeProfileRoleId = (r: any): string => {
+  const raw = String(r || '').trim();
+  const low = raw.toLowerCase();
+  if (!raw) return 'Docente';
+  if (low === 'admin' || low === 'administrador') return 'Admin';
+  if (low === 'director' || low === 'directivo' || low === 'directivo / utp' || low === 'utp') return 'Director';
+  if (low === 'docente' || low === 'profesor' || low === 'docente de aula') return 'Docente';
+  if (low === 'entrevistador' || low === 'convivencia') return 'Entrevistador';
+  if (low === 'asistente' || low === 'asistente de la educación' || low === 'asistente de la educacion' || low === 'asistente ed.') return 'Asistente';
+  if (low === 'administrativo' || low === 'inspector' || low === 'inspector/a' || low === 'secretario/a') return 'Administrativo';
+  if (low === 'profesionales' || low === 'profesional pie' || low === 'pie') return 'Profesionales';
+  if (low === 'apoderado') return 'Apoderado';
+  if (low === 'visita') return 'Visita';
+  return raw;
+};
+
+const parseRolesArray = (rawRoles: any, primaryRole?: any): string[] => {
+  const normPrimary = normalizeProfileRoleId(primaryRole || 'Docente');
+  let list: string[] = [];
+  if (Array.isArray(rawRoles)) {
+    list = rawRoles.map(normalizeProfileRoleId).filter(Boolean);
+  } else if (typeof rawRoles === 'string' && rawRoles.trim() !== '' && rawRoles.trim() !== 'null') {
+    try {
+      const parsed = JSON.parse(rawRoles);
+      if (Array.isArray(parsed)) {
+        list = parsed.map(normalizeProfileRoleId).filter(Boolean);
+      }
+    } catch (_) {
+      list = rawRoles
+        .replace(/^\[|\]$/g, '')
+        .replace(/"/g, '')
+        .split(',')
+        .map(s => normalizeProfileRoleId(s))
+        .filter(Boolean);
+    }
+  }
+  if (list.length === 0) {
+    list = [normPrimary];
+  } else if (primaryRole && !list.includes(normPrimary)) {
+    list = [normPrimary, ...list];
+  }
+  return Array.from(new Set(list));
+};
+
 // CRUD DE USUARIOS INSTITUCIONALES (PERSISTIDO EN SUPABASE/MYSQL)
 router.get('/users', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const isStaffAdmin = req.user?.role === 'Admin' || req.user?.role === 'Director';
+    const isStaffAdmin =
+      req.user?.role === 'Admin' ||
+      req.user?.role === 'Director' ||
+      (Array.isArray((req.user as any)?.roles) && ((req.user as any).roles.includes('Admin') || (req.user as any).roles.includes('Director')));
     const result = await query('SELECT id, run, name, email, role, roles, staff_type, job_function, password_plain, temp_password, created_at FROM users ORDER BY name ASC');
     const users = result.rows.map(u => {
-      let parsedRoles: string[] = [u.role || 'Docente'];
-      if (u.roles) {
-        try {
-          const parsed = typeof u.roles === 'string' ? JSON.parse(u.roles) : u.roles;
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            parsedRoles = parsed;
-          }
-        } catch (_) {
-          parsedRoles = String(u.roles).split(',').map(r => r.trim()).filter(Boolean);
-        }
-      }
+      const primaryRole = normalizeProfileRoleId(u.role || 'Docente');
+      const parsedRoles = parseRolesArray(u.roles, primaryRole);
+      const cleanMail = u.email && String(u.email) !== 'null' ? String(u.email) : '';
       return {
         id: u.id,
         run: u.run,
         name: u.name,
-        email: u.email,
-        role: u.role,
+        email: cleanMail,
+        role: primaryRole,
         roles: parsedRoles,
-        staff_type: u.staff_type,
-        job_function: u.job_function,
+        staff_type: u.staff_type || (primaryRole === 'Administrativo' || primaryRole === 'Asistente' ? 'Asistente de la Educación' : 'Docente'),
+        job_function: u.job_function || 'Docente de Aula',
         // Proteger contraseñas: solo accesibles por Administrador / Director en módulo de configuración
         password_plain: isStaffAdmin ? u.password_plain : undefined,
         temp_password: isStaffAdmin ? u.temp_password : undefined,
@@ -1231,121 +1278,217 @@ router.get('/users', authMiddleware, async (req: Request, res: Response) => {
   }
 });
 
-router.post('/users', authMiddleware, checkRoles(['Admin']), async (req: Request, res: Response) => {
+router.post('/users', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
   const { run, name, email, role, roles, password, staff_type, job_function } = req.body;
-  const cleanRun = String(run || '').replace(/\./g, '').trim();
+  const rawRun = String(run || '').trim();
+  const cleanRun = rawRun.replace(/\./g, '').trim();
+  const alnumRun = cleanRun.replace(/[^0-9kK]/g, '');
   const passStr = String(password || 'Ltp2026!').trim();
-  const stType = staff_type || (role === 'Administrativo' ? 'Asistente de la Educación' : 'Docente');
 
   if (!cleanRun || !name) {
     return res.status(400).json({ error: 'RUT y Nombre son requeridos.' });
   }
 
-  const roleArray: string[] = Array.isArray(roles) && roles.length > 0 
-    ? roles 
-    : [role || 'Docente'];
-  const primaryRole = role || roleArray[0] || 'Docente';
+  const roleArray = parseRolesArray(roles, role);
+  const primaryRole = role ? normalizeProfileRoleId(role) : (roleArray[0] || 'Docente');
+  if (!roleArray.includes(primaryRole)) roleArray.unshift(primaryRole);
   const rolesJson = JSON.stringify(roleArray);
+  const stType = staff_type || (primaryRole === 'Administrativo' || primaryRole === 'Asistente' ? 'Asistente de la Educación' : 'Docente');
+  const safeEmail = email && String(email).trim() !== '' && String(email).trim() !== 'null'
+    ? String(email).trim()
+    : `${alnumRun || Date.now()}@liceocampanario.cl`;
 
   try {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(passStr, salt);
-    const id = `USR-${cleanRun.replace(/[^0-9kK]/g, '')}`;
+    const id = `USR-${alnumRun}`;
 
-    const sql = `
-      INSERT INTO users (id, run, name, email, password_hash, password_plain, role, roles, staff_type, job_function, temp_password)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false)
-      ON CONFLICT (run) DO UPDATE SET
-        name = EXCLUDED.name,
-        email = EXCLUDED.email,
-        role = EXCLUDED.role,
-        roles = EXCLUDED.roles,
-        staff_type = EXCLUDED.staff_type,
-        job_function = EXCLUDED.job_function,
-        password_hash = EXCLUDED.password_hash,
-        password_plain = EXCLUDED.password_plain
-      RETURNING id, run, name, role, roles, staff_type, password_plain;
-    `;
+    // Verificar si ya existe por id o run
+    const existingRes = await query(
+      `SELECT id FROM users WHERE id = $1 OR run = $2 OR run = $3 OR REPLACE(REPLACE(run, '.', ''), '-', '') = $4 LIMIT 1`,
+      [id, rawRun, cleanRun, alnumRun]
+    );
 
-    const result = await query(sql, [id, run, name.trim(), email || null, passwordHash, passStr, primaryRole, rolesJson, stType, job_function || null]);
+    if (existingRes.rows.length > 0) {
+      const targetId = existingRes.rows[0].id;
+      await query(
+        `UPDATE users SET name = $1, email = $2, role = $3, roles = $4, staff_type = $5, job_function = $6, password_hash = $7, password_plain = $8 WHERE id = $9`,
+        [name.trim(), safeEmail, primaryRole, rolesJson, stType, job_function || 'Docente de Aula', passwordHash, passStr, targetId]
+      );
+    } else {
+      await query(
+        `INSERT INTO users (id, run, name, email, password_hash, password_plain, role, roles, staff_type, job_function, temp_password)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false)`,
+        [id, rawRun, name.trim(), safeEmail, passwordHash, passStr, primaryRole, rolesJson, stType, job_function || 'Docente de Aula']
+      );
+    }
 
-    // Sincronizar también staff_profiles
-    await query(
-      `UPDATE staff_profiles SET full_name = $1, staff_type = $2, role = $3
-       WHERE user_id = $4 OR run = $5 OR REPLACE(REPLACE(run, '.', ''), '-', '') = REPLACE(REPLACE($5, '.', ''), '-', '')`,
-      [name.trim(), stType, primaryRole, id, cleanRun]
-    ).catch(() => { });
+    // Sincronizar o insertar también en staff_profiles
+    const spRes = await query(
+      `SELECT id FROM staff_profiles WHERE user_id = $1 OR run = $2 OR run = $3 OR REPLACE(REPLACE(run, '.', ''), '-', '') = $4 LIMIT 1`,
+      [id, rawRun, cleanRun, alnumRun]
+    );
+    if (spRes.rows.length > 0) {
+      await query(
+        `UPDATE staff_profiles SET full_name = $1, staff_type = $2, role = $3, roles = $4, job_function = $5, email = $6 WHERE id = $7`,
+        [name.trim(), stType, primaryRole, rolesJson, job_function || 'Docente de Aula', safeEmail, spRes.rows[0].id]
+      ).catch(() => {});
+    } else {
+      const staffId = `STAFF-${alnumRun}`;
+      await query(
+        `INSERT INTO staff_profiles (id, user_id, run, full_name, email, role, roles, staff_type, job_function, contract_hours, suitability_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 44, 'HABILITADO')`,
+        [staffId, id, rawRun, name.trim(), safeEmail, primaryRole, rolesJson, stType, job_function || 'Docente de Aula']
+      ).catch(() => {});
+    }
 
-    await logAudit(req, 'CREATE_USER', `Usuario ${name} (${cleanRun}) creado/actualizado con roles [${roleArray.join(', ')}]`);
-    res.json({ success: true, user: { ...result.rows[0], roles: roleArray } });
+    await logAudit(req, 'CREATE_USER', `Usuario ${name} (${rawRun}) creado/actualizado con roles [${roleArray.join(', ')}]`);
+    res.json({
+      success: true,
+      user: {
+        id,
+        run: rawRun,
+        name: name.trim(),
+        email: safeEmail,
+        role: primaryRole,
+        roles: roleArray,
+        staff_type: stType,
+        job_function: job_function || 'Docente de Aula',
+        password_plain: passStr
+      }
+    });
   } catch (err) {
     console.error('Error creando usuario:', err);
     res.status(500).json({ error: 'Error al registrar usuario.' });
   }
 });
 
-router.put('/users/:id', authMiddleware, checkRoles(['Admin']), async (req: Request, res: Response) => {
+router.put('/users/:id', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
   const { id } = req.params;
   const { run, name, email, role, roles, password, staff_type, job_function } = req.body;
   const rawRun = String(run || '').trim();
   const cleanRun = rawRun.replace(/\./g, '').trim();
+  const alnumRun = cleanRun.replace(/[^0-9kK]/g, '');
+  const usrIdFromRun = alnumRun ? `USR-${alnumRun}` : id;
   const passStr = password ? String(password).trim() : null;
-  const cleanEmail = email && String(email).trim() !== '' ? String(email).trim() : null;
-  const stType = staff_type || (role === 'Administrativo' ? 'Asistente de la Educación' : 'Docente');
+  const cleanEmail = email && String(email).trim() !== '' && String(email).trim() !== 'null' ? String(email).trim() : null;
 
-  const roleArray: string[] = Array.isArray(roles) && roles.length > 0 
-    ? roles 
-    : [role || 'Docente'];
-  const primaryRole = role || roleArray[0] || 'Docente';
+  const roleArray = parseRolesArray(roles, role);
+  const primaryRole = role ? normalizeProfileRoleId(role) : (roleArray[0] || 'Docente');
+  if (!roleArray.includes(primaryRole)) roleArray.unshift(primaryRole);
   const rolesJson = JSON.stringify(roleArray);
+  const stType = staff_type || (primaryRole === 'Administrativo' || primaryRole === 'Asistente' ? 'Asistente de la Educación' : 'Docente');
 
   try {
-    let fields = ['name = $1', 'role = $2', 'roles = $3', 'email = $4', 'staff_type = $5'];
-    let params: any[] = [name.trim(), primaryRole, rolesJson, cleanEmail, stType];
+    // 1. Buscar usuario existente en tabla users por id, USR-run, run con puntos o sin puntos
+    const existingUserRes = await query(
+      `SELECT id, email, run FROM users 
+       WHERE id = $1 
+          OR id = $2 
+          OR run = $3 
+          OR run = $4 
+          OR REPLACE(REPLACE(run, '.', ''), '-', '') = $5
+       LIMIT 1`,
+      [id, usrIdFromRun, rawRun, cleanRun, alnumRun]
+    );
 
-    if (job_function) {
-      params.push(job_function);
-      fields.push(`job_function = $${params.length}`);
-    }
+    if (existingUserRes.rows.length > 0) {
+      const targetUserId = existingUserRes.rows[0].id;
+      const fields = ['name = $1', 'role = $2', 'roles = $3', 'staff_type = $4'];
+      const params: any[] = [name.trim(), primaryRole, rolesJson, stType];
 
-    if (cleanRun) {
-      params.push(cleanRun);
-      fields.push(`run = $${params.length}`);
-    }
+      if (cleanEmail) {
+        params.push(cleanEmail);
+        fields.push(`email = $${params.length}`);
+      }
 
-    if (passStr) {
+      if (job_function !== undefined) {
+        params.push(job_function || 'Docente de Aula');
+        fields.push(`job_function = $${params.length}`);
+      }
+
+      if (rawRun) {
+        params.push(rawRun);
+        fields.push(`run = $${params.length}`);
+      }
+
+      if (passStr) {
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(passStr, salt);
+        params.push(passwordHash);
+        fields.push(`password_hash = $${params.length}`);
+        params.push(passStr);
+        fields.push(`password_plain = $${params.length}`);
+      }
+
+      params.push(targetUserId);
+      await query(`UPDATE users SET ${fields.join(', ')} WHERE id = $${params.length}`, params);
+    } else {
+      // Si el funcionario estaba en staff_profiles pero no en users, crearlo en users
       const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(passStr, salt);
-      params.push(passwordHash);
-      fields.push(`password_hash = $${params.length}`);
-      params.push(passStr);
-      fields.push(`password_plain = $${params.length}`);
+      const defaultPass = passStr || 'Profe2026!';
+      const passwordHash = await bcrypt.hash(defaultPass, salt);
+      const fallbackEmail = cleanEmail || `${alnumRun || Date.now()}@liceocampanario.cl`;
+      await query(
+        `INSERT INTO users (id, run, name, email, password_hash, password_plain, role, roles, staff_type, job_function, temp_password)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false)`,
+        [usrIdFromRun, rawRun, name.trim(), fallbackEmail, passwordHash, defaultPass, primaryRole, rolesJson, stType, job_function || 'Docente de Aula']
+      ).catch(() => {});
     }
 
-    params.push(id);
-    const targetIdx = params.length;
-    params.push(cleanRun);
-    const cleanRunIdx = params.length;
+    // 2. Sincronizar también staff_profiles (incluyendo roles, role, staff_type, job_function, email)
+    const spFields = ['full_name = $1', 'staff_type = $2', 'role = $3', 'roles = $4'];
+    const spParams: any[] = [name.trim(), stType, primaryRole, rolesJson];
 
-    const sqlUsers = `
-      UPDATE users SET ${fields.join(', ')} 
-      WHERE id = $${targetIdx} 
-         OR run = $${targetIdx} 
-         OR run = $${cleanRunIdx}
-         OR REPLACE(REPLACE(run, '.', ''), '-', '') = REPLACE(REPLACE($${cleanRunIdx}, '.', ''), '-', '')
-    `;
-    await query(sqlUsers, params);
+    if (job_function !== undefined) {
+      spParams.push(job_function || 'Docente de Aula');
+      spFields.push(`job_function = $${spParams.length}`);
+    }
+    if (cleanEmail) {
+      spParams.push(cleanEmail);
+      spFields.push(`email = $${spParams.length}`);
+    }
 
-    // Actualizar también staff_profiles en caso de existir
+    spParams.push(id);
+    const spIdIdx = spParams.length;
+    spParams.push(usrIdFromRun);
+    const spUsrIdx = spParams.length;
+    spParams.push(rawRun);
+    const spRawRunIdx = spParams.length;
+    spParams.push(cleanRun);
+    const spCleanRunIdx = spParams.length;
+    spParams.push(alnumRun);
+    const spAlnumIdx = spParams.length;
+
     await query(
-      `UPDATE staff_profiles SET full_name = $1, staff_type = $2, role = $3 
-       WHERE user_id = $4 OR run = $5 OR REPLACE(REPLACE(run, '.', ''), '-', '') = REPLACE(REPLACE($5, '.', ''), '-', '')`,
-      [name.trim(), stType, primaryRole, id, cleanRun]
-    ).catch(() => { });
+      `UPDATE staff_profiles SET ${spFields.join(', ')} 
+       WHERE id = $${spIdIdx}
+          OR user_id = $${spIdIdx}
+          OR user_id = $${spUsrIdx}
+          OR run = $${spRawRunIdx}
+          OR run = $${spCleanRunIdx}
+          OR REPLACE(REPLACE(run, '.', ''), '-', '') = $${spAlnumIdx}`,
+      spParams
+    ).catch(() => {});
 
     await logAudit(req, 'UPDATE_USER', `Usuario ${name} (${id}) modificado con roles [${roleArray.join(', ')}]`);
-    res.json({ success: true, roles: roleArray, role: primaryRole });
+    res.json({
+      success: true,
+      role: primaryRole,
+      roles: roleArray,
+      user: {
+        id: existingUserRes.rows[0]?.id || usrIdFromRun,
+        run: rawRun,
+        name: name.trim(),
+        email: cleanEmail || existingUserRes.rows[0]?.email || '',
+        role: primaryRole,
+        roles: roleArray,
+        staff_type: stType,
+        job_function: job_function || 'Docente de Aula'
+      }
+    });
   } catch (err) {
+    console.error('Error actualizando usuario:', err);
     res.status(500).json({ error: 'Error al actualizar usuario.' });
   }
 });
@@ -1395,11 +1538,19 @@ router.get('/staff', authMiddleware, async (req: Request, res: Response) => {
     let sql = `
       SELECT 
         sp.*, 
-        COALESCE(sp.email, u.email) as email, 
-        u.role, 
+        u.id as user_account_id,
+        COALESCE(u.email, sp.email) as merged_email, 
+        COALESCE(u.role, sp.role) as merged_role, 
+        COALESCE(u.roles, sp.roles) as merged_roles,
+        COALESCE(u.staff_type, sp.staff_type) as merged_staff_type,
+        COALESCE(u.job_function, sp.job_function) as merged_job_function,
         u.password_plain
       FROM staff_profiles sp
-      LEFT JOIN users u ON (sp.user_id = u.id OR sp.run = u.run)
+      LEFT JOIN users u ON (
+        sp.user_id = u.id 
+        OR sp.run = u.run 
+        OR REPLACE(REPLACE(sp.run, '.', ''), '-', '') = REPLACE(REPLACE(u.run, '.', ''), '-', '')
+      )
     `;
     let params: any[] = [];
     let conditions: string[] = [];
@@ -1420,7 +1571,24 @@ router.get('/staff', authMiddleware, async (req: Request, res: Response) => {
 
     sql += ' ORDER BY sp.full_name ASC';
     const result = await query(sql, params);
-    res.json(result.rows);
+    const mapped = result.rows.map(r => {
+      const primaryRole = normalizeProfileRoleId(r.merged_role || r.role || 'Docente');
+      const parsedRoles = parseRolesArray(r.merged_roles || r.roles, primaryRole);
+      const rawEmail = r.merged_email || r.email || '';
+      const cleanMail = String(rawEmail) === 'null' ? '' : String(rawEmail);
+      return {
+        ...r,
+        id: r.user_account_id || r.user_id || r.id,
+        staff_id: r.id,
+        user_id: r.user_account_id || r.user_id || r.id,
+        email: cleanMail,
+        role: primaryRole,
+        roles: parsedRoles,
+        staff_type: r.merged_staff_type || r.staff_type || 'Docente',
+        job_function: r.merged_job_function || r.job_function || 'Docente de Aula'
+      };
+    });
+    res.json(mapped);
   } catch (err) {
     res.status(500).json({ error: 'Error al consultar nómina de funcionarios.' });
   }
