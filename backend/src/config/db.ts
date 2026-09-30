@@ -373,6 +373,7 @@ export const query = async (text: string, params?: any[]): Promise<{ rows: any[]
       mysqlText = mysqlText.replace(/\(desc_grado \|\| ' ' \|\| letra_curso \|\| '°'\)/g, "CONCAT(desc_grado, ' ', letra_curso, '°')");
       mysqlText = mysqlText.replace(/\bgen_random_uuid\(\)/gi, 'UUID()');
       mysqlText = mysqlText.replace(/\b(anno|entry_year)\b/gi, 'academic_year');
+      mysqlText = mysqlText.replace(/CAST\(([^)]+)\s+AS\s+TEXT\)/gi, 'CAST($1 AS CHAR)');
 
       const inputParams = params || [];
       const cleanParams = paramIndices.length > 0

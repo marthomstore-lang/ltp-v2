@@ -2559,10 +2559,10 @@ router.get('/grade-columns', authMiddleware, async (req: Request, res: Response)
     let sql = `
       SELECT gc.* 
       FROM grade_columns gc
-      LEFT JOIN subjects s ON gc.subject_id = s.id
-      LEFT JOIN levels l ON gc.level_id = l.id
-      WHERE (gc.level_id = $1 OR l.id = $1 OR l.name = $1)
-        AND (gc.subject_id = $2 OR s.id = $2 OR s.name = $2)
+      LEFT JOIN subjects s ON CAST(gc.subject_id AS TEXT) = CAST(s.id AS TEXT)
+      LEFT JOIN levels l ON CAST(gc.level_id AS TEXT) = CAST(l.id AS TEXT)
+      WHERE (CAST(gc.level_id AS TEXT) = $1 OR CAST(l.id AS TEXT) = $1 OR l.name = $1)
+        AND (CAST(gc.subject_id AS TEXT) = $2 OR CAST(s.id AS TEXT) = $2 OR s.name = $2)
         AND (gc.academic_year = $3 OR gc.academic_year IS NULL)
     `;
     const params: any[] = [String(levelId || 1), String(subjectId || 1), parseInt(String(academicYear || 2026), 10)];
@@ -2609,8 +2609,8 @@ router.get('/grades/overview', authMiddleware, async (req: Request, res: Respons
               SUM(CASE WHEN g.grade_value >= 4.0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(g.grade_value), 0) as porcentaje_aprobacion
        FROM grades g
        JOIN grade_columns gc ON g.grade_column_id = gc.id
-       JOIN levels l ON gc.level_id = l.id
-       JOIN subjects s ON gc.subject_id = s.id
+       JOIN levels l ON CAST(gc.level_id AS TEXT) = CAST(l.id AS TEXT)
+       JOIN subjects s ON CAST(gc.subject_id AS TEXT) = CAST(s.id AS TEXT)
        GROUP BY l.name, s.name`
     );
 
@@ -2819,12 +2819,12 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
     if (dbStudents.length > 0) {
       const gradesRes = await query(
         `SELECT g.*, 
-                COALESCE(gc.subject_id, g.subject_id, 1) as subject_id, 
+                COALESCE(CAST(gc.subject_id AS TEXT), CAST(g.subject_id AS TEXT), '1') as subject_id, 
                 COALESCE(gc.title, g.evaluation_name, 'Nota') as col_title, 
                 COALESCE(s.name, g.subject_name, '') as subject_name
          FROM grades g
          LEFT JOIN grade_columns gc ON g.grade_column_id = gc.id
-         LEFT JOIN subjects s ON (gc.subject_id = s.id OR g.subject_id = s.id)
+         LEFT JOIN subjects s ON (CAST(gc.subject_id AS TEXT) = CAST(s.id AS TEXT) OR CAST(g.subject_id AS TEXT) = CAST(s.id AS TEXT))
          WHERE (g.academic_year = $1 OR gc.academic_year = $1 OR g.academic_year IS NULL)`,
         [selectedYear]
       );
@@ -3190,10 +3190,10 @@ router.get('/grades', authMiddleware, async (req: Request, res: Response) => {
               COALESCE(gc.academic_year, g.academic_year) as academic_year
        FROM grades g
        LEFT JOIN grade_columns gc ON g.grade_column_id = gc.id
-       LEFT JOIN subjects s ON (gc.subject_id = s.id OR g.subject_id = s.id)
-       LEFT JOIN levels l ON (gc.level_id = l.id OR g.level_id = l.id)
-       WHERE (gc.level_id = $1 OR g.level_id = $1 OR g.course_name = $1 OR l.name = $1 OR l.id = $1) 
-         AND (gc.subject_id = $2 OR g.subject_id = $2 OR g.subject_name = $2 OR s.name = $2 OR s.id = $2) 
+       LEFT JOIN subjects s ON (CAST(gc.subject_id AS TEXT) = CAST(s.id AS TEXT) OR CAST(g.subject_id AS TEXT) = CAST(s.id AS TEXT))
+       LEFT JOIN levels l ON (CAST(gc.level_id AS TEXT) = CAST(l.id AS TEXT) OR CAST(g.level_id AS TEXT) = CAST(l.id AS TEXT))
+       WHERE (CAST(gc.level_id AS TEXT) = $1 OR CAST(g.level_id AS TEXT) = $1 OR g.course_name = $1 OR l.name = $1 OR CAST(l.id AS TEXT) = $1) 
+         AND (CAST(gc.subject_id AS TEXT) = $2 OR CAST(g.subject_id AS TEXT) = $2 OR g.subject_name = $2 OR s.name = $2 OR CAST(s.id AS TEXT) = $2) 
          AND (gc.academic_year = $3 OR g.academic_year = $3 OR g.academic_year IS NULL)`;
     const params: any[] = [String(levelId || 1), String(subjectId || 1), parseInt(String(academicYear || 2026), 10)];
     if (period) {

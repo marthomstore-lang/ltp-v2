@@ -257,9 +257,19 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
     });
   }, [isAdmin, currentCourseName, user, allSubjects, teacherAssignments, isCurrentCourseHomeroom, courseSubjectOrders]);
 
-  // Sincronizar automáticamente levelId si el actual queda fuera de los permitidos o si se pasó initialCourseName
+  // Sincronizar automáticamente con initialCourseName cuando se abre desde las tarjetas de cursos
   useEffect(() => {
-    if (allowedLevels.length > 0) {
+    if (allowedLevels.length > 0 && initialCourseName) {
+      const found = allowedLevels.find(l => normalizeStr(l.name) === normalizeStr(initialCourseName));
+      if (found && found.id !== levelId) {
+        setLevelId(found.id);
+      }
+    }
+  }, [allowedLevels, initialCourseName]);
+
+  // Asegurar que levelId siempre pertenezca a allowedLevels
+  useEffect(() => {
+    if (allowedLevels.length > 0 && !allowedLevels.some(l => l.id === levelId)) {
       if (initialCourseName) {
         const found = allowedLevels.find(l => normalizeStr(l.name) === normalizeStr(initialCourseName));
         if (found) {
@@ -267,15 +277,23 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           return;
         }
       }
-      if (!allowedLevels.some(l => l.id === levelId)) {
-        setLevelId(allowedLevels[0].id);
-      }
+      setLevelId(allowedLevels[0].id);
     }
   }, [allowedLevels, levelId, initialCourseName]);
 
-  // Sincronizar automáticamente subjectId si el actual queda fuera de las asignaturas permitidas o si se pasó initialSubjectName
+  // Sincronizar automáticamente con initialSubjectName cuando se abre desde las tarjetas
   useEffect(() => {
-    if (allowedSubjects.length > 0) {
+    if (allowedSubjects.length > 0 && initialSubjectName && initialSubjectName !== 'Jefatura de Curso') {
+      const found = allowedSubjects.find(s => normalizeStr(s.name) === normalizeStr(initialSubjectName));
+      if (found && found.id !== subjectId) {
+        setSubjectId(found.id);
+      }
+    }
+  }, [allowedSubjects, initialSubjectName]);
+
+  // Asegurar que subjectId siempre pertenezca a allowedSubjects
+  useEffect(() => {
+    if (allowedSubjects.length > 0 && !allowedSubjects.some(s => s.id === subjectId)) {
       if (initialSubjectName && initialSubjectName !== 'Jefatura de Curso') {
         const found = allowedSubjects.find(s => normalizeStr(s.name) === normalizeStr(initialSubjectName));
         if (found) {
@@ -283,9 +301,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           return;
         }
       }
-      if (!allowedSubjects.some(s => s.id === subjectId)) {
-        setSubjectId(allowedSubjects[0].id);
-      }
+      setSubjectId(allowedSubjects[0].id);
     }
   }, [allowedSubjects, subjectId, initialSubjectName]);
 
@@ -357,12 +373,24 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       return;
     }
 
-    const courseParam = currentLevelObj.name;
+    // Esperar a que levelId y subjectId estén sincronizados con los cursos/asignaturas permitidos
+    // para evitar disparar una petición fantasma del primer curso antes de aplicar initialCourseName
+    const validLevel = allowedLevels.find(l => l.id === levelId);
+    const validSubject = allowedSubjects.find(s => s.id === subjectId);
+    if (!validLevel || !validSubject) {
+      return;
+    }
+
+    let isCancelled = false;
+    const courseParam = validLevel.name;
+    const targetLevelId = validLevel.id;
+    const targetSubjectId = validSubject.id;
 
     // Alumnos del nivel seleccionado (SIEMPRE ORDENADOS POR N° DE LISTA) Y FILTRADOS POR AÑO
     fetch(`/api/students?course=${encodeURIComponent(courseParam)}&year=${academicYear}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => {
+        if (isCancelled) return;
         if (Array.isArray(data) && data.length > 0) {
           setStudents(sortStudentsByListNumber(data));
         } else {
@@ -372,11 +400,12 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       .catch(err => console.error(err));
 
     // Columnas (Iniciar con N1 o las que el docente haya creado)
-    fetch(`/api/grade-columns?levelId=${levelId}&subjectId=${subjectId}&academicYear=${academicYear}&period=${encodeURIComponent(period)}`, {
+    fetch(`/api/grade-columns?levelId=${targetLevelId}&subjectId=${targetSubjectId}&academicYear=${academicYear}&period=${encodeURIComponent(period)}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
       .then(data => {
+        if (isCancelled) return;
         if (Array.isArray(data) && data.length > 0) {
           const mapped = data.map((c: any) => ({
             ...c,
@@ -394,14 +423,17 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           setColumns(defaultSingleColumn);
         }
       })
-      .catch(() => setColumns(defaultSingleColumn));
+      .catch(() => {
+        if (!isCancelled) setColumns(defaultSingleColumn);
+      });
 
     // Calificaciones
-    fetch(`/api/grades?levelId=${levelId}&subjectId=${subjectId}&academicYear=${academicYear}&period=${encodeURIComponent(period)}`, {
+    fetch(`/api/grades?levelId=${targetLevelId}&subjectId=${targetSubjectId}&academicYear=${academicYear}&period=${encodeURIComponent(period)}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
       .then(data => {
+        if (isCancelled) return;
         if (Array.isArray(data)) {
           const map: Record<string, number> = {};
           data.forEach((g: any) => {
@@ -411,7 +443,11 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
         }
       })
       .catch(err => console.error(err));
-  }, [levelId, subjectId, academicYear, period, token, currentLevelObj, allowedSubjects]);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [levelId, subjectId, academicYear, period, token, currentLevelObj, allowedLevels, allowedSubjects]);
 
   // CAMBIO LOCAL DE NOTA CON SOPORTE PARA CONCEPTOS (MB, B, S, I) Y ESCALA 10-70 / DECIMAL
   const handleGradeChange = (studentId: string, columnId: string, valStr: string) => {
