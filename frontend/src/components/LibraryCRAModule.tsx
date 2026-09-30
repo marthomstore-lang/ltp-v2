@@ -259,15 +259,19 @@ export const LibraryCRAModule: React.FC<Props> = ({ token }) => {
 
       if (res.ok) {
         setShowNewLoanModal(false);
+        setSearchTerm('');
+        setLoanStatusFilter('Activos');
+        setActiveTab('loans');
         Swal.fire({
           icon: 'success',
           title: '¡Préstamo Registrado!',
-          text: `Préstamo creado exitosamente. Ejemplar: ${data.assignedCopyCode}. Vence el: ${data.dueDate} (21 días).`,
+          text: `Préstamo creado exitosamente para ${newLoanForm.studentName}. Ejemplar: ${data.assignedCopyCode}. Vence el: ${data.dueDate} (21 días).`,
           confirmButtonColor: '#4f46e5'
         });
         loadLoans();
         loadDashboard();
         loadBooks();
+        loadCommunications();
         setNewLoanForm({ studentId: '', studentName: '', courseName: '', teacherName: '', bookId: '', copyCode: '', customDueDate: '', overrideReason: '', observations: '' });
         setStudentDebtCheck(null);
       } else {
@@ -976,6 +980,108 @@ export const LibraryCRAModule: React.FC<Props> = ({ token }) => {
       )}
 
       {/* ----------------------------------------------------------------------- */}
+      {/* 5. MÓDULO DEVOLUCIONES DE LIBROS Y RECEPCIÓN DE EJEMPLARES              */}
+      {/* ----------------------------------------------------------------------- */}
+      {activeTab === 'returns' && (
+        <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '1.35rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
+                Gestión de Devoluciones y Recepción de Libros
+              </h2>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0.2rem 0 0 0' }}>
+                Seleccione un préstamo activo para registrar su ingreso y estado físico, o consulte el historial de devoluciones
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {['Activos', 'Devueltos', 'Todos'].map(st => (
+                <button
+                  key={st}
+                  onClick={() => setLoanStatusFilter(st)}
+                  style={{
+                    padding: '0.4rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    background: loanStatusFilter === st ? '#4f46e5' : '#ffffff',
+                    color: loanStatusFilter === st ? '#ffffff' : '#334155',
+                    fontWeight: 700,
+                    fontSize: '0.8rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {st === 'Activos' ? 'Pendientes de Devolución' : st}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Estudiante</th>
+                  <th>Curso</th>
+                  <th>Libro</th>
+                  <th>Ejemplar</th>
+                  <th>Fecha Préstamo</th>
+                  <th>Fecha Vencimiento</th>
+                  <th>Estado / Recepción</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loansList.length > 0 ? (
+                  loansList.map(l => {
+                    const isReturned = l.status === 'Devuelto';
+                    return (
+                      <tr key={l.id}>
+                        <td><strong>{l.student_name}</strong></td>
+                        <td>{l.course_name}</td>
+                        <td><strong>{l.book_title}</strong></td>
+                        <td><code>{l.copy_code}</code></td>
+                        <td>{l.loan_date}</td>
+                        <td>{l.due_date}</td>
+                        <td>
+                          {isReturned ? (
+                            <span style={{ background: '#ecfdf5', color: '#047857', padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700 }}>
+                              ✅ Devuelto ({l.return_date || 'OK'}) — {l.return_condition || 'Correcto'}
+                            </span>
+                          ) : (
+                            <span style={{ background: '#fffbeb', color: '#b45309', padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700 }}>
+                              ⏳ En préstamo ({l.days_remaining}d restantes)
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {!isReturned ? (
+                            <button
+                              onClick={() => setShowReturnModal(l)}
+                              className="btn btn-primary"
+                              style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 700 }}
+                            >
+                              Registrar Devolución →
+                            </button>
+                          ) : (
+                            <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 600 }}>Recibido por {l.returned_by || 'CRA'}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '1.5rem', color: '#64748b' }}>
+                      No hay registros para el filtro seleccionado.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------------------------------------------------------------- */}
       {/* 6. MÓDULO MATERIALES DIARIOS (CALCULADORAS, REGLAS, DICCIONARIOS)      */}
       {/* ----------------------------------------------------------------------- */}
       {activeTab === 'daily_materials' && (
@@ -1072,7 +1178,7 @@ export const LibraryCRAModule: React.FC<Props> = ({ token }) => {
                   <tr key={idx}>
                     <td><strong>👩‍🏫 {cg.teacherName}</strong></td>
                     <td>{cg.teacherEmail}</td>
-                    <td><span style={{ background: '#fff1f2', color: '#be123c', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 800 }}>{cg.cases.length} Alumnos en Riesgo / Atrasados</span></td>
+                    <td><span style={{ background: '#fff1f2', color: '#be123c', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 800 }}>{cg.cases.length} Alumnos con Préstamo / Atrasados</span></td>
                     <td>
                       <button
                         onClick={() => handleOpenEmailPreview(cg)}
@@ -1143,6 +1249,58 @@ export const LibraryCRAModule: React.FC<Props> = ({ token }) => {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ----------------------------------------------------------------------- */}
+      {/* 9. REPORTES & EXPORTACIÓN PDF / EXCEL                                   */}
+      {/* ----------------------------------------------------------------------- */}
+      {activeTab === 'reports' && (
+        <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '1.35rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
+                Reportes Oficiales de Biblioteca CRA (Impresión / PDF)
+              </h2>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0.2rem 0 0 0' }}>
+                Nómina consolidada de préstamos vigentes, atrasos e inventario general
+              </p>
+            </div>
+            <button onClick={() => window.print()} className="btn btn-primary" style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Printer size={16} /> Imprimir / Guardar PDF
+            </button>
+          </div>
+
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Estudiante</th>
+                  <th>Curso</th>
+                  <th>Docente</th>
+                  <th>Libro</th>
+                  <th>Ejemplar</th>
+                  <th>Fecha Préstamo</th>
+                  <th>Vencimiento</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loansList.map(l => (
+                  <tr key={l.id}>
+                    <td><strong>{l.student_name}</strong></td>
+                    <td>{l.course_name}</td>
+                    <td>{l.teacher_name || 'Sin Asignar'}</td>
+                    <td><strong>{l.book_title}</strong></td>
+                    <td><code>{l.copy_code}</code></td>
+                    <td>{l.loan_date}</td>
+                    <td>{l.due_date}</td>
+                    <td>{l.current_status || l.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1725,7 +1883,7 @@ export const LibraryCRAModule: React.FC<Props> = ({ token }) => {
       {/* MODAL VER EJEMPLARES */}
       {viewCopiesModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.75)', zIndex: 3000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem' }}>
-          <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.75rem', width: '100%', maxWidth: '520px' }}>
+          <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.75rem', width: '100%', maxWidth: '680px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#4f46e5', margin: 0 }}>Ejemplares Físicos Únicos</h3>
               <button onClick={() => setViewCopiesModal(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
@@ -1733,17 +1891,18 @@ export const LibraryCRAModule: React.FC<Props> = ({ token }) => {
             <p style={{ fontSize: '0.9rem', color: '#334155', marginBottom: '1rem' }}>
               Libro: <strong>{viewCopiesModal.title}</strong>
             </p>
-            <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            <div className="table-container" style={{ maxHeight: '340px', overflowY: 'auto' }}>
               <table>
                 <thead>
                   <tr>
                     <th>Código Ejemplar</th>
                     <th>Estado Físico</th>
+                    <th>Estudiante Asignado / Vencimiento</th>
                   </tr>
                 </thead>
                 <tbody>
                   {bookCopiesList.map(c => (
-                    <tr key={c.id}>
+                    <tr key={c.id || c.copy_code}>
                       <td><code>{c.copy_code}</code></td>
                       <td>
                         <span style={{
@@ -1756,6 +1915,16 @@ export const LibraryCRAModule: React.FC<Props> = ({ token }) => {
                         }}>
                           {c.status}
                         </span>
+                      </td>
+                      <td>
+                        {c.student_name ? (
+                          <div style={{ fontSize: '0.8rem', color: '#1e293b' }}>
+                            <strong>🎓 {c.student_name}</strong> ({c.course_name})
+                            {c.due_date && <span style={{ color: '#64748b', marginLeft: '6px' }}>• Vence: {c.due_date}</span>}
+                          </div>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>En estantería</span>
+                        )}
                       </td>
                     </tr>
                   ))}

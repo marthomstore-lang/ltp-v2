@@ -5809,10 +5809,10 @@ async function ensureCraTablesExist() {
     const checkBooks = await query('SELECT COUNT(*) as count FROM cra_books');
     if (parseInt(checkBooks.rows[0]?.count || '0', 10) === 0) {
       const demoBooks = [
-        { id: 'BK-001', code: 'CRA-101', title: 'Cien años de soledad', author: 'Gabriel García Márquez', publisher: 'Editorial Sudamericana', year: 1967, category: 'Novela / Plan Lector', level: '1° Medio A', isPlan: true, period: 'Marzo - Abril', location: 'Estante A1', total: 30, available: 26, borrowed: 4 },
-        { id: 'BK-002', code: 'CRA-102', title: 'El Principito', author: 'Antoine de Saint-Exupéry', publisher: 'Reynal & Hitchcock', year: 1943, category: 'Cuento / Infantil', level: '6° Básico A', isPlan: true, period: 'Marzo', location: 'Estante B2', total: 35, available: 32, borrowed: 3 },
-        { id: 'BK-003', code: 'CRA-103', title: 'La ciudad y los perros', author: 'Mario Vargas Llosa', publisher: 'Seix Barral', year: 1963, category: 'Novela / Realismo', level: '3° Medio Industrial (Mecánica Industrial) A', isPlan: true, period: 'Mayo - Junio', location: 'Estante A2', total: 25, available: 22, borrowed: 3 },
-        { id: 'BK-004', code: 'CRA-104', title: 'Papelucho', author: 'Marcela Paz', publisher: 'Editorial del Pacífico', year: 1947, category: 'Infantil / Clásico', level: '2° Básico A', isPlan: true, period: 'Abril', location: 'Estante B1', total: 40, available: 37, borrowed: 3 }
+        { id: 'BK-001', code: 'CRA-101', title: 'Cien años de soledad', author: 'Gabriel García Márquez', publisher: 'Editorial Sudamericana', year: 1967, category: 'Novela / Plan Lector', level: '1° Medio A', isPlan: true, period: 'Marzo - Abril', location: 'Estante A1', total: 30, available: 30, borrowed: 0 },
+        { id: 'BK-002', code: 'CRA-102', title: 'El Principito', author: 'Antoine de Saint-Exupéry', publisher: 'Reynal & Hitchcock', year: 1943, category: 'Cuento / Infantil', level: '6° Básico A', isPlan: true, period: 'Marzo', location: 'Estante B2', total: 35, available: 35, borrowed: 0 },
+        { id: 'BK-003', code: 'CRA-103', title: 'La ciudad y los perros', author: 'Mario Vargas Llosa', publisher: 'Seix Barral', year: 1963, category: 'Novela / Realismo', level: '3° Medio Industrial (Mecánica Industrial) A', isPlan: true, period: 'Mayo - Junio', location: 'Estante A2', total: 25, available: 25, borrowed: 0 },
+        { id: 'BK-004', code: 'CRA-104', title: 'Papelucho', author: 'Marcela Paz', publisher: 'Editorial del Pacífico', year: 1947, category: 'Infantil / Clásico', level: '2° Básico A', isPlan: true, period: 'Abril', location: 'Estante B1', total: 40, available: 40, borrowed: 0 }
       ];
 
       for (const b of demoBooks) {
@@ -5823,13 +5823,13 @@ async function ensureCraTablesExist() {
           [b.id, b.code, b.title, b.author, b.publisher, b.year, b.category, b.level, b.isPlan, b.period, b.location, b.total, b.available, b.borrowed]
         );
 
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= b.total; i++) {
           const copyId = `CPY-${b.code}-${i}`;
           const copyCode = `${b.code}-${String(i).padStart(2, '0')}`;
           await query(
             `INSERT INTO cra_book_copies (id, book_id, copy_code, status)
              VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING`,
-            [copyId, b.id, copyCode, i === 1 ? 'Prestado' : 'Disponible']
+            [copyId, b.id, copyCode, 'Disponible']
           );
         }
       }
@@ -5838,9 +5838,9 @@ async function ensureCraTablesExist() {
     const checkMaterials = await query('SELECT COUNT(*) as count FROM cra_daily_materials');
     if (parseInt(checkMaterials.rows[0]?.count || '0', 10) === 0) {
       const demoMats = [
-        { id: 'MAT-001', code: 'CALC-SCI-01', name: 'Calculadora Científica Casio fx-82MS', category: 'Matemática / Ciencias', total: 15, available: 12, borrowed: 3 },
-        { id: 'MAT-002', code: 'REGL-30-01', name: 'Regla Plástica 30 cm con Bisel', category: 'Geometría / Dibujo', total: 30, available: 28, borrowed: 2 },
-        { id: 'MAT-003', code: 'DICC-ESP-01', name: 'Diccionario Lengua Española RAE (Ilustrado)', category: 'Lenguaje / Idiomas', total: 20, available: 19, borrowed: 1 },
+        { id: 'MAT-001', code: 'CALC-SCI-01', name: 'Calculadora Científica Casio fx-82MS', category: 'Matemática / Ciencias', total: 15, available: 15, borrowed: 0 },
+        { id: 'MAT-002', code: 'REGL-30-01', name: 'Regla Plástica 30 cm con Bisel', category: 'Geometría / Dibujo', total: 30, available: 30, borrowed: 0 },
+        { id: 'MAT-003', code: 'DICC-ESP-01', name: 'Diccionario Lengua Española RAE (Ilustrado)', category: 'Lenguaje / Idiomas', total: 20, available: 20, borrowed: 0 },
         { id: 'MAT-004', code: 'CUEN-INF-01', name: 'Set Cuentos Ilustrados Chilenos (Lectura Corta)', category: 'Lectura Rápida', total: 10, available: 10, borrowed: 0 }
       ];
 
@@ -5858,60 +5858,102 @@ async function ensureCraTablesExist() {
 }
 ensureCraTablesExist();
 
+function formatCraDateStr(val: any): string {
+  if (!val) return '';
+  if (val instanceof Date) return val.toISOString().split('T')[0];
+  return String(val).split('T')[0];
+}
+
+function enrichCraLoan(l: any) {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayMs = new Date(`${todayStr}T00:00:00Z`).getTime();
+  const dueStr = formatCraDateStr(l.due_date) || todayStr;
+  const dueMs = new Date(`${dueStr}T00:00:00Z`).getTime();
+  const diffDays = Math.round((dueMs - todayMs) / (1000 * 60 * 60 * 24));
+  const overdue_days = diffDays < 0 ? Math.abs(diffDays) : 0;
+  const days_remaining = diffDays >= 0 ? diffDays : 0;
+
+  let current_status = 'Activo';
+  if (l.status === 'Devuelto') {
+    current_status = 'Devuelto';
+  } else if (overdue_days > 7) {
+    current_status = 'Atraso Crítico';
+  } else if (overdue_days > 0) {
+    current_status = 'Atrasado';
+  } else if (days_remaining === 0) {
+    current_status = 'Vence Hoy';
+  } else if (days_remaining <= 3) {
+    current_status = 'Vence Pronto';
+  }
+
+  return {
+    ...l,
+    loan_date: formatCraDateStr(l.loan_date),
+    due_date: dueStr,
+    return_date: l.return_date ? formatCraDateStr(l.return_date) : null,
+    overdue_days,
+    days_remaining,
+    current_status
+  };
+}
+
 // DASHBOARD KPI Y ALERTAS BIBLIOTECA CRA
 router.get('/library/dashboard', authMiddleware, checkMatrixPermission('library'), async (req: Request, res: Response) => {
   try {
-    const booksRes = await query('SELECT SUM(total_copies) as total_exemplars, SUM(available_copies) as available, SUM(borrowed_copies) as borrowed, COUNT(*) as unique_titles FROM cra_books');
-    const loansRes = await query(`
-      SELECT 
-        COUNT(CASE WHEN status != 'Devuelto' THEN 1 END) as active_loans,
-        COUNT(CASE WHEN due_date = CURRENT_DATE AND status != 'Devuelto' THEN 1 END) as due_today,
-        COUNT(CASE WHEN due_date > CURRENT_DATE AND due_date <= CURRENT_DATE + INTERVAL '3 days' AND status != 'Devuelto' THEN 1 END) as due_soon,
-        COUNT(CASE WHEN due_date > CURRENT_DATE + INTERVAL '3 days' AND due_date <= CURRENT_DATE + INTERVAL '7 days' AND status != 'Devuelto' THEN 1 END) as due_in_week,
-        COUNT(CASE WHEN due_date < CURRENT_DATE AND CURRENT_DATE - due_date <= 7 AND status != 'Devuelto' THEN 1 END) as overdue_normal,
-        COUNT(CASE WHEN due_date < CURRENT_DATE AND CURRENT_DATE - due_date > 7 AND status != 'Devuelto' THEN 1 END) as overdue_critical,
-        COUNT(DISTINCT CASE WHEN status != 'Devuelto' AND due_date < CURRENT_DATE THEN student_name END) as students_with_debt
-      FROM cra_loans
-    `);
-
+    const booksRes = await query('SELECT * FROM cra_books');
+    const allLoansRes = await query('SELECT * FROM cra_loans ORDER BY created_at DESC');
     const dailyMatRes = await query("SELECT COUNT(*) as pending_daily FROM cra_daily_loans WHERE status = 'Pendiente'");
 
-    const stats = booksRes.rows[0] || {};
-    const loanStats = loansRes.rows[0] || {};
+    const enrichedLoans = (allLoansRes.rows || []).map(enrichCraLoan);
+    const activeLoansList = enrichedLoans.filter((l: any) => l.status !== 'Devuelto');
+
+    const totalTitles = (booksRes.rows || []).length;
+    const totalExemplars = (booksRes.rows || []).reduce((acc: number, b: any) => acc + (parseInt(b.total_copies || '0', 10) || 0), 0);
+    const borrowedExemplars = activeLoansList.length;
+    const availableExemplars = Math.max(0, totalExemplars - borrowedExemplars);
+
+    const dueToday = activeLoansList.filter((l: any) => l.days_remaining === 0 && l.overdue_days === 0).length;
+    const dueSoon = activeLoansList.filter((l: any) => l.days_remaining > 0 && l.days_remaining <= 3).length;
+    const dueInWeek = activeLoansList.filter((l: any) => l.days_remaining > 3 && l.days_remaining <= 7).length;
+    const overdueNormal = activeLoansList.filter((l: any) => l.overdue_days > 0 && l.overdue_days <= 7).length;
+    const overdueCritical = activeLoansList.filter((l: any) => l.overdue_days > 7).length;
+    const studentsWithDebt = new Set(
+      activeLoansList.filter((l: any) => l.overdue_days > 0).map((l: any) => l.student_name)
+    ).size;
+
+    const priorityOrder = (l: any) => {
+      if (l.overdue_days > 7) return 1;
+      if (l.overdue_days > 0) return 2;
+      if (l.days_remaining === 0) return 3;
+      if (l.days_remaining <= 3) return 4;
+      return 5;
+    };
+
+    const priorityAlerts = [...activeLoansList]
+      .sort((a: any, b: any) => {
+        const pa = priorityOrder(a);
+        const pb = priorityOrder(b);
+        if (pa !== pb) return pa - pb;
+        return String(a.due_date).localeCompare(String(b.due_date));
+      })
+      .slice(0, 50);
+
     const dailyStats = dailyMatRes.rows[0] || {};
 
-    // Obtener Alertas Prioritarias ordenadas por gravedad
-    const alertsRes = await query(`
-      SELECT id, student_name, course_name, teacher_name, book_title, copy_code, due_date, status,
-             (CURRENT_DATE - due_date) as overdue_days,
-             (due_date - CURRENT_DATE) as days_remaining
-      FROM cra_loans
-      WHERE status != 'Devuelto'
-      ORDER BY 
-        CASE 
-          WHEN due_date < CURRENT_DATE AND CURRENT_DATE - due_date > 7 THEN 1
-          WHEN due_date < CURRENT_DATE THEN 2
-          WHEN due_date = CURRENT_DATE THEN 3
-          WHEN due_date > CURRENT_DATE AND due_date <= CURRENT_DATE + INTERVAL '3 days' THEN 4
-          ELSE 5
-        END, due_date ASC
-      LIMIT 20
-    `);
-
     res.json({
-      totalTitles: parseInt(stats.unique_titles || '0', 10),
-      totalExemplars: parseInt(stats.total_exemplars || '0', 10),
-      availableExemplars: parseInt(stats.available || '0', 10),
-      borrowedExemplars: parseInt(stats.borrowed || '0', 10),
-      activeLoans: parseInt(loanStats.active_loans || '0', 10),
-      dueToday: parseInt(loanStats.due_today || '0', 10),
-      dueSoon: parseInt(loanStats.due_soon || '0', 10),
-      dueInWeek: parseInt(loanStats.due_in_week || '0', 10),
-      overdueNormal: parseInt(loanStats.overdue_normal || '0', 10),
-      overdueCritical: parseInt(loanStats.overdue_critical || '0', 10),
+      totalTitles,
+      totalExemplars,
+      availableExemplars,
+      borrowedExemplars,
+      activeLoans: activeLoansList.length,
+      dueToday,
+      dueSoon,
+      dueInWeek,
+      overdueNormal,
+      overdueCritical,
       pendingDailyMaterials: parseInt(dailyStats.pending_daily || '0', 10),
-      studentsWithDebt: parseInt(loanStats.students_with_debt || '0', 10),
-      priorityAlerts: alertsRes.rows
+      studentsWithDebt,
+      priorityAlerts
     });
   } catch (err) {
     console.error('Error al obtener dashboard de Biblioteca CRA:', err);
@@ -5923,28 +5965,48 @@ router.get('/library/dashboard', authMiddleware, checkMatrixPermission('library'
 router.get('/library/books', authMiddleware, checkMatrixPermission('library'), async (req: Request, res: Response) => {
   const { search, category, level, isReadingPlan } = req.query;
   try {
-    let sql = 'SELECT * FROM cra_books WHERE 1=1';
-    const params: any[] = [];
+    const booksRes = await query('SELECT * FROM cra_books ORDER BY title ASC');
+    const activeLoansRes = await query("SELECT book_id, student_name, course_name, copy_code, due_date FROM cra_loans WHERE status != 'Devuelto'");
+    const activeByBook: Record<string, any[]> = {};
+    (activeLoansRes.rows || []).forEach((l: any) => {
+      if (!activeByBook[l.book_id]) activeByBook[l.book_id] = [];
+      activeByBook[l.book_id].push(l);
+    });
+
+    let rows = (booksRes.rows || []).map((b: any) => {
+      const total = parseInt(b.total_copies || '1', 10);
+      const activeForBook = activeByBook[b.id] || [];
+      const borrowed = activeForBook.length;
+      const available = Math.max(0, total - borrowed);
+      return {
+        ...b,
+        total_copies: total,
+        available_copies: available,
+        borrowed_copies: borrowed,
+        active_borrowers: activeForBook
+      };
+    });
 
     if (search) {
-      params.push(`%${search}%`);
-      sql += ` AND (title ILIKE $${params.length} OR author ILIKE $${params.length} OR biblio_code ILIKE $${params.length})`;
+      const q = String(search).toLowerCase().trim();
+      rows = rows.filter((b: any) =>
+        String(b.title || '').toLowerCase().includes(q) ||
+        String(b.author || '').toLowerCase().includes(q) ||
+        String(b.biblio_code || '').toLowerCase().includes(q)
+      );
     }
     if (category && category !== 'Todos') {
-      params.push(category);
-      sql += ` AND category = $${params.length}`;
+      rows = rows.filter((b: any) => b.category === category);
     }
     if (level && level !== 'Todos') {
-      params.push(`%${level}%`);
-      sql += ` AND level_suggested ILIKE $${params.length}`;
+      const lv = String(level).toLowerCase();
+      rows = rows.filter((b: any) => String(b.level_suggested || '').toLowerCase().includes(lv));
     }
     if (isReadingPlan === 'true') {
-      sql += ' AND is_reading_plan = TRUE';
+      rows = rows.filter((b: any) => Boolean(b.is_reading_plan));
     }
 
-    sql += ' ORDER BY title ASC';
-    const booksRes = await query(sql, params);
-    res.json(booksRes.rows);
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: 'Error al consultar catálogo de libros.' });
   }
@@ -5985,11 +6047,52 @@ router.post('/library/books', authMiddleware, checkRoles(['Admin', 'Director', '
   }
 });
 
-// CONSULTAR EJEMPLARES DE UN LIBRO
+// CONSULTAR EJEMPLARES DE UN LIBRO (CON ESTUDIANTE ASIGNADO SI ESTÁ PRESTADO)
 router.get('/library/books/:id/copies', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const result = await query('SELECT * FROM cra_book_copies WHERE book_id = $1 ORDER BY copy_code ASC', [req.params.id]);
-    res.json(result.rows);
+    const bookId = req.params.id;
+    const bookRes = await query('SELECT * FROM cra_books WHERE id = $1', [bookId]);
+    const copiesRes = await query('SELECT * FROM cra_book_copies WHERE book_id = $1 ORDER BY copy_code ASC', [bookId]);
+    const activeLoansRes = await query("SELECT * FROM cra_loans WHERE book_id = $1 AND status != 'Devuelto'", [bookId]);
+
+    const activeByCopyCode: Record<string, any> = {};
+    (activeLoansRes.rows || []).forEach((l: any) => {
+      if (l.copy_code) activeByCopyCode[l.copy_code] = enrichCraLoan(l);
+      if (l.copy_id) activeByCopyCode[l.copy_id] = enrichCraLoan(l);
+    });
+
+    let copies = copiesRes.rows || [];
+    if (bookRes.rows.length > 0) {
+      const b = bookRes.rows[0];
+      const total = parseInt(b.total_copies || '5', 10);
+      const existingCodes = new Set(copies.map((c: any) => c.copy_code));
+      for (let i = 1; i <= total; i++) {
+        const code = `${b.biblio_code}-${String(i).padStart(2, '0')}`;
+        if (!existingCodes.has(code)) {
+          copies.push({
+            id: `CPY-${b.biblio_code}-${i}`,
+            book_id: b.id,
+            copy_code: code,
+            status: 'Disponible'
+          });
+        }
+      }
+    }
+
+    const enrichedCopies = copies.map((c: any) => {
+      const activeLoan = activeByCopyCode[c.copy_code] || activeByCopyCode[c.id] || null;
+      return {
+        ...c,
+        status: activeLoan ? 'Prestado' : (c.status === 'Prestado' ? 'Disponible' : c.status),
+        student_name: activeLoan ? activeLoan.student_name : null,
+        course_name: activeLoan ? activeLoan.course_name : null,
+        loan_date: activeLoan ? activeLoan.loan_date : null,
+        due_date: activeLoan ? activeLoan.due_date : null,
+        loan_id: activeLoan ? activeLoan.id : null
+      };
+    });
+
+    res.json(enrichedCopies);
   } catch (err) {
     res.status(500).json({ error: 'Error al consultar ejemplares.' });
   }
@@ -5997,17 +6100,15 @@ router.get('/library/books/:id/copies', authMiddleware, async (req: Request, res
 
 // PLAN DE LECTURA COMPLEMENTARIA DE 1° BÁSICO A 4° MEDIO
 router.get('/library/reading-plan', authMiddleware, async (req: Request, res: Response) => {
-  const { level, year } = req.query;
+  const { level } = req.query;
   try {
-    let sql = 'SELECT * FROM cra_books WHERE is_reading_plan = TRUE';
-    const params: any[] = [];
+    const booksRes = await query('SELECT * FROM cra_books WHERE is_reading_plan = TRUE ORDER BY level_suggested ASC, title ASC');
+    let rows = booksRes.rows || [];
     if (level && level !== 'Todos') {
-      params.push(`%${level}%`);
-      sql += ` AND level_suggested ILIKE $${params.length}`;
+      const lv = String(level).toLowerCase();
+      rows = rows.filter((b: any) => String(b.level_suggested || '').toLowerCase().includes(lv));
     }
-    sql += ' ORDER BY level_suggested ASC, title ASC';
-    const result = await query(sql, params);
-    res.json(result.rows);
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: 'Error al consultar Plan de Lectura.' });
   }
@@ -6017,38 +6118,38 @@ router.get('/library/reading-plan', authMiddleware, async (req: Request, res: Re
 router.get('/library/students/check-debt/:studentId', authMiddleware, async (req: Request, res: Response) => {
   const { studentId } = req.params;
   try {
-    const studentRes = await query('SELECT id, full_name, desc_grado, status FROM students WHERE id = $1 OR run = $1 LIMIT 1', [studentId]);
-    if (studentRes.rows.length === 0) {
-      return res.json({ hasDebt: false, pendingLoans: [], pendingDaily: [], message: 'Estudiante no registrado o habilitado.' });
-    }
-    const s = studentRes.rows[0];
+    const studentRes = await query('SELECT id, full_name, desc_grado, status FROM students WHERE id = $1 OR run = $1 OR full_name = $1 LIMIT 1', [studentId]);
+    const s = studentRes.rows.length > 0 ? studentRes.rows[0] : { id: studentId, full_name: studentId, desc_grado: '' };
 
-    const pendingLoans = await query(
-      `SELECT *, (CURRENT_DATE - due_date) as overdue_days FROM cra_loans 
-       WHERE (student_id = $1 OR student_name ILIKE $2) AND status != 'Devuelto'`,
-      [s.id, `%${s.full_name}%`]
+    const allActiveLoansRes = await query("SELECT * FROM cra_loans WHERE status != 'Devuelto'");
+    const stNameUpper = String(s.full_name || '').trim().toUpperCase();
+    const pendingLoansRows = (allActiveLoansRes.rows || [])
+      .filter((l: any) =>
+        (s.id && l.student_id === s.id) ||
+        (stNameUpper && String(l.student_name || '').trim().toUpperCase().includes(stNameUpper))
+      )
+      .map(enrichCraLoan);
+
+    const allPendingDailyRes = await query("SELECT * FROM cra_daily_loans WHERE status = 'Pendiente'");
+    const pendingDailyRows = (allPendingDailyRes.rows || []).filter((d: any) =>
+      (s.id && d.student_id === s.id) ||
+      (stNameUpper && String(d.student_name || '').trim().toUpperCase().includes(stNameUpper))
     );
 
-    const pendingDaily = await query(
-      `SELECT * FROM cra_daily_loans 
-       WHERE (student_id = $1 OR student_name ILIKE $2) AND status = 'Pendiente'`,
-      [s.id, `%${s.full_name}%`]
-    );
-
-    const hasDebt = pendingLoans.rows.length > 0 || pendingDaily.rows.length > 0;
-    const isOverdue = pendingLoans.rows.some((l: any) => new Date(l.due_date) < new Date());
+    const hasDebt = pendingLoansRows.length > 0 || pendingDailyRows.length > 0;
+    const isOverdue = pendingLoansRows.some((l: any) => l.overdue_days > 0);
 
     res.json({
       hasDebt,
       isOverdue,
       studentName: s.full_name,
       courseName: s.desc_grado,
-      pendingLoansCount: pendingLoans.rows.length,
-      pendingLoans: pendingLoans.rows,
-      pendingDailyCount: pendingDaily.rows.length,
-      pendingDaily: pendingDaily.rows,
+      pendingLoansCount: pendingLoansRows.length,
+      pendingLoans: pendingLoansRows,
+      pendingDailyCount: pendingDailyRows.length,
+      pendingDaily: pendingDailyRows,
       message: hasDebt
-        ? (isOverdue ? `⚠️ ESTUDIANTE CON DEVOLUCIÓN ATRASADA. Tiene ${pendingLoans.rows.length} libro(s) pendiente(s).` : `🔴 ESTUDIANTE CON PRÉSTAMO ACTIVO. Se sugiere devolución antes de nuevo retiro.`)
+        ? (isOverdue ? `⚠️ ESTUDIANTE CON DEVOLUCIÓN ATRASADA. Tiene ${pendingLoansRows.length} libro(s) pendiente(s).` : `🔴 ESTUDIANTE CON PRÉSTAMO ACTIVO (${pendingLoansRows.length} libro(s)). Se sugiere devolución o ingrese motivo de excepción.`)
         : '🟢 ESTUDIANTE HABILITADO PARA PRÉSTAMO (Sin deudas).'
     });
   } catch (err) {
@@ -6075,33 +6176,55 @@ router.post('/library/loans', authMiddleware, checkRoles(['Admin', 'Director', '
     }
 
     // 2. Verificar Deuda del Estudiante (Regla de Bloqueo)
-    const checkDebt = await query(
-      `SELECT * FROM cra_loans WHERE student_name ILIKE $1 AND status != 'Devuelto' AND due_date < CURRENT_DATE`,
-      [`%${studentName}%`]
-    );
+    const activeLoansRes = await query("SELECT * FROM cra_loans WHERE status != 'Devuelto'");
+    const stUpper = String(studentName).trim().toUpperCase();
+    const studentOverdueLoans = (activeLoansRes.rows || [])
+      .map(enrichCraLoan)
+      .filter((l: any) => String(l.student_name || '').trim().toUpperCase().includes(stUpper) && l.overdue_days > 0);
 
-    if (checkDebt.rows.length > 0 && !overrideReason) {
+    if (studentOverdueLoans.length > 0 && !overrideReason) {
       return res.status(400).json({
-        error: `ESTUDIANTE CON DEVOLUCIÓN PENDIENTES. ${studentName} mantiene ${checkDebt.rows.length} libro(s) atrasado(s). Para autorizar excepcionalmente, proporcione un motivo de excepción.`
+        error: `ESTUDIANTE CON DEVOLUCIÓN PENDIENTE. ${studentName} mantiene ${studentOverdueLoans.length} libro(s) atrasado(s). Para autorizar excepcionalmente, proporcione un motivo de excepción.`
       });
     }
 
-    // 3. Asignar Ejemplar Físico Disponible
-    let copyObj: any = null;
-    if (copyCode) {
-      const copyRes = await query('SELECT * FROM cra_book_copies WHERE book_id = $1 AND (copy_code = $2 OR id = $2) AND status = \'Disponible\' LIMIT 1', [book.id, copyCode]);
-      if (copyRes.rows.length > 0) copyObj = copyRes.rows[0];
+    // 3. Asignar Ejemplar Físico Disponible (evitando códigos ya prestados activamente)
+    const usedCodes = new Set(
+      (activeLoansRes.rows || [])
+        .filter((l: any) => l.book_id === book.id)
+        .map((l: any) => l.copy_code)
+    );
+
+    let assignedCopyCode = copyCode || '';
+    let assignedCopyId = '';
+
+    if (!assignedCopyCode) {
+      const totalCopies = parseInt(book.total_copies || '10', 10);
+      for (let i = 1; i <= totalCopies; i++) {
+        const candidateCode = `${book.biblio_code}-${String(i).padStart(2, '0')}`;
+        if (!usedCodes.has(candidateCode)) {
+          assignedCopyCode = candidateCode;
+          assignedCopyId = `CPY-${book.biblio_code}-${i}`;
+          break;
+        }
+      }
     }
-    if (!copyObj) {
-      const availCopyRes = await query('SELECT * FROM cra_book_copies WHERE book_id = $1 AND status = \'Disponible\' LIMIT 1', [book.id]);
-      if (availCopyRes.rows.length > 0) copyObj = availCopyRes.rows[0];
+    if (!assignedCopyCode) {
+      assignedCopyCode = `${book.biblio_code}-01`;
+      assignedCopyId = `CPY-${book.biblio_code}-1`;
     }
 
-    const assignedCopyCode = copyObj ? copyObj.copy_code : `${book.biblio_code}-01`;
-    const assignedCopyId = copyObj ? copyObj.id : `CPY-${book.biblio_code}-1`;
+    // Asegurar que el ejemplar exista en cra_book_copies
+    await query(
+      `INSERT INTO cra_book_copies (id, book_id, copy_code, status)
+       VALUES ($1, $2, $3, 'Prestado')
+       ON CONFLICT (id) DO UPDATE SET status = 'Prestado'`,
+      [assignedCopyId, book.id, assignedCopyCode]
+    ).catch(() => {});
 
     // 4. Calcular Fecha de Devolución (Estándar 21 Días = 3 Semanas)
     const today = new Date();
+    const todayDateStr = today.toISOString().split('T')[0];
     const defaultDueDate = new Date(today.getTime() + 21 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const finalDueDate = customDueDate || defaultDueDate;
 
@@ -6110,15 +6233,15 @@ router.post('/library/loans', authMiddleware, checkRoles(['Admin', 'Director', '
 
     await query(
       `INSERT INTO cra_loans (id, book_id, copy_id, student_id, student_name, course_name, teacher_name, book_title, book_author, copy_code, loan_date, due_date, status, registered_by, override_reason, observations)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_DATE, $11, 'Activo', $12, $13, $14)`,
-      [loanId, book.id, assignedCopyId, studentId || '', studentName, courseName || 'Sin Curso', teacherName || 'Sin Asignar', book.title, book.author, assignedCopyCode, finalDueDate, userRoleName, overrideReason || '', observations || '']
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'Activo', $13, $14, $15)`,
+      [loanId, book.id, assignedCopyId, studentId || '', studentName, courseName || 'Sin Curso', teacherName || 'Sin Asignar', book.title, book.author, assignedCopyCode, todayDateStr, finalDueDate, userRoleName, overrideReason || '', observations || '']
     );
 
-    // 5. Actualizar Inventario
-    await query('UPDATE cra_books SET available_copies = GREATEST(0, available_copies - 1), borrowed_copies = borrowed_copies + 1 WHERE id = $1', [book.id]);
-    if (copyObj) {
-      await query('UPDATE cra_book_copies SET status = \'Prestado\' WHERE id = $1', [copyObj.id]);
-    }
+    // 5. Actualizar Inventario sincronizado con préstamos reales
+    const newBorrowedCount = usedCodes.size + 1;
+    const totalCount = parseInt(book.total_copies || '1', 10);
+    const newAvailableCount = Math.max(0, totalCount - newBorrowedCount);
+    await query('UPDATE cra_books SET available_copies = $1, borrowed_copies = $2 WHERE id = $3', [newAvailableCount, newBorrowedCount, book.id]);
 
     if (overrideReason) {
       await logAudit(req, 'OVERRIDE_LIBRARY_LOAN', `Excepción de préstamo autorizada para ${studentName} con deuda por motivo: ${overrideReason}`);
@@ -6137,44 +6260,33 @@ router.post('/library/loans', authMiddleware, checkRoles(['Admin', 'Director', '
 router.get('/library/loans', authMiddleware, checkMatrixPermission('library'), async (req: Request, res: Response) => {
   const { search, status, course } = req.query;
   try {
-    let sql = `
-      SELECT l.*, 
-        (CURRENT_DATE - l.due_date) as overdue_days,
-        (l.due_date - CURRENT_DATE) as days_remaining,
-        CASE 
-          WHEN l.status = 'Devuelto' THEN 'Devuelto'
-          WHEN l.due_date < CURRENT_DATE AND CURRENT_DATE - l.due_date > 7 THEN 'Atraso Crítico'
-          WHEN l.due_date < CURRENT_DATE THEN 'Atrasado'
-          WHEN l.due_date = CURRENT_DATE THEN 'Vence Hoy'
-          WHEN l.due_date > CURRENT_DATE AND l.due_date <= CURRENT_DATE + INTERVAL '3 days' THEN 'Vence Pronto'
-          ELSE 'Activo'
-        END as current_status
-      FROM cra_loans l WHERE 1=1
-    `;
-    const params: any[] = [];
+    const result = await query('SELECT * FROM cra_loans ORDER BY created_at DESC');
+    let rows = (result.rows || []).map(enrichCraLoan);
 
     if (search) {
-      params.push(`%${search}%`);
-      sql += ` AND (l.student_name ILIKE $${params.length} OR l.book_title ILIKE $${params.length} OR l.copy_code ILIKE $${params.length})`;
+      const q = String(search).toLowerCase().trim();
+      rows = rows.filter((l: any) =>
+        String(l.student_name || '').toLowerCase().includes(q) ||
+        String(l.book_title || '').toLowerCase().includes(q) ||
+        String(l.copy_code || '').toLowerCase().includes(q) ||
+        String(l.course_name || '').toLowerCase().includes(q)
+      );
     }
     if (status && status !== 'Todos') {
-      if (status === 'Activos') sql += " AND l.status != 'Devuelto'";
-      else if (status === 'Atrasados') sql += " AND l.status != 'Devuelto' AND l.due_date < CURRENT_DATE";
-      else if (status === 'VenceHoy') sql += " AND l.status != 'Devuelto' AND l.due_date = CURRENT_DATE";
-      else {
-        params.push(status);
-        sql += ` AND l.status = $${params.length}`;
-      }
+      if (status === 'Activos') rows = rows.filter((l: any) => l.status !== 'Devuelto');
+      else if (status === 'Atrasados') rows = rows.filter((l: any) => l.status !== 'Devuelto' && l.overdue_days > 0);
+      else if (status === 'VenceHoy') rows = rows.filter((l: any) => l.status !== 'Devuelto' && l.days_remaining === 0 && l.overdue_days === 0);
+      else if (status === 'Devueltos' || status === 'Devuelto') rows = rows.filter((l: any) => l.status === 'Devuelto');
+      else rows = rows.filter((l: any) => l.status === status);
     }
     if (course && course !== 'Todos') {
-      params.push(`%${course}%`);
-      sql += ` AND l.course_name ILIKE $${params.length}`;
+      const c = String(course).toLowerCase().trim();
+      rows = rows.filter((l: any) => String(l.course_name || '').toLowerCase().includes(c));
     }
 
-    sql += ' ORDER BY l.created_at DESC';
-    const result = await query(sql, params);
-    res.json(result.rows);
+    res.json(rows);
   } catch (err) {
+    console.error('Error al consultar lista de préstamos CRA:', err);
     res.status(500).json({ error: 'Error al consultar lista de préstamos.' });
   }
 });
@@ -6194,19 +6306,25 @@ router.post('/library/loans/:id/return', authMiddleware, checkRoles(['Admin', 'D
     }
 
     const userName = (req as any).user?.name || 'Encargado CRA';
+    const todayDateStr = new Date().toISOString().split('T')[0];
 
     await query(
       `UPDATE cra_loans 
-       SET return_date = CURRENT_DATE, status = 'Devuelto', returned_by = $1, return_condition = $2, observations = $3 
-       WHERE id = $4`,
-      [userName, returnCondition || 'Devuelto Correctamente', observations || '', id]
+       SET return_date = $1, status = 'Devuelto', returned_by = $2, return_condition = $3, observations = $4 
+       WHERE id = $5`,
+      [todayDateStr, userName, returnCondition || 'Devuelto Correctamente', observations || '', id]
     );
 
-    // Actualizar disponibilidad de inventario
-    await query('UPDATE cra_books SET available_copies = available_copies + 1, borrowed_copies = GREATEST(0, borrowed_copies - 1) WHERE id = $1', [loan.book_id]);
-    if (loan.copy_id) {
-      const copyStatus = returnCondition === 'Dañado' ? 'Dañado' : (returnCondition === 'Perdido' ? 'Extraviado' : 'Disponible');
-      await query('UPDATE cra_book_copies SET status = $1 WHERE id = $2', [copyStatus, loan.copy_id]);
+    // Actualizar disponibilidad de inventario según préstamos activos restantes
+    const remRes = await query("SELECT COUNT(*) as cnt FROM cra_loans WHERE book_id = $1 AND status != 'Devuelto'", [loan.book_id]);
+    const remBorrowed = parseInt(remRes.rows[0]?.cnt || '0', 10);
+    const bkRes = await query('SELECT total_copies FROM cra_books WHERE id = $1', [loan.book_id]);
+    const totalCopies = parseInt(bkRes.rows[0]?.total_copies || '1', 10);
+    await query('UPDATE cra_books SET available_copies = $1, borrowed_copies = $2 WHERE id = $3', [Math.max(0, totalCopies - remBorrowed), remBorrowed, loan.book_id]);
+
+    if (loan.copy_id || loan.copy_code) {
+      const copyStatus = returnCondition === 'Dañado' ? 'Dañado' : (returnCondition === 'Perdido' || returnCondition === 'Extraviado' ? 'Extraviado' : 'Disponible');
+      await query('UPDATE cra_book_copies SET status = $1 WHERE id = $2 OR copy_code = $3', [copyStatus, loan.copy_id || '', loan.copy_code || '']).catch(() => {});
     }
 
     await logAudit(req, 'RETURN_CRA_LOAN', `Devolución de libro "${loan.book_title}" realizada por estudiante ${loan.student_name}`);
@@ -6244,12 +6362,13 @@ router.post('/library/daily-materials/loan', authMiddleware, checkRoles(['Admin'
 
     const loanId = `DLOAN-${Date.now()}`;
     const nowTime = new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+    const todayDateStr = new Date().toISOString().split('T')[0];
     const userName = (req as any).user?.name || 'Encargado CRA';
 
     await query(
       `INSERT INTO cra_daily_loans (id, material_id, material_name, material_code, student_name, course_name, loan_date, time_out, status, registered_by, observations)
-       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_DATE, $7, 'Pendiente', $8, $9)`,
-      [loanId, mat.id, mat.name, mat.material_code, studentName, courseName || 'Sin Curso', nowTime, userName, observations || '']
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente', $9, $10)`,
+      [loanId, mat.id, mat.name, mat.material_code, studentName, courseName || 'Sin Curso', todayDateStr, nowTime, userName, observations || '']
     );
 
     await query('UPDATE cra_daily_materials SET available_qty = GREATEST(0, available_qty - 1), borrowed_qty = borrowed_qty + 1 WHERE id = $1', [mat.id]);
@@ -6288,18 +6407,14 @@ router.post('/library/daily-materials/return/:id', authMiddleware, checkRoles(['
 // CENTRO DE COMUNICACIONES PARA ENVIAR Y PREVISUALIZAR CORREOS A DOCENTES
 router.get('/library/communications/pending', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const loansRes = await query(`
-      SELECT l.*, (CURRENT_DATE - l.due_date) as overdue_days
-      FROM cra_loans l 
-      WHERE l.status != 'Devuelto' AND l.due_date <= CURRENT_DATE + INTERVAL '3 days'
-      ORDER BY l.teacher_name ASC, l.due_date ASC
-    `);
+    const loansRes = await query("SELECT * FROM cra_loans WHERE status != 'Devuelto' ORDER BY teacher_name ASC");
+    const enriched = (loansRes.rows || []).map(enrichCraLoan);
 
     const grouped: Record<string, { teacherName: string; teacherEmail: string; cases: any[] }> = {};
 
-    loansRes.rows.forEach((l: any) => {
+    enriched.forEach((l: any) => {
       const teacher = l.teacher_name || 'Docente General';
-      const email = `${teacher.toLowerCase().replace(/\s+/g, '.')}@eduvallediguillin.gob.cl`;
+      const email = `${teacher.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '.')}@eduvallediguillin.gob.cl`;
       if (!grouped[teacher]) {
         grouped[teacher] = { teacherName: teacher, teacherEmail: email, cases: [] };
       }
@@ -6356,24 +6471,29 @@ router.post('/library/communications/send', authMiddleware, checkRoles(['Admin',
 router.get('/library/withdrawal-check/:studentId', authMiddleware, async (req: Request, res: Response) => {
   const { studentId } = req.params;
   try {
-    const studentRes = await query('SELECT id, full_name, run, desc_grado FROM students WHERE id = $1 OR run = $1 LIMIT 1', [studentId]);
+    const q = String(studentId).trim();
+    const studentRes = await query('SELECT id, full_name, run, desc_grado FROM students WHERE id = $1 OR run = $1 OR full_name ILIKE $2 LIMIT 1', [q, `%${q}%`]);
     if (studentRes.rows.length === 0) {
       return res.status(404).json({ error: 'Estudiante no encontrado.' });
     }
     const student = studentRes.rows[0];
 
-    const activeLoans = await query(`
-      SELECT *, (CURRENT_DATE - due_date) as overdue_days 
-      FROM cra_loans 
-      WHERE (student_id = $1 OR student_name ILIKE $2) AND status != 'Devuelto'
-    `, [student.id, `%${student.full_name}%`]);
+    const allActiveLoansRes = await query("SELECT * FROM cra_loans WHERE status != 'Devuelto'");
+    const stNameUpper = String(student.full_name || '').trim().toUpperCase();
+    const activeLoans = (allActiveLoansRes.rows || [])
+      .filter((l: any) =>
+        l.student_id === student.id ||
+        (stNameUpper && String(l.student_name || '').trim().toUpperCase().includes(stNameUpper))
+      )
+      .map(enrichCraLoan);
 
-    const activeDaily = await query(`
-      SELECT * FROM cra_daily_loans 
-      WHERE (student_id = $1 OR student_name ILIKE $2) AND status = 'Pendiente'
-    `, [student.id, `%${student.full_name}%`]);
+    const allActiveDailyRes = await query("SELECT * FROM cra_daily_loans WHERE status = 'Pendiente'");
+    const activeDaily = (allActiveDailyRes.rows || []).filter((d: any) =>
+      d.student_id === student.id ||
+      (stNameUpper && String(d.student_name || '').trim().toUpperCase().includes(stNameUpper))
+    );
 
-    const hasDebt = activeLoans.rows.length > 0 || activeDaily.rows.length > 0;
+    const hasDebt = activeLoans.length > 0 || activeDaily.length > 0;
 
     res.json({
       studentId: student.id,
@@ -6382,10 +6502,10 @@ router.get('/library/withdrawal-check/:studentId', authMiddleware, async (req: R
       courseName: student.desc_grado,
       hasDebt,
       canWithdraw: !hasDebt,
-      pendingBooksCount: activeLoans.rows.length,
-      pendingBooks: activeLoans.rows,
-      pendingDailyCount: activeDaily.rows.length,
-      pendingDaily: activeDaily.rows
+      pendingBooksCount: activeLoans.length,
+      pendingBooks: activeLoans,
+      pendingDailyCount: activeDaily.length,
+      pendingDaily: activeDaily
     });
   } catch (err) {
     res.status(500).json({ error: 'Error al realizar verificación de retiro de estudiante.' });
