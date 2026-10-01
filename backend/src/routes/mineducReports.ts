@@ -72,6 +72,12 @@ export async function importScratchReportsIfAvailable() {
     const scratchPath = 'c:\\proyectos\\integracion-2026\\scratch\\informes_export_completo.json';
     if (!fs.existsSync(scratchPath)) return;
 
+    const countRes = await query('SELECT COUNT(*) as total FROM mineduc_reports').catch(() => ({ rows: [{ total: 0 }] }));
+    const existingCount = parseInt(String(countRes.rows?.[0]?.total || '0'), 10);
+    if (existingCount >= 140) {
+      return;
+    }
+
     const fileContent = fs.readFileSync(scratchPath, 'utf-8');
     const parsed = JSON.parse(fileContent);
     const reports = parsed.reports || [];

@@ -6,6 +6,7 @@ import { getStudentCourse, isStudentRetired, sortCoursesList } from '../utils/co
 import { useAuth } from '../context/AuthContext';
 import Swal from 'sweetalert2';
 import { StudentDocumentChecklistModal } from './StudentDocumentChecklistModal';
+import { getModuleSubTabFromUrl, syncModuleSubUrl } from '../utils/urlRouter';
 
 interface StudentWindowProps {
   student: any;
@@ -13,6 +14,7 @@ interface StudentWindowProps {
   onSave: (updatedStudent: any) => void;
   onPrint?: (student: any) => void;
   token: string;
+  readOnly?: boolean;
 }
 
 function formatDateForInput(dateVal: any): string {
@@ -43,9 +45,27 @@ const cleanEnrollmentVal = (val: any) => {
   return s;
 };
 
-export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, onSave, onPrint, token }) => {
+export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, onSave, onPrint, token, readOnly = false }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'personal' | 'guardian_main' | 'guardian_secondary' | 'parents_family' | 'health_sep'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'guardian_main' | 'guardian_secondary' | 'parents_family' | 'health_sep'>(() =>
+    getModuleSubTabFromUrl('students', 'personal') as any
+  );
+
+  React.useEffect(() => {
+    syncModuleSubUrl('students', activeTab);
+  }, [activeTab]);
+
+  React.useEffect(() => {
+    const handlePop = () => {
+      const sub = getModuleSubTabFromUrl('students', 'personal') as any;
+      setActiveTab(sub);
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => {
+      window.removeEventListener('popstate', handlePop);
+      syncModuleSubUrl('students', null, true);
+    };
+  }, []);
   const [formData, setFormData] = useState<any>({
     ...student,
     has_complementary_insurance: student?.has_complementary_insurance ? 1 : 0,
@@ -346,6 +366,10 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
   };
 
   const handleSave = async () => {
+    if (readOnly) {
+      Swal.fire('Solo Vista', 'Tu perfil solo tiene acceso de consulta e impresión en esta ficha.', 'info');
+      return;
+    }
     try {
       const payload = {
         ...formData,
@@ -405,6 +429,11 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
               <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.65rem', borderRadius: '9999px', background: formData.is_retired ? '#ef4444' : '#10b981', color: '#ffffff', fontWeight: 700 }}>
                 {formData.is_retired ? 'RETIRADO' : 'MATRICULADO / VIGENTE'}
               </span>
+              {readOnly && (
+                <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.65rem', borderRadius: '9999px', background: '#fef3c7', color: '#92400e', fontWeight: 800 }}>
+                  👁️ MODO SOLO VISTA
+                </span>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.4rem', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '0.9rem', fontWeight: 700, background: 'rgba(255,255,255,0.18)', padding: '0.2rem 0.6rem', borderRadius: '6px' }}>
@@ -440,7 +469,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
               <ClipboardList size={13} color="#4f46e5" /> Checklist Documental
             </button>
 
-            {formData.is_retired ? (
+            {!readOnly && (formData.is_retired ? (
               <>
                 <button
                   type="button"
@@ -502,34 +531,36 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
               >
                 ⚠️ Retirar Estudiante
               </button>
-            )}
+            ))}
 
-            <button
-              onClick={() => {
-                Swal.fire({
-                  title: 'Cambiar de Curso',
-                  input: 'select',
-                  inputOptions: {
-                    '1° Medio A': '1° Medio A',
-                    '1° Medio B': '1° Medio B',
-                    '2° Medio A': '2° Medio A',
-                    '3° Medio TP Telecomunicaciones': '3° Medio TP Telecomunicaciones',
-                    '4° Medio TP Electricidad': '4° Medio TP Electricidad'
-                  },
-                  showCancelButton: true,
-                  confirmButtonText: 'Cambiar Curso'
-                }).then((res) => {
-                  if (res.isConfirmed && res.value) {
-                    setFormData((prev: any) => ({ ...prev, level_name: res.value }));
-                    Swal.fire('Cambiado', `Curso cambiado a ${res.value}`, 'success');
-                  }
-                });
-              }}
-              className="btn"
-              style={{ background: '#e0e7ff', color: '#3730a3', border: 'none', padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 700 }}
-            >
-              🔀 Cambiar de Curso
-            </button>
+            {!readOnly && (
+              <button
+                onClick={() => {
+                  Swal.fire({
+                    title: 'Cambiar de Curso',
+                    input: 'select',
+                    inputOptions: {
+                      '1° Medio A': '1° Medio A',
+                      '1° Medio B': '1° Medio B',
+                      '2° Medio A': '2° Medio A',
+                      '3° Medio TP Telecomunicaciones': '3° Medio TP Telecomunicaciones',
+                      '4° Medio TP Electricidad': '4° Medio TP Electricidad'
+                    },
+                    showCancelButton: true,
+                    confirmButtonText: 'Cambiar Curso'
+                  }).then((res) => {
+                    if (res.isConfirmed && res.value) {
+                      setFormData((prev: any) => ({ ...prev, level_name: res.value }));
+                      Swal.fire('Cambiado', `Curso cambiado a ${res.value}`, 'success');
+                    }
+                  });
+                }}
+                className="btn"
+                style={{ background: '#e0e7ff', color: '#3730a3', border: 'none', padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 700 }}
+              >
+                🔀 Cambiar de Curso
+              </button>
+            )}
 
             <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}>
               <X size={24} />
@@ -573,6 +604,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
 
         {/* Cuerpo del Formulario */}
         <div style={{ flex: 1, padding: '1.5rem', overflowY: 'auto' }}>
+          <fieldset disabled={readOnly} style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
           
           {/* SECCIÓN 1: DATOS PERSONALES DEL ESTUDIANTE */}
           {activeTab === 'personal' && (
@@ -1468,6 +1500,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
 
             </div>
           )}
+          </fieldset>
         </div>
 
         {/* MODAL SELECTOR DE HERMANOS DEL LICEO DESDE SUPABASE */}
@@ -1686,11 +1719,30 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
         )}
 
         {/* Footer con Botones */}
-        <div style={{ padding: '1rem 1.5rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-          <button onClick={onClose} className="btn" style={{ background: '#cbd5e1', color: '#1e293b' }}>Cancelar</button>
-          <button onClick={handleSave} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <CheckCircle size={16} /> Guardar Ficha Completa
-          </button>
+        <div style={{ padding: '1rem 1.5rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+          <div>
+            {readOnly && (
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#92400e', background: '#fef3c7', border: '1px solid #fde68a', padding: '0.35rem 0.75rem', borderRadius: '8px' }}>
+                👁️ Perfil en Modo Solo Vista: puedes consultar todas las pestañas e imprimir documentos, pero no modificar la ficha.
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button onClick={onClose} className="btn" style={{ background: '#cbd5e1', color: '#1e293b' }}>
+              {readOnly ? 'Cerrar Ficha' : 'Cancelar'}
+            </button>
+            {readOnly ? (
+              onPrint && (
+                <button onClick={() => onPrint(formData)} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#4f46e5' }}>
+                  🖨️ Imprimir Ficha Oficial
+                </button>
+              )
+            ) : (
+              <button onClick={handleSave} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <CheckCircle size={16} /> Guardar Ficha Completa
+              </button>
+            )}
+          </div>
         </div>
 
         {/* MODAL CHECKLIST DOCUMENTAL (RETIRO / MATRÍCULA) */}

@@ -28,7 +28,14 @@ if (isMysql) {
   }
   pgPool = new PgPool({
     connectionString,
-    ssl: connectionString.includes('supabase') ? { rejectUnauthorized: false } : false
+    ssl: connectionString.includes('supabase') ? { rejectUnauthorized: false } : false,
+    max: 15,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+    keepAlive: true
+  });
+  pgPool.on('error', (err) => {
+    console.warn('⚠️ Aviso de reconexión automática en pool PostgreSQL:', err.message);
   });
 }
 
@@ -65,30 +72,35 @@ const fallbackStore: {
   student_passes: []
 };
 
-// Cargar estado dinámicamente desde local_store.json si existe
-try {
-  const getStorePath = () => {
-    const p1 = path.join(process.cwd(), 'local_store.json');
-    if (fs.existsSync(p1)) return p1;
-    const p2 = path.join(process.cwd(), 'backend', 'local_store.json');
-    if (fs.existsSync(p2)) return p2;
-    const p3 = path.resolve(__dirname, '../local_store.json');
-    if (fs.existsSync(p3)) return p3;
-    return p1;
-  };
-  const storePath = getStorePath();
-  if (fs.existsSync(storePath)) {
-    const diskStore = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
-    if (Array.isArray(diskStore.users)) fallbackStore.users = diskStore.users;
-    // Por seguridad y política estricta de base de datos, los estudiantes NUNCA se cargan en fallback offline
-    fallbackStore.students = [];
-    if (Array.isArray(diskStore.courses)) fallbackStore.courses = diskStore.courses;
-    if (Array.isArray(diskStore.teacher_assignments)) fallbackStore.teacher_assignments = diskStore.teacher_assignments;
-    if (Array.isArray(diskStore.subjects)) fallbackStore.subjects = diskStore.subjects;
-  }
-} catch (_) {}
+let fallbackStoreLoaded = false;
+function ensureFallbackStoreLoaded() {
+  if (fallbackStoreLoaded) return;
+  fallbackStoreLoaded = true;
+  try {
+    const getStorePath = () => {
+      const p1 = path.join(process.cwd(), 'local_store.json');
+      if (fs.existsSync(p1)) return p1;
+      const p2 = path.join(process.cwd(), 'backend', 'local_store.json');
+      if (fs.existsSync(p2)) return p2;
+      const p3 = path.resolve(__dirname, '../local_store.json');
+      if (fs.existsSync(p3)) return p3;
+      return p1;
+    };
+    const storePath = getStorePath();
+    if (fs.existsSync(storePath)) {
+      const diskStore = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+      if (Array.isArray(diskStore.users)) fallbackStore.users = diskStore.users;
+      // Por seguridad y política estricta de base de datos, los estudiantes NUNCA se cargan en fallback offline
+      fallbackStore.students = [];
+      if (Array.isArray(diskStore.courses)) fallbackStore.courses = diskStore.courses;
+      if (Array.isArray(diskStore.teacher_assignments)) fallbackStore.teacher_assignments = diskStore.teacher_assignments;
+      if (Array.isArray(diskStore.subjects)) fallbackStore.subjects = diskStore.subjects;
+    }
+  } catch (_) {}
+}
 
 function executeFallbackQuery(text: string, params?: any[]): { rows: any[]; rowCount: number } {
+  ensureFallbackStoreLoaded();
   const upperSql = text.toUpperCase();
   const inputParams = params || [];
 

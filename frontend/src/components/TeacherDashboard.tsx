@@ -1,19 +1,45 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Home, BookOpen, Award, Link, LogOut, CheckSquare, User, ArrowRight, Clock, PenTool, Bell, MessageSquare } from 'lucide-react';
+import { Home, BookOpen, Award, Link, LogOut, CheckSquare, User, ArrowRight, Clock, PenTool, Bell, MessageSquare, Palette } from 'lucide-react';
 import Swal from 'sweetalert2';
-import { GradesSheet } from './GradesSheet';
-import { GradesOverview } from './GradesOverview';
-import { ObservationsModule } from './ObservationsModule';
-import { UserProfileModal } from './UserProfileModal';
 import { InstitutionalPlatformsSection } from './InstitutionalPlatformsSection';
-import { TeacherCoursesGrid } from './TeacherCoursesGrid';
 import { SubmitStatementModal, PendingStatementItem } from './SubmitStatementModal';
-import { CourseMessageModal } from './CourseMessageModal';
+import { TeacherTabId, getTeacherTabFromUrl, syncTeacherUrl } from '../utils/urlRouter';
+
+const GradesSheet = lazy(() => import('./GradesSheet').then(m => ({ default: m.GradesSheet })));
+const GradesOverview = lazy(() => import('./GradesOverview').then(m => ({ default: m.GradesOverview })));
+const ObservationsModule = lazy(() => import('./ObservationsModule').then(m => ({ default: m.ObservationsModule })));
+const UserProfileModal = lazy(() => import('./UserProfileModal').then(m => ({ default: m.UserProfileModal })));
+const TeacherCoursesGrid = lazy(() => import('./TeacherCoursesGrid').then(m => ({ default: m.TeacherCoursesGrid })));
+const CourseMessageModal = lazy(() => import('./CourseMessageModal').then(m => ({ default: m.CourseMessageModal })));
+
+const ModuleLoader: React.FC = () => (
+  <div style={{
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '3rem',
+    color: '#475569',
+    gap: '0.65rem',
+    fontWeight: 600,
+    fontSize: '0.9rem'
+  }}>
+    <div style={{
+      width: '24px',
+      height: '24px',
+      border: '3px solid #e2e8f0',
+      borderTopColor: '#4f46e5',
+      borderRadius: '50%',
+      animation: 'spin 0.65s linear infinite'
+    }} />
+    <span>Cargando módulo...</span>
+  </div>
+);
 
 export const TeacherDashboard: React.FC = () => {
-  const { user, logout, token, switchRole, isSuperAdmin, isImpersonating, restoreOriginalRole } = useAuth();
+  const { user, logout, token, switchRole, isSuperAdmin, isImpersonating, restoreOriginalRole, canCustomizeProfile } = useAuth();
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileModalTab, setProfileModalTab] = useState<'info' | 'customize'>('info');
   const [showCourseMessageModal, setShowCourseMessageModal] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
@@ -26,11 +52,13 @@ export const TeacherDashboard: React.FC = () => {
     isHomeroom: boolean;
   } | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'home' | 'my_courses' | 'homeroom' | 'observations' | 'links'>(() => {
+  const [activeTab, setActiveTab] = useState<TeacherTabId>(() => {
+    const urlTab = getTeacherTabFromUrl();
+    if (urlTab) return urlTab;
     try {
       const saved = localStorage.getItem('ltp_teacher_active_tab');
       if (saved && ['home', 'my_courses', 'homeroom', 'observations', 'links'].includes(saved)) {
-        return saved as any;
+        return saved as TeacherTabId;
       }
     } catch {}
     return 'home';
@@ -40,7 +68,17 @@ export const TeacherDashboard: React.FC = () => {
     try {
       localStorage.setItem('ltp_teacher_active_tab', activeTab);
     } catch {}
+    syncTeacherUrl(activeTab);
   }, [activeTab]);
+
+  React.useEffect(() => {
+    const handlePopState = () => {
+      const urlTab = getTeacherTabFromUrl() || 'home';
+      setActiveTab(urlTab);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const loadPendingStatements = () => {
     if (!token) return;
@@ -84,9 +122,10 @@ export const TeacherDashboard: React.FC = () => {
     loadPendingStatements();
     loadNotifications();
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       loadPendingStatements();
       loadNotifications();
-    }, 15000);
+    }, 30000);
     return () => clearInterval(interval);
   }, [token]);
 
@@ -129,8 +168,19 @@ export const TeacherDashboard: React.FC = () => {
           </div>
         </nav>
 
-        {/* BOTÓN CERRAR SESIÓN EN LA PARTE INFERIOR DEL MENÚ */}
-        <div className="sidebar-footer">
+        {/* ACCESO RÁPIDO A MI PERFIL Y BOTÓN CERRAR SESIÓN EN LA PARTE INFERIOR DEL MENÚ */}
+        <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          <div
+            className="nav-item"
+            onClick={() => {
+              setProfileModalTab(canCustomizeProfile ? 'customize' : 'info');
+              setShowProfileModal(true);
+            }}
+            style={{ color: '#e2e8f0', fontWeight: 600, cursor: 'pointer', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '8px', padding: '0.6rem 0.85rem' }}
+          >
+            <Palette size={19} color="#a5b4fc" />
+            <span style={{ marginLeft: '0.2rem' }}>Personalizar mi perfil</span>
+          </div>
           <div
             className="nav-item"
             onClick={() => logout()}
@@ -145,11 +195,31 @@ export const TeacherDashboard: React.FC = () => {
       {/* Contenido Principal */}
       <div className="main-content">
         <div className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-          <div>
-            <h1 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '1.5rem', fontWeight: 700 }}>Panel del Profesor</h1>
-            <p style={{ color: '#64748b', fontSize: '0.9rem', cursor: 'pointer' }} onClick={() => setShowProfileModal(true)} title="Haga clic para editar su perfil">
-              Bienvenido, <strong style={{ color: '#4f46e5', textDecoration: 'underline' }}>{user?.name}</strong>
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            <div
+              onClick={() => {
+                setProfileModalTab('info');
+                setShowProfileModal(true);
+              }}
+              title="Haga clic para abrir Mi Perfil"
+              className="avatar-circle"
+              style={{ width: '44px', height: '44px', cursor: 'pointer', overflow: 'visible', flexShrink: 0 }}
+            >
+              <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {canCustomizeProfile && user?.avatar ? (
+                  <img src={user.avatar} alt={user.name || 'Docente'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  user?.name ? user.name.substring(0, 2).toUpperCase() : 'DC'
+                )}
+              </div>
+              <div className="status-dot"></div>
+            </div>
+            <div>
+              <h1 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>Panel del Profesor</h1>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', cursor: 'pointer', margin: '0.15rem 0 0 0' }} onClick={() => { setProfileModalTab('info'); setShowProfileModal(true); }} title="Haga clic para editar su perfil">
+                Bienvenido, <strong style={{ color: 'var(--primary, #4f46e5)', textDecoration: 'underline' }}>{user?.name}</strong>
+              </p>
+            </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             {/* BADGE DEL PERFIL ACTIVO */}
@@ -351,12 +421,28 @@ export const TeacherDashboard: React.FC = () => {
             </div>
 
             <button
-              onClick={() => setShowProfileModal(true)}
+              onClick={() => {
+                setProfileModalTab('info');
+                setShowProfileModal(true);
+              }}
               className="btn"
               style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}
             >
-              <User size={16} color="#4f46e5" /> Editar Mis Datos
+              <User size={16} color="#4f46e5" /> Mi perfil
             </button>
+
+            {canCustomizeProfile && (
+              <button
+                onClick={() => {
+                  setProfileModalTab('customize');
+                  setShowProfileModal(true);
+                }}
+                className="btn"
+                style={{ background: '#f5f3ff', color: '#4f46e5', border: '1px solid #c7d2fe', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}
+              >
+                <Palette size={16} color="#4f46e5" /> Personalizar mi perfil
+              </button>
+            )}
 
             {((user?.roles && user.roles.length > 1) || isSuperAdmin) && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: '#eef2ff', padding: '0.25rem 0.65rem', borderRadius: '20px', border: '1px solid #c7d2fe' }}>
@@ -667,45 +753,58 @@ export const TeacherDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* PESTAÑA 2: MIS CURSOS ASIGNADOS (GRID Y CALIFICACIONES) */}
-        {activeTab === 'my_courses' && (
-          selectedCourseSubject === null ? (
-            <TeacherCoursesGrid
-              onSelectCourse={(courseName, subjectName, isHomeroom) => {
-                setSelectedCourseSubject({ courseName, subjectName, isHomeroom });
-              }}
-            />
-          ) : (
-            <GradesSheet
+        <Suspense fallback={<ModuleLoader />}>
+          {/* PESTAÑA 2: MIS CURSOS ASIGNADOS (GRID Y CALIFICACIONES) */}
+          {activeTab === 'my_courses' && (
+            selectedCourseSubject === null ? (
+              <TeacherCoursesGrid
+                onSelectCourse={(courseName, subjectName, isHomeroom) => {
+                  setSelectedCourseSubject({ courseName, subjectName, isHomeroom });
+                }}
+              />
+            ) : (
+              <GradesSheet
+                token={token || ''}
+                initialCourseName={selectedCourseSubject.courseName}
+                initialSubjectName={selectedCourseSubject.subjectName}
+                onBackToGrid={() => setSelectedCourseSubject(null)}
+              />
+            )
+          )}
+
+          {/* PESTAÑA 3: INFORME JEFATURA */}
+          {activeTab === 'homeroom' && <GradesOverview token={token || ''} />}
+
+          {/* PESTAÑA 4: ANOTACIONES */}
+          {activeTab === 'observations' && <ObservationsModule token={token || ''} />}
+
+          {/* PESTAÑA 5: ENLACES INSTITUCIONALES */}
+          {activeTab === 'links' && (
+            <InstitutionalPlatformsSection
               token={token || ''}
-              initialCourseName={selectedCourseSubject.courseName}
-              initialSubjectName={selectedCourseSubject.subjectName}
-              onBackToGrid={() => setSelectedCourseSubject(null)}
+              userName={user?.name}
+              userRole={user?.role}
+              customSubtitle="Enlaces y Accesos Institucionales • Liceo Pro / LTP v2.0"
             />
-          )
-        )}
-
-        {/* PESTAÑA 3: INFORME JEFATURA */}
-        {activeTab === 'homeroom' && <GradesOverview token={token || ''} />}
-
-        {/* PESTAÑA 4: ANOTACIONES */}
-        {activeTab === 'observations' && <ObservationsModule token={token || ''} />}
-
-        {/* PESTAÑA 5: ENLACES INSTITUCIONALES */}
-        {activeTab === 'links' && (
-          <InstitutionalPlatformsSection
-            token={token || ''}
-            userName={user?.name}
-            userRole={user?.role}
-            customSubtitle="Enlaces y Accesos Institucionales • Liceo Pro / LTP v2.0"
-          />
-        )}
+          )}
+        </Suspense>
       </div>
 
-      {/* MODAL DE EDICIÓN DE PERFIL DEL USUARIO DOCENTE */}
-      {showProfileModal && (
-        <UserProfileModal onClose={() => setShowProfileModal(false)} />
-      )}
+      <Suspense fallback={null}>
+        {/* MODAL DE EDICIÓN DE PERFIL DEL USUARIO DOCENTE */}
+        {showProfileModal && (
+          <UserProfileModal initialTab={profileModalTab} onClose={() => setShowProfileModal(false)} />
+        )}
+
+        {/* MODAL DE COMUNICACIÓN FOCALIZADA A DOCENTES DEL CURSO */}
+        {showCourseMessageModal && (
+          <CourseMessageModal
+            isOpen={showCourseMessageModal}
+            onClose={() => setShowCourseMessageModal(false)}
+            onMessageSent={loadNotifications}
+          />
+        )}
+      </Suspense>
 
       {/* MODAL REDACTAR Y FIRMAR RELATO DIGITAL */}
       {selectedStatementItem && (
@@ -719,13 +818,6 @@ export const TeacherDashboard: React.FC = () => {
           }}
         />
       )}
-
-      {/* MODAL DE COMUNICACIÓN FOCALIZADA A DOCENTES DEL CURSO */}
-      <CourseMessageModal
-        isOpen={showCourseMessageModal}
-        onClose={() => setShowCourseMessageModal(false)}
-        onMessageSent={loadNotifications}
-      />
     </div>
   );
 };

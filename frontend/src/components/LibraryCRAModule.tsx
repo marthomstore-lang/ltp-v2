@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BookOpen, Calendar, Clock, AlertTriangle, CheckCircle2, User, Search, Plus, Filter, Mail, ArrowRight, ShieldAlert, FileText, CheckSquare, RefreshCw, X, Save, ExternalLink, Printer, Trash2, Eye } from 'lucide-react';
 import { getStudentCourse, sortCoursesList } from '../utils/course';
+import { getModuleSubTabFromUrl, syncModuleSubUrl } from '../utils/urlRouter';
 import Swal from 'sweetalert2';
 
 interface Props {
@@ -8,7 +9,21 @@ interface Props {
 }
 
 export const LibraryCRAModule: React.FC<Props> = ({ token }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'books' | 'reading_plan' | 'loans' | 'returns' | 'daily_materials' | 'communications' | 'withdrawal_check' | 'reports'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'books' | 'reading_plan' | 'loans' | 'returns' | 'daily_materials' | 'communications' | 'withdrawal_check' | 'reports'>(() =>
+    getModuleSubTabFromUrl('library', 'dashboard') as any
+  );
+
+  useEffect(() => {
+    syncModuleSubUrl('library', activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    const handlePop = () => {
+      setActiveTab(getModuleSubTabFromUrl('library', 'dashboard') as any);
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
 
   // ESTADOS DEL DASHBOARD Y RESUMEN
   const [dashboardStats, setDashboardStats] = useState<any>(null);

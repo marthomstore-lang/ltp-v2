@@ -1,50 +1,87 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass } from 'lucide-react';
+import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette } from 'lucide-react';
 import Swal from 'sweetalert2';
-import { StudentWindow } from './StudentWindow';
-import { GradesSheet } from './GradesSheet';
-import { GradesOverview } from './GradesOverview';
-import { InterviewsModule } from './InterviewsModule';
-import { ObservationsModule } from './ObservationsModule';
-import { AdministrationModule } from './AdministrationModule';
-import { StaffModule } from './StaffModule';
-import { ConfigModule } from './ConfigModule';
-import { PermissionsMatrix } from './PermissionsMatrix';
-import { MultiviewWindow } from './MultiviewWindow';
-import { OfficialEnrollmentForm } from './OfficialEnrollmentForm';
-import { ReorderStudentsModal } from './ReorderStudentsModal';
-import { UserProfileModal } from './UserProfileModal';
-import { ApoderadoView } from './ApoderadoView';
 import { InstitutionalPlatformsSection } from './InstitutionalPlatformsSection';
-import { LibraryCRAModule } from './LibraryCRAModule';
-import { ComputerLabModule } from './ComputerLabModule';
-import { EvaluationsPieModule } from './EvaluationsPieModule';
-import { GuardiansListModule } from './GuardiansListModule';
 import { SubmitStatementModal, PendingStatementItem } from './SubmitStatementModal';
-import { InspectorPassesModule } from './InspectorPassesModule';
-import { MineducReportsModule } from './MineducReportsModule';
-import { CourseMessageModal } from './CourseMessageModal';
-import { PedagogicalTripsModule } from './PedagogicalTripsModule';
 import { getStudentCourse, isStudentRetired, getStudentWithdrawalDate, sortCoursesList, sortStudentsList, getStudentYear } from '../utils/course';
+import { AdminTabId, getAdminTabFromUrl, syncAdminUrl, AccessLevel, normalizeAccessLevel } from '../utils/urlRouter';
+
+const StudentWindow = lazy(() => import('./StudentWindow').then(m => ({ default: m.StudentWindow })));
+const GradesSheet = lazy(() => import('./GradesSheet').then(m => ({ default: m.GradesSheet })));
+const GradesOverview = lazy(() => import('./GradesOverview').then(m => ({ default: m.GradesOverview })));
+const InterviewsModule = lazy(() => import('./InterviewsModule').then(m => ({ default: m.InterviewsModule })));
+const ObservationsModule = lazy(() => import('./ObservationsModule').then(m => ({ default: m.ObservationsModule })));
+const AdministrationModule = lazy(() => import('./AdministrationModule').then(m => ({ default: m.AdministrationModule })));
+const StaffModule = lazy(() => import('./StaffModule').then(m => ({ default: m.StaffModule })));
+const ConfigModule = lazy(() => import('./ConfigModule').then(m => ({ default: m.ConfigModule })));
+const PermissionsMatrix = lazy(() => import('./PermissionsMatrix').then(m => ({ default: m.PermissionsMatrix })));
+const MultiviewWindow = lazy(() => import('./MultiviewWindow').then(m => ({ default: m.MultiviewWindow })));
+const OfficialEnrollmentForm = lazy(() => import('./OfficialEnrollmentForm').then(m => ({ default: m.OfficialEnrollmentForm })));
+const ReorderStudentsModal = lazy(() => import('./ReorderStudentsModal').then(m => ({ default: m.ReorderStudentsModal })));
+const UserProfileModal = lazy(() => import('./UserProfileModal').then(m => ({ default: m.UserProfileModal })));
+const ApoderadoView = lazy(() => import('./ApoderadoView').then(m => ({ default: m.ApoderadoView })));
+const LibraryCRAModule = lazy(() => import('./LibraryCRAModule').then(m => ({ default: m.LibraryCRAModule })));
+const ComputerLabModule = lazy(() => import('./ComputerLabModule').then(m => ({ default: m.ComputerLabModule })));
+const EvaluationsPieModule = lazy(() => import('./EvaluationsPieModule').then(m => ({ default: m.EvaluationsPieModule })));
+const GuardiansListModule = lazy(() => import('./GuardiansListModule').then(m => ({ default: m.GuardiansListModule })));
+const InspectorPassesModule = lazy(() => import('./InspectorPassesModule').then(m => ({ default: m.InspectorPassesModule })));
+const MineducReportsModule = lazy(() => import('./MineducReportsModule').then(m => ({ default: m.MineducReportsModule })));
+const CourseMessageModal = lazy(() => import('./CourseMessageModal').then(m => ({ default: m.CourseMessageModal })));
+const PedagogicalTripsModule = lazy(() => import('./PedagogicalTripsModule').then(m => ({ default: m.PedagogicalTripsModule })));
+
+const ModuleLoader: React.FC = () => (
+  <div style={{
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '3rem',
+    color: '#475569',
+    gap: '0.65rem',
+    fontWeight: 600,
+    fontSize: '0.9rem'
+  }}>
+    <div style={{
+      width: '24px',
+      height: '24px',
+      border: '3px solid #e2e8f0',
+      borderTopColor: '#4f46e5',
+      borderRadius: '50%',
+      animation: 'spin 0.65s linear infinite'
+    }} />
+    <span>Cargando módulo...</span>
+  </div>
+);
 
 export const AdminDashboard: React.FC = () => {
-  const { user, token, logout, switchRole, restoreOriginalRole, isSuperAdmin, isImpersonating } = useAuth();
-  const [activeTab, setActiveTab] = useState<'home' | 'students' | 'apoderados' | 'grades' | 'overview' | 'computer_lab' | 'evaluations_pie' | 'mineduc_reports' | 'interviews' | 'observations' | 'staff' | 'admin_docs' | 'library' | 'permissions' | 'config' | 'audit' | 'inspector_passes' | 'pedagogical_trips'>(() => {
+  const { user, token, logout, switchRole, restoreOriginalRole, isSuperAdmin, isImpersonating, canCustomizeProfile } = useAuth();
+  const [activeTab, setActiveTab] = useState<AdminTabId>(() => {
+    const urlTab = getAdminTabFromUrl();
+    if (urlTab) return urlTab;
     try {
       localStorage.removeItem('ltp_admin_tab');
       const saved = sessionStorage.getItem('ltp_admin_tab');
       if (saved && ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips'].includes(saved)) {
-        return saved as any;
+        return saved as AdminTabId;
       }
     } catch {}
     return 'home';
   });
 
+  const [gradesSubTab, setGradesSubTab] = useState<'sheet' | 'overview'>(() =>
+    getAdminTabFromUrl() === 'overview' ? 'overview' : 'sheet'
+  );
+
   useEffect(() => {
     try {
       sessionStorage.setItem('ltp_admin_tab', activeTab);
     } catch {}
+    syncAdminUrl(activeTab);
+    if (activeTab === 'overview' && gradesSubTab !== 'overview') {
+      setGradesSubTab('overview');
+    } else if (activeTab === 'grades' && gradesSubTab !== 'sheet') {
+      setGradesSubTab('sheet');
+    }
   }, [activeTab]);
 
   useEffect(() => {
@@ -56,8 +93,6 @@ export const AdminDashboard: React.FC = () => {
     window.addEventListener('ltp_navigate_tab', handleNav);
     return () => window.removeEventListener('ltp_navigate_tab', handleNav);
   }, []);
-
-  const [gradesSubTab, setGradesSubTab] = useState<'sheet' | 'overview'>('sheet');
 
   const [dynamicMatrix, setDynamicMatrix] = useState<any[]>([]);
 
@@ -79,19 +114,21 @@ export const AdminDashboard: React.FC = () => {
     audit: 'audit_logs',
     inspector_passes: 'inspector_passes',
     mineduc_reports: 'mineduc_reports',
-    pedagogical_trips: 'pedagogical_trips'
+    pedagogical_trips: 'pedagogical_trips',
+    course_messaging: 'course_messaging',
+    multiview: 'multiview'
   };
 
   const rolePermissions: Record<string, string[]> = {
-    Admin: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips'],
-    Director: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
-    Docente: ['home', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'pedagogical_trips'],
-    Bibliotecario: ['home', 'computer_lab', 'evaluations_pie', 'library', 'admin_docs'],
-    Entrevistador: ['home', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs'],
-    Administrativo: ['home', 'students', 'apoderados', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
-    Profesionales: ['home', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'pedagogical_trips'],
-    Asistente: ['home', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
-    'Asistente de la Educación': ['home', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
+    Admin: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Director: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Docente: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Bibliotecario: ['home', 'computer_lab', 'evaluations_pie', 'library', 'admin_docs', 'multiview'],
+    Entrevistador: ['home', 'students', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging', 'multiview'],
+    Administrativo: ['home', 'students', 'apoderados', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
+    Profesionales: ['home', 'students', 'apoderados', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Asistente: ['home', 'students', 'apoderados', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
+    'Asistente de la Educación': ['home', 'students', 'apoderados', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
     Apoderado: ['home', 'admin_docs'],
     Estudiante: ['home', 'admin_docs'],
     Visita: ['home', 'computer_lab', 'evaluations_pie', 'overview', 'admin_docs']
@@ -99,14 +136,14 @@ export const AdminDashboard: React.FC = () => {
 
   const currentRole = user?.role || 'Admin';
 
-  const canAccess = (tab: string) => {
-    // Protección vital: El Administrador no debe bloquearse a sí mismo de la Matriz de Permisos
+  const getAccessLevel = (tab: string): AccessLevel => {
+    // Protección vital: El Administrador siempre tiene Edición en la Matriz de Permisos
     if (tab === 'permissions' && (currentRole === 'Admin' || isSuperAdmin)) {
-      return true;
+      return 'edit';
     }
 
-    if (currentRole === 'Apoderado') {
-      return tab === 'home' || tab === 'admin_docs';
+    if (currentRole === 'Apoderado' || currentRole === 'Estudiante') {
+      return tab === 'home' || tab === 'admin_docs' ? 'view' : 'none';
     }
 
     if (dynamicMatrix && dynamicMatrix.length > 0) {
@@ -117,19 +154,26 @@ export const AdminDashboard: React.FC = () => {
         if (['Admin', 'Administrador'].includes(currentRole)) roleCol = 'Admin';
         else if (['Director', 'Directivo', 'UTP', 'Inspectoría General'].includes(currentRole)) roleCol = 'Director';
         else if (['Docente', 'Docente de Aula', 'Docente Jefatura'].includes(currentRole)) roleCol = 'Docente';
-        else if (['Asistente', 'Asistente de la Educación', 'PIE'].includes(currentRole)) roleCol = 'Asistente';
+        else if (['Asistente', 'Asistente de la Educación', 'PIE', 'Administrativo'].includes(currentRole)) roleCol = 'Asistente';
         else if (['Profesionales', 'Convivencia Escolar', 'Entrevistador', 'Psicólogo'].includes(currentRole)) roleCol = 'Profesionales';
         else if ((currentRole as string) === 'Estudiante') roleCol = 'Estudiante';
         else if ((currentRole as string) === 'Apoderado') roleCol = 'Apoderado';
 
-        if (row[roleCol] !== undefined) return Boolean(row[roleCol]);
-        if (row[currentRole] !== undefined) return Boolean(row[currentRole]);
+        if (row[roleCol] !== undefined) return normalizeAccessLevel(row[roleCol], 'none');
+        if (row[currentRole] !== undefined) return normalizeAccessLevel(row[currentRole], 'none');
       }
     }
 
     const fallbackList = rolePermissions[currentRole] || rolePermissions['Admin'];
-    return fallbackList.includes(tab);
+    if (!fallbackList.includes(tab)) return 'none';
+    if (tab === 'students' && ['Asistente', 'Asistente de la Educación', 'Docente', 'Profesionales'].includes(currentRole)) {
+      return 'view';
+    }
+    return 'edit';
   };
+
+  const canAccess = (tab: string) => getAccessLevel(tab) !== 'none';
+  const canEdit = (tab: string) => getAccessLevel(tab) === 'edit';
 
   const getFunctionName = (tab: string): string => {
     const funcId = TAB_TO_FUNCTION[tab] || tab;
@@ -140,7 +184,7 @@ export const AdminDashboard: React.FC = () => {
       students: 'Matrícula Completa MINEDUC/FIDE',
       apoderados: 'Nómina & Registro Institucional de Apoderados',
       grades: 'Libro de Calificaciones Ponderadas',
-      overview: 'Panorama de Notas & Rendimiento',
+      overview: 'Panorama de Notas & Reporte de Jefatura',
       computer_lab: 'Reserva Sala de Computación & Horarios',
       evaluations_pie: 'Portal de Evaluaciones & Integración PIE',
       mineduc_reports: 'Informes PIE & Formularios Oficiales MINEDUC (Dec. 170)',
@@ -159,8 +203,12 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const navigateToTab = (tab: string, label?: string) => {
-    if (!canAccess(tab)) {
-      const moduleName = label || getFunctionName(tab);
+    let targetTab = tab;
+    if (tab === 'grades' && !canAccess('grades') && canAccess('overview')) {
+      targetTab = 'overview';
+    }
+    if (!canAccess(targetTab)) {
+      const moduleName = label || getFunctionName(targetTab);
       Swal.fire({
         icon: 'error',
         title: 'Acceso Denegado',
@@ -183,8 +231,32 @@ export const AdminDashboard: React.FC = () => {
       });
       return;
     }
-    setActiveTab(tab as any);
+    setActiveTab(targetTab as AdminTabId);
   };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const urlTab = getAdminTabFromUrl() || 'home';
+      if (canAccess(urlTab)) {
+        setActiveTab(urlTab);
+      } else {
+        setActiveTab('home');
+        syncAdminUrl('home', true);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [user?.role, dynamicMatrix]);
+
+  useEffect(() => {
+    const handleMatrixUpdate = (e: any) => {
+      if (Array.isArray(e?.detail)) {
+        setDynamicMatrix(e.detail);
+      }
+    };
+    window.addEventListener('ltp_permissions_updated', handleMatrixUpdate);
+    return () => window.removeEventListener('ltp_permissions_updated', handleMatrixUpdate);
+  }, []);
 
   useEffect(() => {
     if (!token || user?.role === 'Apoderado' || user?.role === 'Estudiante') return;
@@ -201,9 +273,17 @@ export const AdminDashboard: React.FC = () => {
   useEffect(() => {
     // Si la pestaña actual no tiene acceso tras recargar o cambiar de perfil, restaurar automáticamente a 'home'
     if (!canAccess(activeTab)) {
-      setActiveTab('home');
+      if (activeTab === 'grades' && canAccess('overview')) {
+        setActiveTab('overview');
+      } else {
+        setActiveTab('home');
+        syncAdminUrl('home', true);
+      }
     }
-  }, [user?.role, dynamicMatrix]);
+    if (typeof window !== 'undefined') {
+      (window as any).__ltpCurrentModuleAccess = getAccessLevel(activeTab);
+    }
+  }, [activeTab, user?.role, dynamicMatrix]);
   const [students, setStudents] = useState<any[]>([]);
   const [dbDisconnected, setDbDisconnected] = useState<boolean>(false);
   const [interviews, setInterviews] = useState<any[]>([]);
@@ -214,6 +294,7 @@ export const AdminDashboard: React.FC = () => {
   const [showMultiview, setShowMultiview] = useState(false);
   const [showCourseMessageModal, setShowCourseMessageModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileModalTab, setProfileModalTab] = useState<'info' | 'customize'>('info');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -324,7 +405,9 @@ export const AdminDashboard: React.FC = () => {
       .then(data => setObservations(Array.isArray(data) ? data : []))
       .catch(err => console.error(err));
 
-    loadAuditLogs();
+    if (activeTab === 'audit') {
+      loadAuditLogs();
+    }
     loadNotifications();
     loadPendingStatements();
   };
@@ -340,9 +423,10 @@ export const AdminDashboard: React.FC = () => {
   useEffect(() => {
     loadAllData();
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       loadNotifications();
       loadPendingStatements();
-    }, 15000);
+    }, 30000);
     return () => clearInterval(interval);
   }, [token]);
 
@@ -394,50 +478,55 @@ export const AdminDashboard: React.FC = () => {
 
   return (
     <div className="app-container">
-      {/* Multivista Dual Screen Modal */}
-      {showMultiview && (
-        <MultiviewWindow
-          sessionCode="MVT-89201"
-          onClose={() => setShowMultiview(false)}
-        />
-      )}
+      <Suspense fallback={null}>
+        {/* Multivista Dual Screen Modal */}
+        {showMultiview && (
+          <MultiviewWindow
+            sessionCode="MVT-89201"
+            onClose={() => setShowMultiview(false)}
+          />
+        )}
 
-      {/* Modal Ficha Oficial de Impresión FIDE */}
-      {printStudent && (
-        <OfficialEnrollmentForm
-          student={printStudent}
-          onClose={() => setPrintStudent(null)}
-        />
-      )}
+        {/* Modal Ficha Oficial de Impresión FIDE */}
+        {printStudent && (
+          <OfficialEnrollmentForm
+            student={printStudent}
+            onClose={() => setPrintStudent(null)}
+          />
+        )}
 
-      {/* Modal Reordenar Lista A-Z / Manual */}
-      {showReorderModal && (
-        <ReorderStudentsModal
-          students={yearStudents}
-          token={token || ''}
-          onClose={() => setShowReorderModal(false)}
-          onSuccess={(updatedList) => {
-            if (updatedList) {
-              setStudents(updatedList);
-            }
-            loadAllData();
-          }}
-        />
-      )}
+        {/* Modal Reordenar Lista A-Z / Manual */}
+        {showReorderModal && (
+          <ReorderStudentsModal
+            students={yearStudents}
+            token={token || ''}
+            onClose={() => setShowReorderModal(false)}
+            onSuccess={(updatedList) => {
+              if (updatedList) {
+                setStudents(updatedList);
+              }
+              loadAllData();
+            }}
+          />
+        )}
 
-      {/* VENTANA EMERGENTE DE PERFIL DE USUARIO */}
-      {showProfileModal && (
-        <UserProfileModal
-          onClose={() => setShowProfileModal(false)}
-        />
-      )}
+        {/* VENTANA EMERGENTE DE PERFIL DE USUARIO */}
+        {showProfileModal && (
+          <UserProfileModal
+            initialTab={profileModalTab}
+            onClose={() => setShowProfileModal(false)}
+          />
+        )}
 
-      {/* MODAL DE COMUNICACIÓN FOCALIZADA A DOCENTES DEL CURSO */}
-      <CourseMessageModal
-        isOpen={showCourseMessageModal}
-        onClose={() => setShowCourseMessageModal(false)}
-        onMessageSent={loadNotifications}
-      />
+        {/* MODAL DE COMUNICACIÓN FOCALIZADA A DOCENTES DEL CURSO */}
+        {showCourseMessageModal && (
+          <CourseMessageModal
+            isOpen={showCourseMessageModal}
+            onClose={() => setShowCourseMessageModal(false)}
+            onMessageSent={loadNotifications}
+          />
+        )}
+      </Suspense>
 
       {/* MODAL REDACTAR Y FIRMAR RELATO DIGITAL DE ENTREVISTA */}
       {selectedStatementItem && (
@@ -496,7 +585,7 @@ export const AdminDashboard: React.FC = () => {
             { id: 'config', label: 'Configuración', icon: Settings },
             { id: 'audit', label: 'Auditoría "Silent-Watch"', icon: Lock },
           ]
-            .filter(item => canAccess(item.id))
+            .filter(item => item.id === 'grades' ? (canAccess('grades') || canAccess('overview')) : canAccess(item.id))
             .map(item => {
               const isActive = item.activeMatch ? item.activeMatch(activeTab) : activeTab === item.id;
               return (
@@ -523,8 +612,33 @@ export const AdminDashboard: React.FC = () => {
             })}
         </nav>
 
-        {/* BOTÓN CERRAR SESIÓN EN LA PARTE INFERIOR DEL MENÚ SIDEBAR (FIJO Y NUNCA SE TRASLAPA) */}
-        <div className="sidebar-footer" style={{ padding: sidebarCollapsed ? '0.75rem 0.35rem' : '0.75rem 0.65rem' }}>
+        {/* ACCESO RÁPIDO A MI PERFIL Y BOTÓN CERRAR SESIÓN EN LA PARTE INFERIOR DEL MENÚ SIDEBAR */}
+        <div className="sidebar-footer" style={{ padding: sidebarCollapsed ? '0.75rem 0.35rem' : '0.75rem 0.65rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          <div
+            className="nav-item"
+            onClick={() => {
+              setProfileModalTab(canCustomizeProfile ? 'customize' : 'info');
+              setShowProfileModal(true);
+            }}
+            title={sidebarCollapsed ? (canCustomizeProfile ? 'Mi perfil / Personalizar mi perfil' : 'Mi perfil') : undefined}
+            style={{
+              color: '#e2e8f0',
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: 'rgba(255, 255, 255, 0.08)',
+              borderRadius: '8px',
+              justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+              padding: '0.6rem 0.85rem'
+            }}
+          >
+            {canCustomizeProfile ? <Palette size={18} color="#a5b4fc" style={{ flexShrink: 0 }} /> : <User size={18} color="#a5b4fc" style={{ flexShrink: 0 }} />}
+            {!sidebarCollapsed && (
+              <span style={{ marginLeft: '0.2rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {canCustomizeProfile ? 'Personalizar mi perfil' : 'Mi perfil'}
+              </span>
+            )}
+          </div>
+
           <div
             className="nav-item"
             onClick={() => logout()}
@@ -566,30 +680,34 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div ref={headerDropdownRef} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <button
-              onClick={() => setShowCourseMessageModal(true)}
-              className="btn"
-              style={{
-                background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
-                color: '#ffffff',
-                gap: '0.45rem',
-                borderRadius: '9999px',
-                padding: '0.5rem 1.15rem',
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                cursor: 'pointer',
-                border: 'none',
-                boxShadow: '0 2px 8px rgba(79, 70, 229, 0.25)'
-              }}
-              title="Enviar mensaje o correo electrónico a todos los profesores asignados a un curso"
-            >
-              <MessageSquare size={16} /> Comunicar a Curso
-            </button>
+            {canAccess('course_messaging') && (
+              <button
+                onClick={() => setShowCourseMessageModal(true)}
+                className="btn"
+                style={{
+                  background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
+                  color: '#ffffff',
+                  gap: '0.45rem',
+                  borderRadius: '9999px',
+                  padding: '0.5rem 1.15rem',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  border: 'none',
+                  boxShadow: '0 2px 8px rgba(79, 70, 229, 0.25)'
+                }}
+                title="Enviar mensaje o correo electrónico a todos los profesores asignados a un curso"
+              >
+                <MessageSquare size={16} /> Comunicar a Curso
+              </button>
+            )}
 
-            <button onClick={() => setShowMultiview(true)} className="btn btn-primary" style={{ gap: '0.4rem', borderRadius: '9999px', padding: '0.5rem 1.1rem' }}>
-              <Monitor size={16} /> Multivista QR Dual
-            </button>
+            {canAccess('multiview') && (
+              <button onClick={() => setShowMultiview(true)} className="btn btn-primary" style={{ gap: '0.4rem', borderRadius: '9999px', padding: '0.5rem 1.1rem' }}>
+                <Monitor size={16} /> Multivista QR Dual
+              </button>
+            )}
 
             {/* MENÚ DESPLEGABLE DE NOTIFICACIONES TI */}
             <div style={{ position: 'relative' }}>
@@ -831,8 +949,26 @@ export const AdminDashboard: React.FC = () => {
                 }}
                 style={{ cursor: 'pointer', padding: '0.3rem 0.6rem', borderRadius: '12px', transition: 'background 0.2s ease' }}
               >
-                <div className="avatar-circle">
-                  {user?.name ? user.name.substring(0, 2).toUpperCase() : 'AD'}
+                <div className="avatar-circle" style={{ overflow: 'visible' }}>
+                  <div style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: '50%',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    {canCustomizeProfile && user?.avatar ? (
+                      <img
+                        src={user.avatar}
+                        alt={user.name || 'Perfil'}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      user?.name ? user.name.substring(0, 2).toUpperCase() : 'AD'
+                    )}
+                  </div>
                   <div className="status-dot"></div>
                 </div>
                 <div>
@@ -855,7 +991,7 @@ export const AdminDashboard: React.FC = () => {
                   borderRadius: '12px',
                   boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)',
                   border: '1px solid #e2e8f0',
-                  width: '230px',
+                  width: '245px',
                   zIndex: 500,
                   overflow: 'hidden'
                 }}>
@@ -906,12 +1042,26 @@ export const AdminDashboard: React.FC = () => {
                   <button
                     onClick={() => {
                       setShowUserDropdown(false);
+                      setProfileModalTab('info');
                       setShowProfileModal(true);
                     }}
                     style={{ width: '100%', padding: '0.75rem 1rem', border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid #f1f5f9' }}
                   >
-                    ✏️ Editar Mi Perfil / Datos
+                    <User size={16} color="#4f46e5" /> Mi perfil (Información personal)
                   </button>
+
+                  {canCustomizeProfile && (
+                    <button
+                      onClick={() => {
+                        setShowUserDropdown(false);
+                        setProfileModalTab('customize');
+                        setShowProfileModal(true);
+                      }}
+                      style={{ width: '100%', padding: '0.75rem 1rem', border: 'none', background: '#f5f3ff', textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid #e2e8f0' }}
+                    >
+                      <Palette size={16} color="#4f46e5" /> Personalizar mi perfil
+                    </button>
+                  )}
 
                   <button
                     onClick={() => logout()}
@@ -1043,6 +1193,7 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         {/* VISTA SEGÚN EL ROL SELECCIONADO (SI ES APODERADO SE MUESTRA EL PORTAL APODERADO) */}
+        <Suspense fallback={<ModuleLoader />}>
         {user?.role === 'Apoderado' && activeTab === 'home' ? (
           <ApoderadoView token={token || ''} />
         ) : !canAccess(activeTab) ? (
@@ -1098,6 +1249,31 @@ export const AdminDashboard: React.FC = () => {
           </div>
         ) : (
           <>
+            {activeTab !== 'home' && activeTab !== 'audit' && !canEdit(activeTab) && (
+              <div style={{
+                background: 'linear-gradient(90deg, #eff6ff 0%, #dbeafe 100%)',
+                border: '1.5px solid #93c5fd',
+                color: '#1e3a8a',
+                padding: '0.65rem 1.25rem',
+                borderRadius: '12px',
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '0.75rem',
+                flexWrap: 'wrap',
+                boxShadow: '0 2px 6px rgba(37, 99, 235, 0.08)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.86rem' }}>
+                  <span style={{ background: '#2563eb', color: '#ffffff', padding: '0.25rem 0.55rem', borderRadius: '6px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem' }}>
+                    <Eye size={14} /> MODO SOLO VISTA
+                  </span>
+                  <span>
+                    Tu perfil actual (<strong>{user?.role}</strong>) cuenta con permiso de <strong>consulta e impresión</strong> en <strong>{getFunctionName(activeTab)}</strong>. La creación, edición y eliminación están deshabilitadas.
+                  </span>
+                </div>
+              </div>
+            )}
 
         {/* VISTA 1: DASHBOARD GENERAL CON BANNER Y PLATAFORMAS DE INTERÉS */}
         {activeTab === 'home' && (
@@ -1282,29 +1458,35 @@ export const AdminDashboard: React.FC = () => {
                   </select>
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                  <button 
-                    onClick={() => setActiveTab('pedagogical_trips')} 
-                    className="btn btn-secondary" 
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '0.45rem', 
-                      background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', 
-                      border: '1.5px solid #86efac', 
-                      color: '#166534', 
-                      fontWeight: 700 
-                    }}
-                    title="Crear y autorizar salidas a terreno con nómina de estudiantes"
-                  >
-                    <Compass size={17} color="#15803d" /> Salidas Pedagógicas
-                  </button>
-                  <button onClick={() => setShowReorderModal(true)} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <ArrowUpDown size={16} /> Reordenar A-Z
-                  </button>
-                  <button onClick={() => setSelectedStudent({ anno: selectedYear, academic_year: selectedYear })} className="btn btn-primary">
-                    + Nueva Matrícula {selectedYear}
-                  </button>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {canAccess('pedagogical_trips') && (
+                    <button 
+                      onClick={() => setActiveTab('pedagogical_trips')} 
+                      className="btn btn-secondary" 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '0.45rem', 
+                        background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', 
+                        border: '1.5px solid #86efac', 
+                        color: '#166534', 
+                        fontWeight: 700 
+                      }}
+                      title="Crear y autorizar salidas a terreno con nómina de estudiantes"
+                    >
+                      <Compass size={17} color="#15803d" /> Salidas Pedagógicas
+                    </button>
+                  )}
+                  {canEdit('students') && (
+                    <>
+                      <button onClick={() => setShowReorderModal(true)} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <ArrowUpDown size={16} /> Reordenar A-Z
+                      </button>
+                      <button onClick={() => setSelectedStudent({ anno: selectedYear, academic_year: selectedYear })} className="btn btn-primary">
+                        + Nueva Matrícula {selectedYear}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1672,7 +1854,7 @@ export const AdminDashboard: React.FC = () => {
                           <td>
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
                               <button onClick={() => setSelectedStudent(studentWithYear)} className="btn btn-primary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', background: retired ? '#dc2626' : undefined }}>
-                                👁️ Ficha Completa
+                                {canEdit('students') ? '👁️ Ficha Completa' : '👁️ Ver Ficha'}
                               </button>
                               <button onClick={() => setPrintStudent(studentWithYear)} className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}>
                                 <Printer size={14} /> Imprimir FIDE
@@ -1691,6 +1873,7 @@ export const AdminDashboard: React.FC = () => {
               <StudentWindow
                 student={selectedStudent}
                 token={token || ''}
+                readOnly={!canEdit('students')}
                 onClose={() => setSelectedStudent(null)}
                 onSave={() => loadAllData()}
                 onPrint={(s) => setPrintStudent(s)}
@@ -1712,49 +1895,59 @@ export const AdminDashboard: React.FC = () => {
               borderRadius: '12px',
               width: 'fit-content'
             }}>
-              <button
-                onClick={() => setGradesSubTab('sheet')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.55rem 1.25rem',
-                  borderRadius: '9px',
-                  border: 'none',
-                  fontWeight: 800,
-                  fontSize: '0.88rem',
-                  cursor: 'pointer',
-                  background: gradesSubTab === 'sheet' ? '#ffffff' : 'transparent',
-                  color: gradesSubTab === 'sheet' ? '#4338ca' : '#64748b',
-                  boxShadow: gradesSubTab === 'sheet' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <ClipboardList size={17} /> Planilla de Calificaciones
-              </button>
-              <button
-                onClick={() => setGradesSubTab('overview')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.55rem 1.25rem',
-                  borderRadius: '9px',
-                  border: 'none',
-                  fontWeight: 800,
-                  fontSize: '0.88rem',
-                  cursor: 'pointer',
-                  background: gradesSubTab === 'overview' ? '#ffffff' : 'transparent',
-                  color: gradesSubTab === 'overview' ? '#4338ca' : '#64748b',
-                  boxShadow: gradesSubTab === 'overview' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <TrendingUp size={17} /> Panorama y Reporte por Asignatura
-              </button>
+              {canAccess('grades') && (
+                <button
+                  onClick={() => {
+                    setGradesSubTab('sheet');
+                    navigateToTab('grades', 'Planilla de Calificaciones');
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.55rem 1.25rem',
+                    borderRadius: '9px',
+                    border: 'none',
+                    fontWeight: 800,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
+                    background: gradesSubTab === 'sheet' ? '#ffffff' : 'transparent',
+                    color: gradesSubTab === 'sheet' ? '#4338ca' : '#64748b',
+                    boxShadow: gradesSubTab === 'sheet' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <ClipboardList size={17} /> Planilla de Calificaciones
+                </button>
+              )}
+              {canAccess('overview') && (
+                <button
+                  onClick={() => {
+                    setGradesSubTab('overview');
+                    navigateToTab('overview', 'Panorama y Reporte por Asignatura');
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.55rem 1.25rem',
+                    borderRadius: '9px',
+                    border: 'none',
+                    fontWeight: 800,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
+                    background: gradesSubTab === 'overview' ? '#ffffff' : 'transparent',
+                    color: gradesSubTab === 'overview' ? '#4338ca' : '#64748b',
+                    boxShadow: gradesSubTab === 'overview' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <TrendingUp size={17} /> Panorama y Reporte por Asignatura
+                </button>
+              )}
             </div>
 
-            {gradesSubTab === 'sheet' ? (
+            {gradesSubTab === 'sheet' && canAccess('grades') ? (
               <GradesSheet token={token || ''} />
             ) : (
               <GradesOverview token={token || ''} />
@@ -1878,6 +2071,7 @@ export const AdminDashboard: React.FC = () => {
         )}
         </>
         )}
+        </Suspense>
       </div>
     </div>
   );

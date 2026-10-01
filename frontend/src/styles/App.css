@@ -5,11 +5,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap');
 
 :root {
-  /* Paleta Intranet Premium */
+  /* Paleta Intranet Premium (Personalizable por Docente/Funcionario) */
   --sidebar-bg: linear-gradient(180deg, #0f172a 0%, #1e1b4b 100%);
+  --sidebar-solid: #0f172a;
   --primary-gradient: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
   --primary: #4f46e5;
   --primary-hover: #4338ca;
+  --secondary-color: #ffffff;
+  --button-color: #4f46e5;
+  --button-bg: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
   --accent-purple: #8b5cf6;
 
   --bg-app: #f1f5f9;
@@ -469,7 +473,7 @@ tr:hover td {
 }
 
 .btn-primary {
-  background: var(--primary-gradient);
+  background: var(--button-bg, var(--primary-gradient));
   color: #ffffff;
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
 }

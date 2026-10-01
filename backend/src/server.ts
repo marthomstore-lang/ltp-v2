@@ -57,9 +57,9 @@ app.use(
   })
 );
 
-// 3. LÍMITE DE TAMAÑO DE PAYLOAD (Previene ataques DoS por inflado de JSON)
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+// 3. LÍMITE DE TAMAÑO DE PAYLOAD (Soporta carga de evaluaciones e imágenes a Google Drive)
+app.use(express.json({ limit: '30mb' }));
+app.use(express.urlencoded({ extended: true, limit: '30mb' }));
 
 // 4. SANITIZACIÓN AUTOMÁTICA DE ENTRADAS (Anti-XSS e Inyecciones)
 app.use(sanitizeInputs);

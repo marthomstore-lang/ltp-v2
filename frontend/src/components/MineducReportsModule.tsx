@@ -59,6 +59,7 @@ import {
   PaecPlanTeaEditor,
   PsychopedagogicalReportEditor
 } from './mineduc/MineducTemplateEditors';
+import { getModuleSubTabFromUrl, syncModuleSubUrl } from '../utils/urlRouter';
 
 const MINEDUC_REPORT_TYPES = ALL_MINEDUC_REPORT_TYPES;
 
@@ -69,7 +70,16 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
   onOpenStudentProfile
 }) => {
   // Estados de vista
-  const [viewMode, setViewMode] = useState<'list' | 'select_student' | 'editor' | 'printable'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'select_student' | 'editor' | 'printable'>(() => {
+    const initial = getModuleSubTabFromUrl<string>('mineduc_reports', 'list');
+    // Si no hay informe seleccionado aún, iniciar seguro en 'list' o 'select_student'
+    return (initial === 'select_student' ? 'select_student' : 'list');
+  });
+
+  useEffect(() => {
+    syncModuleSubUrl('mineduc_reports', viewMode);
+  }, [viewMode]);
+
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -122,6 +132,19 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
 
   // Informe activo (en edición o vista de impresión)
   const [activeReport, setActiveReport] = useState<any | null>(null);
+
+  useEffect(() => {
+    const handlePop = () => {
+      const next = getModuleSubTabFromUrl<string>('mineduc_reports', 'list') as any;
+      if ((next === 'editor' || next === 'printable') && !activeReport) {
+        setViewMode('list');
+      } else {
+        setViewMode(next);
+      }
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, [activeReport]);
   const [formData, setFormData] = useState<any>({
     evaluation_date: new Date().toISOString().split('T')[0],
     professional_run: user?.run || '',

@@ -322,7 +322,7 @@ export const getDefaultSubjectsForCourse = (courseName: string): string[] => {
     return [
       'Lengua y Literatura',
       'Matemática',
-      'Inglés',
+      'Idioma Extranjero Inglés',
       'Educación Ciudadana',
       'Filosofía',
       'Ciencias Para La Ciudadanía',
@@ -338,7 +338,7 @@ export const getDefaultSubjectsForCourse = (courseName: string): string[] => {
     return [
       'Lengua y Literatura',
       'Matemática',
-      'Inglés',
+      'Idioma Extranjero Inglés',
       'Educación Ciudadana',
       'Filosofía',
       'Ciencias Para La Ciudadanía',
@@ -353,23 +353,40 @@ export const getDefaultSubjectsForCourse = (courseName: string): string[] => {
       'Matemática',
       'Historia, Geografía Y Cs. Sociales',
       'Ciencias Naturales',
-      'Idioma Extranjero Ingles',
+      'Idioma Extranjero Inglés',
       'Educación Física y Salud',
       'Artes Visuales',
       'Música',
-      'Educación Tecnológica',
+      'Tecnología',
       'Orientación',
       'Religión'
     ];
   }
 
-  // 5. Educación Básica: 1° a 8° Básico (Currículum Oficial MINEDUC - Sin Filosofía)
+  // 5. Educación Básica: 7° y 8° Básico (Lengua y Literatura, Idioma Extranjero Inglés, Tecnología)
+  if (low.includes('7° básico') || low.includes('8° básico') || low.includes('7° basico') || low.includes('8° basico') || low.includes('7 basico') || low.includes('8 basico')) {
+    return [
+      'Lengua y Literatura',
+      'Matemática',
+      'Ciencias Naturales',
+      'Historia, Geografía Y Cs. Sociales',
+      'Idioma Extranjero Inglés',
+      'Educación Física y Salud',
+      'Artes Visuales',
+      'Música',
+      'Tecnología',
+      'Orientación',
+      'Religión'
+    ];
+  }
+
+  // 6. Educación Básica: 1° a 6° Básico (Lenguaje y Comunicación, Idioma Extranjero Inglés, Tecnología)
   return [
     'Lenguaje y Comunicación',
     'Matemática',
     'Ciencias Naturales',
     'Historia, Geografía Y Cs. Sociales',
-    'Inglés',
+    'Idioma Extranjero Inglés',
     'Educación Física y Salud',
     'Artes Visuales',
     'Música',
@@ -378,4 +395,5 @@ export const getDefaultSubjectsForCourse = (courseName: string): string[] => {
     'Religión'
   ];
 };
+
 

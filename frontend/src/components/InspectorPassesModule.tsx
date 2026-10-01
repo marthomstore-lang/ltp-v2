@@ -24,6 +24,7 @@ import {
 import Swal from 'sweetalert2';
 import { getStudentCourse, sortCoursesList } from '../utils/course';
 import { formatRut } from '../utils/rut';
+import { getModuleSubTabFromUrl, syncModuleSubUrl } from '../utils/urlRouter';
 import { printThermalPass, ThermalReceiptPreviewModal, PassData, formatDateDMY, PassFontScale, getSavedPassFontScale } from './ThermalPassReceipt';
 
 interface InspectorPassesModuleProps {
@@ -43,7 +44,21 @@ const COMMON_REASONS = [
 ];
 
 export const InspectorPassesModule: React.FC<InspectorPassesModuleProps> = ({ token, user }) => {
-  const [activeTab, setActiveTab] = useState<'emit' | 'today' | 'history'>('emit');
+  const [activeTab, setActiveTab] = useState<'emit' | 'today' | 'history'>(() =>
+    getModuleSubTabFromUrl('inspector_passes', 'emit') as any
+  );
+
+  useEffect(() => {
+    syncModuleSubUrl('inspector_passes', activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    const handlePop = () => {
+      setActiveTab(getModuleSubTabFromUrl('inspector_passes', 'emit') as any);
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
   const [students, setStudents] = useState<any[]>([]);
   const [loadingStudents, setLoadingStudents] = useState<boolean>(true);
 

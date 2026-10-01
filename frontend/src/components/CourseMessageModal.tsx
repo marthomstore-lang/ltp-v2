@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Send, Users, Mail, Bell, AlertCircle, CheckCircle2, ShieldAlert, Sparkles, Filter, Check, Clock } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Send, Users, Mail, Bell, CheckCircle2, Sparkles, GraduationCap, Globe, Search } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext';
 import { sortCoursesList, getStudentCourse } from '../utils/course';
@@ -16,6 +16,23 @@ interface CourseTeacher {
   subjects: string[];
 }
 
+interface CourseStudent {
+  id: string;
+  name: string;
+  run: string;
+  courseName: string;
+  studentEmail?: string;
+  guardianName?: string;
+  guardianRun?: string;
+  guardianEmail?: string;
+  guardianSecName?: string;
+  guardianSecRun?: string;
+  guardianSecEmail?: string;
+  emails: string[];
+  email?: string;
+  hasEmail: boolean;
+}
+
 interface CourseMessageModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -29,13 +46,18 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
   initialCourse = '',
   onMessageSent
 }) => {
-  const { token, user } = useAuth();
+  const { token } = useAuth();
 
   const [coursesList, setCoursesList] = useState<string[]>([]);
-  const [selectedCourse, setSelectedCourse] = useState<string>(initialCourse);
+  const [selectedCourse, setSelectedCourse] = useState<string>(initialCourse || 'ALL');
+  const [audience, setAudience] = useState<'teachers' | 'students' | 'both'>('students');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
   const [teachers, setTeachers] = useState<CourseTeacher[]>([]);
+  const [students, setStudents] = useState<CourseStudent[]>([]);
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<Record<string, boolean>>({});
-  const [loadingTeachers, setLoadingTeachers] = useState<boolean>(false);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<Record<string, boolean>>({});
+  const [loadingRecipients, setLoadingRecipients] = useState<boolean>(false);
   const [sending, setSending] = useState<boolean>(false);
 
   // Formulario
@@ -71,19 +93,19 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
       const sorted = sortCoursesList(Array.from(set).map(name => ({ name }))).map((c: any) => c.name);
       setCoursesList(sorted);
 
-      if (!selectedCourse && sorted.length > 0) {
-        setSelectedCourse(initialCourse || sorted[0]);
-      } else if (initialCourse) {
+      if (initialCourse) {
         setSelectedCourse(initialCourse);
+      } else if (!selectedCourse) {
+        setSelectedCourse('ALL');
       }
     }).catch(err => console.error('Error cargando cursos:', err));
   }, [isOpen, token, initialCourse]);
 
-  // Cargar docentes asignados al curso seleccionado
+  // Cargar docentes y estudiantes asignados al curso seleccionado (o todo el liceo si es 'ALL')
   useEffect(() => {
     if (!isOpen || !token || !selectedCourse) return;
 
-    setLoadingTeachers(true);
+    setLoadingRecipients(true);
     fetch(`/api/courses/teachers-summary?course=${encodeURIComponent(selectedCourse)}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -91,84 +113,182 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
       .then(data => {
         if (data && Array.isArray(data.teachers)) {
           setTeachers(data.teachers);
-          // Por defecto seleccionar a todos los docentes
-          const map: Record<string, boolean> = {};
+          const tMap: Record<string, boolean> = {};
           data.teachers.forEach((t: CourseTeacher) => {
             const key = t.id || t.email || t.name;
-            map[key] = true;
+            tMap[key] = true;
           });
-          setSelectedTeacherIds(map);
+          setSelectedTeacherIds(tMap);
         } else {
           setTeachers([]);
           setSelectedTeacherIds({});
         }
+
+        if (data && Array.isArray(data.students)) {
+          setStudents(data.students);
+          const sMap: Record<string, boolean> = {};
+          data.students.forEach((s: CourseStudent) => {
+            const key = s.id || s.run || s.name;
+            sMap[key] = true;
+          });
+          setSelectedStudentIds(sMap);
+        } else {
+          setStudents([]);
+          setSelectedStudentIds({});
+        }
       })
       .catch(err => {
-        console.error('Error al cargar docentes del curso:', err);
+        console.error('Error al cargar destinatarios:', err);
         setTeachers([]);
+        setStudents([]);
       })
-      .finally(() => setLoadingTeachers(false));
+      .finally(() => setLoadingRecipients(false));
   }, [isOpen, token, selectedCourse]);
 
+  const selectedTeachers = useMemo(
+    () => (audience === 'teachers' || audience === 'both')
+      ? teachers.filter(t => selectedTeacherIds[t.id || t.email || t.name])
+      : [],
+    [teachers, selectedTeacherIds, audience]
+  );
+
+  const selectedStudents = useMemo(
+    () => (audience === 'students' || audience === 'both')
+      ? students.filter(s => selectedStudentIds[s.id || s.run || s.name])
+      : [],
+    [students, selectedStudentIds, audience]
+  );
+
+  const totalSelectedCount = selectedTeachers.length + selectedStudents.length;
+
+  const totalUniqueEmails = useMemo(() => {
+    const emailSet = new Set<string>();
+    selectedTeachers.forEach(t => {
+      if (t.email && t.email.includes('@')) emailSet.add(t.email.toLowerCase());
+    });
+    selectedStudents.forEach(s => {
+      if (Array.isArray(s.emails)) {
+        s.emails.forEach(em => {
+          if (em && em.includes('@')) emailSet.add(em.toLowerCase());
+        });
+      } else if (s.email && s.email.includes('@')) {
+        emailSet.add(s.email.toLowerCase());
+      }
+    });
+    return emailSet.size;
+  }, [selectedTeachers, selectedStudents]);
+
+  const filteredTeachers = useMemo(() => {
+    if (!searchQuery.trim()) return teachers;
+    const q = searchQuery.toLowerCase();
+    return teachers.filter(t =>
+      t.name.toLowerCase().includes(q) ||
+      (t.email || '').toLowerCase().includes(q) ||
+      t.subjects.join(' ').toLowerCase().includes(q)
+    );
+  }, [teachers, searchQuery]);
+
+  const filteredStudents = useMemo(() => {
+    if (!searchQuery.trim()) return students;
+    const q = searchQuery.toLowerCase();
+    return students.filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      (s.run || '').toLowerCase().includes(q) ||
+      (s.guardianName || '').toLowerCase().includes(q) ||
+      (s.courseName || '').toLowerCase().includes(q) ||
+      s.emails.join(' ').toLowerCase().includes(q)
+    );
+  }, [students, searchQuery]);
+
   if (!isOpen) return null;
+
+  const isAllCourses = selectedCourse === 'ALL';
+  const scopeDisplay = isAllCourses ? 'Todos los Cursos (Masivo Liceo)' : selectedCourse;
 
   // Acciones de selección
   const toggleTeacher = (key: string) => {
     setSelectedTeacherIds(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const selectAllTeachers = () => {
-    const map: Record<string, boolean> = {};
-    teachers.forEach(t => {
-      map[t.id || t.email || t.name] = true;
-    });
-    setSelectedTeacherIds(map);
+  const toggleStudent = (key: string) => {
+    setSelectedStudentIds(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const deselectAllTeachers = () => {
-    setSelectedTeacherIds({});
+  const selectAllVisible = () => {
+    if (audience === 'teachers' || audience === 'both') {
+      const tMap = { ...selectedTeacherIds };
+      filteredTeachers.forEach(t => {
+        tMap[t.id || t.email || t.name] = true;
+      });
+      setSelectedTeacherIds(tMap);
+    }
+    if (audience === 'students' || audience === 'both') {
+      const sMap = { ...selectedStudentIds };
+      filteredStudents.forEach(s => {
+        sMap[s.id || s.run || s.name] = true;
+      });
+      setSelectedStudentIds(sMap);
+    }
   };
 
-  const selectedTeachers = teachers.filter(t => selectedTeacherIds[t.id || t.email || t.name]);
-  const selectedWithEmail = selectedTeachers.filter(t => t.hasEmail);
+  const deselectAllVisible = () => {
+    if (audience === 'teachers' || audience === 'both') {
+      const tMap = { ...selectedTeacherIds };
+      filteredTeachers.forEach(t => {
+        delete tMap[t.id || t.email || t.name];
+      });
+      setSelectedTeacherIds(tMap);
+    }
+    if (audience === 'students' || audience === 'both') {
+      const sMap = { ...selectedStudentIds };
+      filteredStudents.forEach(s => {
+        delete sMap[s.id || s.run || s.name];
+      });
+      setSelectedStudentIds(sMap);
+    }
+  };
 
   // Enviar mensaje
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!selectedCourse) {
-      Swal.fire('Atención', 'Por favor seleccione un curso.', 'warning');
+      Swal.fire('Atención', 'Por favor seleccione un curso o alcance.', 'warning');
       return;
     }
     if (!subject.trim()) {
-      Swal.fire('Atención', 'Debe ingresar el asunto o título del mensaje.', 'warning');
+      Swal.fire('Atención', 'Debe ingresar el asunto o título del comunicado.', 'warning');
       return;
     }
     if (!message.trim()) {
       Swal.fire('Atención', 'Debe escribir el contenido del comunicado.', 'warning');
       return;
     }
-    if (selectedTeachers.length === 0) {
-      Swal.fire('Atención', 'Debe seleccionar al menos un profesor destinatario.', 'warning');
+    if (totalSelectedCount === 0) {
+      Swal.fire('Atención', 'Debe seleccionar al menos un destinatario.', 'warning');
       return;
     }
 
     const channelList = channels === 'both' ? ['platform', 'email'] : [channels];
+    const audienceText = audience === 'students'
+      ? `${selectedStudents.length} Estudiante(s) / Apoderado(s)`
+      : audience === 'teachers'
+        ? `${selectedTeachers.length} Docente(s)`
+        : `${selectedTeachers.length} Docente(s) + ${selectedStudents.length} Estudiante(s)/Apoderado(s)`;
 
-    // Confirmación previa
     const confirmResult = await Swal.fire({
-      title: '¿Confirmar Envío de Mensaje?',
+      title: '¿Confirmar Envío de Comunicado Oficial?',
       html: `
-        <div style="text-align: left; font-size: 0.92rem; line-height: 1.5;">
-          <p><strong>🏫 Curso:</strong> ${selectedCourse}</p>
-          <p><strong>👥 Destinatarios:</strong> ${selectedTeachers.length} profesor(es) seleccionado(s)</p>
-          <p><strong>📡 Canales:</strong> ${channels === 'both' ? '🌐 Plataforma y Correo Electrónico' : channels === 'platform' ? '📱 Solo Plataforma' : '📧 Solo Correo Electrónico'}</p>
+        <div style="text-align: left; font-size: 0.92rem; line-height: 1.55;">
+          <p><strong>🏫 Alcance:</strong> ${scopeDisplay}</p>
+          <p><strong>👥 Destinatarios:</strong> ${audienceText}</p>
+          <p><strong>📡 Canales:</strong> ${channels === 'both' ? `🌐 Plataforma y Correo (${totalUniqueEmails} casillas únicas)` : channels === 'platform' ? '📱 Solo Plataforma (Portal Apoderado/Docente)' : `📧 Solo Correo Electrónico (${totalUniqueEmails} casillas)`}</p>
           <p><strong>📌 Asunto:</strong> ${subject}</p>
         </div>
       `,
       icon: 'question',
       showCancelButton: true,
-      confirmButtonText: 'Sí, Enviar Mensaje',
+      confirmButtonText: 'Sí, Despachar Comunicado',
       cancelButtonText: 'Cancelar',
       confirmButtonColor: '#4f46e5'
     });
@@ -178,6 +298,33 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
     setSending(true);
 
     try {
+      const combinedRecipients = [
+        ...selectedTeachers.map(t => ({
+          recipientType: 'teacher',
+          id: t.id,
+          userId: t.userId,
+          name: t.name,
+          email: t.email,
+          emails: t.email ? [t.email] : [],
+          run: t.run,
+          role: t.roles.join(', ') || 'Docente',
+          subject: t.subjects.join(', ') || 'Asignatura',
+          courseName: isAllCourses ? 'ALL' : selectedCourse
+        })),
+        ...selectedStudents.map(s => ({
+          recipientType: 'student',
+          id: s.id,
+          name: s.name,
+          run: s.run,
+          guardianName: s.guardianName,
+          guardianRun: s.guardianRun,
+          email: s.email,
+          emails: s.emails,
+          role: 'Estudiante',
+          courseName: s.courseName || (isAllCourses ? 'ALL' : selectedCourse)
+        }))
+      ];
+
       const res = await fetch('/api/courses/send-message', {
         method: 'POST',
         headers: {
@@ -186,20 +333,13 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
         },
         body: JSON.stringify({
           courseName: selectedCourse,
+          audience,
           channels: channelList,
           priority,
           category,
           subject: subject.trim(),
           message: message.trim(),
-          recipients: selectedTeachers.map(t => ({
-            id: t.id,
-            userId: t.userId,
-            name: t.name,
-            email: t.email,
-            run: t.run,
-            role: t.roles.join(', ') || 'Docente',
-            subject: t.subjects.join(', ') || 'Asignatura'
-          }))
+          recipients: combinedRecipients
         })
       });
 
@@ -210,12 +350,12 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
       }
 
       await Swal.fire({
-        title: '¡Mensaje Enviado Exitosamente!',
+        title: '¡Comunicado Despachado Exitosamente!',
         html: `
           <div style="text-align: left; font-size: 0.92rem; line-height: 1.6;">
-            <p style="color: #166534; font-weight: 700;">✅ La comunicación fue entregada de forma focalizada al curso <strong>${selectedCourse}</strong>.</p>
+            <p style="color: #166534; font-weight: 700;">✅ La comunicación fue entregada a <strong>${scopeDisplay}</strong>.</p>
             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 8px;">
-              <div>📱 <strong>Notificaciones en Plataforma:</strong> ${data.summary?.platformNotificationsCount || 0} entregadas</div>
+              <div>📱 <strong>Notificaciones en Plataforma (Portal Docente / Apoderado / Estudiante):</strong> ${data.summary?.platformNotificationsCount || 0} entregadas</div>
               <div>📧 <strong>Correos Electrónicos Oficiales:</strong> ${data.summary?.emailsSentCount || 0} despachados</div>
               ${data.summary?.emailsFailedCount > 0 ? `<div style="color: #dc2626;">⚠️ Correos con incidencia: ${data.summary.emailsFailedCount}</div>` : ''}
             </div>
@@ -225,7 +365,6 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
         confirmButtonColor: '#4f46e5'
       });
 
-      // Limpiar formulario y cerrar
       setSubject('');
       setMessage('');
       if (onMessageSent) onMessageSent();
@@ -257,8 +396,8 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
         background: '#ffffff',
         borderRadius: '20px',
         width: '100%',
-        maxWidth: '850px',
-        maxHeight: '92vh',
+        maxWidth: '920px',
+        maxHeight: '94vh',
         display: 'flex',
         flexDirection: 'column',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
@@ -267,8 +406,8 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
       }}>
         {/* Cabecera */}
         <div style={{
-          padding: '1.25rem 1.75rem',
-          background: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
+          padding: '1.2rem 1.75rem',
+          background: 'linear-gradient(135deg, #4f46e5 0%, #1e1b4b 100%)',
           color: '#ffffff',
           display: 'flex',
           justifyContent: 'space-between',
@@ -278,7 +417,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
             <div style={{
               background: 'rgba(255, 255, 255, 0.2)',
               borderRadius: '12px',
-              padding: '8px',
+              padding: '9px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
@@ -286,11 +425,11 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
               <Send size={22} color="#ffffff" />
             </div>
             <div>
-              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.3px' }}>
-                Comunicación Docente Focalizada
+              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, letterSpacing: '-0.3px' }}>
+                Centro de Comunicaciones Masivas y por Curso
               </h2>
-              <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#e0e7ff' }}>
-                Envíe mensajes y correos precisos únicamente a los profesores asignados a un curso
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#e0e7ff' }}>
+                Envíe comunicados oficiales a Estudiantes, Apoderados y/o Docentes (por curso o a todo el Liceo)
               </p>
             </div>
           </div>
@@ -306,8 +445,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
               alignItems: 'center',
               justifyContent: 'center',
               color: '#ffffff',
-              cursor: 'pointer',
-              transition: 'background 0.2s'
+              cursor: 'pointer'
             }}
           >
             <X size={20} />
@@ -315,53 +453,58 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
         </div>
 
         {/* Cuerpo del Modal con Scroll */}
-        <form onSubmit={handleSubmit} style={{ overflowY: 'auto', padding: '1.5rem 1.75rem', flex: 1 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <form onSubmit={handleSubmit} style={{ overflowY: 'auto', padding: '1.35rem 1.75rem', flex: 1 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
 
-            {/* 1. Selector de Curso y Canales */}
+            {/* 1. Selector de Alcance (Curso o Liceo Completo) y Canal */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))',
               gap: '1rem',
               background: '#f8fafc',
-              padding: '1.1rem',
+              padding: '1rem',
               borderRadius: '14px',
               border: '1px solid #e2e8f0'
             }}>
-              {/* Selector de Curso */}
+              {/* Selector de Alcance / Curso */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>
-                  🏫 Curso Destinatario:
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, color: '#334155', marginBottom: '0.4rem' }}>
+                  🏫 Alcance / Curso Destinatario:
                 </label>
                 <select
                   value={selectedCourse}
                   onChange={e => setSelectedCourse(e.target.value)}
                   style={{
                     width: '100%',
-                    padding: '0.65rem 0.85rem',
+                    padding: '0.6rem 0.85rem',
                     borderRadius: '10px',
-                    border: '1.5px solid #cbd5e1',
-                    fontSize: '0.9rem',
-                    fontWeight: 700,
-                    color: '#1e293b',
-                    background: '#ffffff',
+                    border: selectedCourse === 'ALL' ? '2px solid #4f46e5' : '1.5px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    fontWeight: 800,
+                    color: selectedCourse === 'ALL' ? '#3730a3' : '#1e293b',
+                    background: selectedCourse === 'ALL' ? '#eef2ff' : '#ffffff',
                     outline: 'none',
                     cursor: 'pointer'
                   }}
                 >
-                  {coursesList.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
+                  <option value="ALL">📢 TODOS LOS CURSOS — Masivo a Todo el Liceo</option>
+                  <optgroup label="Cursos Específicos del Establecimiento">
+                    {coursesList.map(c => (
+                      <option key={c} value={c}>🏫 Curso: {c}</option>
+                    ))}
+                  </optgroup>
                 </select>
-                <span style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
-                  Solo los docentes vinculados a este curso recibirán la notificación.
+                <span style={{ fontSize: '0.73rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
+                  {isAllCourses
+                    ? 'Se enviará de forma masiva a todos los cursos del establecimiento.'
+                    : `Focalizado exclusivamente en el curso ${selectedCourse}.`}
                 </span>
               </div>
 
               {/* Selector de Canal */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>
-                  📡 Canal de Envío:
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, color: '#334155', marginBottom: '0.4rem' }}>
+                  📡 Canal de Entrega:
                 </label>
                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                   <button
@@ -369,9 +512,9 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
                     onClick={() => setChannels('both')}
                     style={{
                       flex: 1,
-                      padding: '0.55rem 0.65rem',
+                      padding: '0.55rem 0.6rem',
                       borderRadius: '8px',
-                      fontSize: '0.78rem',
+                      fontSize: '0.76rem',
                       fontWeight: 700,
                       border: channels === 'both' ? '2px solid #4f46e5' : '1px solid #cbd5e1',
                       background: channels === 'both' ? '#eef2ff' : '#ffffff',
@@ -383,7 +526,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
                       gap: '0.3rem'
                     }}
                   >
-                    <Sparkles size={14} /> Ambos (Recomendado)
+                    <Sparkles size={14} /> Ambos Canales
                   </button>
 
                   <button
@@ -391,9 +534,9 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
                     onClick={() => setChannels('platform')}
                     style={{
                       flex: 1,
-                      padding: '0.55rem 0.65rem',
+                      padding: '0.55rem 0.6rem',
                       borderRadius: '8px',
-                      fontSize: '0.78rem',
+                      fontSize: '0.76rem',
                       fontWeight: 700,
                       border: channels === 'platform' ? '2px solid #4f46e5' : '1px solid #cbd5e1',
                       background: channels === 'platform' ? '#eef2ff' : '#ffffff',
@@ -413,9 +556,9 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
                     onClick={() => setChannels('email')}
                     style={{
                       flex: 1,
-                      padding: '0.55rem 0.65rem',
+                      padding: '0.55rem 0.6rem',
                       borderRadius: '8px',
-                      fontSize: '0.78rem',
+                      fontSize: '0.76rem',
                       fontWeight: 700,
                       border: channels === 'email' ? '2px solid #4f46e5' : '1px solid #cbd5e1',
                       background: channels === 'email' ? '#eef2ff' : '#ffffff',
@@ -433,147 +576,294 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
               </div>
             </div>
 
-            {/* 2. Lista de Profesores Asignados al Curso */}
+            {/* 2. Selector de Audiencia (Estudiantes/Apoderados, Docentes o Ambos) */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, color: '#334155', marginBottom: '0.45rem' }}>
+                🎯 ¿A quién va dirigido este comunicado?
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.6rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setAudience('students')}
+                  style={{
+                    padding: '0.7rem 0.9rem',
+                    borderRadius: '12px',
+                    border: audience === 'students' ? '2px solid #10b981' : '1px solid #cbd5e1',
+                    background: audience === 'students' ? '#ecfdf5' : '#ffffff',
+                    color: audience === 'students' ? '#065f46' : '#475569',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                    textAlign: 'left'
+                  }}
+                >
+                  <GraduationCap size={20} color={audience === 'students' ? '#059669' : '#64748b'} />
+                  <div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 800 }}>🎓 Estudiantes y Apoderados</div>
+                    <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>{students.length} alumno(s) / familia(s)</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAudience('teachers')}
+                  style={{
+                    padding: '0.7rem 0.9rem',
+                    borderRadius: '12px',
+                    border: audience === 'teachers' ? '2px solid #4f46e5' : '1px solid #cbd5e1',
+                    background: audience === 'teachers' ? '#eef2ff' : '#ffffff',
+                    color: audience === 'teachers' ? '#3730a3' : '#475569',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                    textAlign: 'left'
+                  }}
+                >
+                  <Users size={20} color={audience === 'teachers' ? '#4f46e5' : '#64748b'} />
+                  <div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 800 }}>👨‍🏫 Equipo Docente</div>
+                    <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>{teachers.length} profesor(es)</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAudience('both')}
+                  style={{
+                    padding: '0.7rem 0.9rem',
+                    borderRadius: '12px',
+                    border: audience === 'both' ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                    background: audience === 'both' ? '#f0f9ff' : '#ffffff',
+                    color: audience === 'both' ? '#075985' : '#475569',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                    textAlign: 'left'
+                  }}
+                >
+                  <Globe size={20} color={audience === 'both' ? '#0284c7' : '#64748b'} />
+                  <div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 800 }}>🌐 Comunidad Completa</div>
+                    <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>Docentes + Estudiantes/Apoderados</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* 3. Nómina de Destinatarios con Buscador y Selección */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Users size={17} color="#4f46e5" />
-                  <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#1e293b' }}>
-                    Equipo Docente Asignado a {selectedCourse} ({teachers.length})
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b' }}>
+                    Destinatarios en {scopeDisplay}
                   </span>
                   <span style={{
-                    fontSize: '0.75rem',
+                    fontSize: '0.74rem',
                     background: '#e0e7ff',
                     color: '#3730a3',
-                    padding: '2px 8px',
+                    padding: '2px 9px',
+                    borderRadius: '12px',
+                    fontWeight: 800
+                  }}>
+                    {totalSelectedCount} seleccionado(s)
+                  </span>
+                  <span style={{
+                    fontSize: '0.73rem',
+                    background: '#dcfce7',
+                    color: '#166534',
+                    padding: '2px 9px',
                     borderRadius: '12px',
                     fontWeight: 700
                   }}>
-                    {selectedTeachers.length} seleccionados
+                    📧 {totalUniqueEmails} correo(s) activo(s)
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <div style={{ position: 'relative' }}>
+                    <Search size={13} color="#64748b" style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      placeholder="Filtrar por nombre, RUT o curso..."
+                      style={{
+                        padding: '4px 8px 4px 26px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.75rem',
+                        width: '190px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
                   <button
                     type="button"
-                    onClick={selectAllTeachers}
+                    onClick={selectAllVisible}
                     style={{
                       background: '#f1f5f9',
                       border: '1px solid #cbd5e1',
                       borderRadius: '6px',
-                      padding: '3px 8px',
-                      fontSize: '0.74rem',
+                      padding: '4px 8px',
+                      fontSize: '0.73rem',
                       fontWeight: 700,
-                      color: '#475569',
+                      color: '#334155',
                       cursor: 'pointer'
                     }}
                   >
-                    Seleccionar Todos
+                    Marcar Todos
                   </button>
                   <button
                     type="button"
-                    onClick={deselectAllTeachers}
+                    onClick={deselectAllVisible}
                     style={{
                       background: '#f1f5f9',
                       border: '1px solid #cbd5e1',
                       borderRadius: '6px',
-                      padding: '3px 8px',
-                      fontSize: '0.74rem',
+                      padding: '4px 8px',
+                      fontSize: '0.73rem',
                       fontWeight: 700,
                       color: '#475569',
                       cursor: 'pointer'
                     }}
                   >
-                    Deseleccionar
+                    Desmarcar
                   </button>
                 </div>
               </div>
 
-              {loadingTeachers ? (
-                <div style={{ padding: '1.5rem', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', color: '#64748b', fontSize: '0.85rem' }}>
-                  ⏳ Buscando equipo docente asignado a {selectedCourse}...
-                </div>
-              ) : teachers.length === 0 ? (
-                <div style={{ padding: '1.5rem', textAlign: 'center', background: '#fef2f2', border: '1px dashed #fca5a5', borderRadius: '12px', color: '#991b1b', fontSize: '0.85rem' }}>
-                  ⚠️ No se registraron profesores asignados a este curso en el sistema. Revise las asignaciones docentes en Configuración.
+              {loadingRecipients ? (
+                <div style={{ padding: '1.25rem', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', color: '#64748b', fontSize: '0.85rem' }}>
+                  ⏳ Cargando nómina de destinatarios de {scopeDisplay}...
                 </div>
               ) : (
                 <div style={{
-                  maxHeight: '180px',
+                  maxHeight: '195px',
                   overflowY: 'auto',
                   border: '1px solid #e2e8f0',
                   borderRadius: '12px',
                   background: '#ffffff'
                 }}>
-                  {teachers.map(t => {
+                  {/* Lista de Docentes si aplica */}
+                  {(audience === 'teachers' || audience === 'both') && filteredTeachers.map(t => {
                     const key = t.id || t.email || t.name;
                     const isChecked = !!selectedTeacherIds[key];
                     return (
                       <div
-                        key={key}
+                        key={`t-${key}`}
                         onClick={() => toggleTeacher(key)}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          padding: '0.65rem 0.9rem',
+                          padding: '0.55rem 0.9rem',
                           borderBottom: '1px solid #f1f5f9',
                           background: isChecked ? '#f8faff' : '#ffffff',
-                          cursor: 'pointer',
-                          transition: 'background 0.15s'
+                          cursor: 'pointer'
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                           <input
                             type="checkbox"
                             checked={isChecked}
                             onChange={() => {}}
-                            style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                            style={{ cursor: 'pointer', width: '15px', height: '15px' }}
                           />
                           <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a' }}>
-                                {t.name}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>
+                                👨‍🏫 {t.name}
                               </span>
                               {t.isHomeroom && (
                                 <span style={{
                                   background: '#fef3c7',
                                   color: '#92400e',
-                                  fontSize: '0.68rem',
+                                  fontSize: '0.66rem',
                                   fontWeight: 800,
                                   padding: '1px 6px',
                                   borderRadius: '6px'
                                 }}>
-                                  👑 Profesor Jefe
+                                  👑 Prof. Jefe
                                 </span>
                               )}
-                              {t.roles.map(r => r !== 'Profesor Jefe' && (
-                                <span key={r} style={{
-                                  background: '#e0e7ff',
-                                  color: '#3730a3',
-                                  fontSize: '0.68rem',
-                                  fontWeight: 700,
-                                  padding: '1px 6px',
-                                  borderRadius: '6px'
-                                }}>
-                                  {r}
-                                </span>
-                              ))}
                             </div>
-                            <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
+                            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
                               {t.subjects.length > 0 ? t.subjects.join(' • ') : 'Docencia General'}
                             </div>
                           </div>
                         </div>
 
-                        <div style={{ textAlign: 'right', fontSize: '0.74rem' }}>
+                        <div style={{ textAlign: 'right', fontSize: '0.72rem' }}>
                           {t.hasEmail ? (
-                            <span style={{ color: '#166534', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
-                              <CheckCircle2 size={13} color="#16a34a" /> {t.email}
+                            <span style={{ color: '#166534', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <CheckCircle2 size={12} color="#16a34a" /> {t.email}
                             </span>
                           ) : (
-                            <span style={{ color: '#b45309', fontWeight: 600 }}>
-                              ⚠️ Sin correo (Solo plataforma)
+                            <span style={{ color: '#64748b', fontWeight: 600 }}>📱 Notif. Plataforma</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Lista de Estudiantes y Apoderados si aplica */}
+                  {(audience === 'students' || audience === 'both') && filteredStudents.map(s => {
+                    const key = s.id || s.run || s.name;
+                    const isChecked = !!selectedStudentIds[key];
+                    return (
+                      <div
+                        key={`s-${key}`}
+                        onClick={() => toggleStudent(key)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '0.55rem 0.9rem',
+                          borderBottom: '1px solid #f1f5f9',
+                          background: isChecked ? '#f0fdf4' : '#ffffff',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {}}
+                            style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                          />
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>
+                                🎓 {s.name}
+                              </span>
+                              <span style={{
+                                background: '#e0f2fe',
+                                color: '#0369a1',
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                padding: '1px 6px',
+                                borderRadius: '6px'
+                              }}>
+                                {s.courseName}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.71rem', color: '#64748b' }}>
+                              RUT Alumno: {s.run || 'S/R'} • 👨‍👩‍👧 Apoderado: {s.guardianName || 'Sin registro'} {s.guardianRun ? `(${s.guardianRun})` : ''}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: 'right', fontSize: '0.72rem' }}>
+                          {s.hasEmail ? (
+                            <span style={{ color: '#166534', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <CheckCircle2 size={12} color="#16a34a" /> {s.emails.join(', ')}
+                            </span>
+                          ) : (
+                            <span style={{ color: '#0369a1', fontWeight: 600 }}>
+                              📱 Portal Apoderado / Alumno
                             </span>
                           )}
                         </div>
@@ -584,10 +874,10 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
               )}
             </div>
 
-            {/* 3. Prioridad y Categoría */}
+            {/* 4. Prioridad y Categoría */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.85rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
                   ⚡ Nivel de Prioridad:
                 </label>
                 <select
@@ -598,7 +888,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
                     padding: '0.55rem 0.75rem',
                     borderRadius: '8px',
                     border: '1px solid #cbd5e1',
-                    fontSize: '0.85rem',
+                    fontSize: '0.84rem',
                     fontWeight: 700,
                     color: priority === 'urgente' ? '#991b1b' : priority === 'importante' ? '#9a3412' : '#334155',
                     background: priority === 'urgente' ? '#fef2f2' : priority === 'importante' ? '#fffbeb' : '#ffffff',
@@ -612,7 +902,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
                   📁 Categoría / Ámbito:
                 </label>
                 <select
@@ -623,39 +913,39 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
                     padding: '0.55rem 0.75rem',
                     borderRadius: '8px',
                     border: '1px solid #cbd5e1',
-                    fontSize: '0.85rem',
+                    fontSize: '0.84rem',
                     fontWeight: 600,
                     color: '#334155',
                     background: '#ffffff',
                     cursor: 'pointer'
                   }}
                 >
-                  <option value="General">General / Institucional</option>
+                  <option value="General">General / Comunicado Oficial</option>
+                  <option value="Reunión de Apoderados">Reunión de Apoderados / Citación</option>
                   <option value="Académico">Académico / Evaluaciones / Calificaciones</option>
-                  <option value="Convivencia">Convivencia Escolar / Disciplina</option>
-                  <option value="Reunión">Reunión de Curso / Consejo Técnico</option>
-                  <option value="Caso Especial">Caso Especial de Estudiante</option>
+                  <option value="Convivencia">Convivencia Escolar / Inspectoría</option>
+                  <option value="Suspensión o Cambio Horario">Cambio de Horario / Actividad Especial</option>
                   <option value="Administrativo">Coordinación Administrativa / UTP</option>
                 </select>
               </div>
             </div>
 
-            {/* 4. Asunto / Título */}
+            {/* 5. Asunto / Título */}
             <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
                 📌 Asunto / Título del Comunicado:
               </label>
               <input
                 type="text"
                 value={subject}
                 onChange={e => setSubject(e.target.value)}
-                placeholder="Ej: Coordinación de calendario de evaluaciones - Mes en curso"
+                placeholder="Ej: Citación a Reunión de Apoderados / Informativo General del Liceo"
                 style={{
                   width: '100%',
-                  padding: '0.65rem 0.85rem',
+                  padding: '0.6rem 0.85rem',
                   borderRadius: '8px',
                   border: '1.5px solid #cbd5e1',
-                  fontSize: '0.9rem',
+                  fontSize: '0.88rem',
                   fontWeight: 600,
                   outline: 'none',
                   boxSizing: 'border-box'
@@ -664,11 +954,11 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
               />
             </div>
 
-            {/* 5. Mensaje */}
+            {/* 6. Mensaje */}
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
-                  ✍️ Mensaje / Contenido:
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155' }}>
+                  ✍️ Mensaje / Contenido del Comunicado:
                 </label>
                 <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
                   {message.length} caracteres
@@ -677,14 +967,14 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
               <textarea
                 value={message}
                 onChange={e => setMessage(e.target.value)}
-                placeholder="Escriba aquí la información precisa dirigida a los docentes del curso..."
-                rows={5}
+                placeholder="Escriba aquí el comunicado para los estudiantes, apoderados y/o docentes..."
+                rows={4}
                 style={{
                   width: '100%',
-                  padding: '0.75rem 0.85rem',
+                  padding: '0.7rem 0.85rem',
                   borderRadius: '10px',
                   border: '1.5px solid #cbd5e1',
-                  fontSize: '0.9rem',
+                  fontSize: '0.88rem',
                   fontFamily: 'inherit',
                   lineHeight: '1.5',
                   outline: 'none',
@@ -699,18 +989,20 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
               background: '#f0f9ff',
               border: '1px solid #bae6fd',
               borderRadius: '10px',
-              padding: '0.75rem 1rem',
+              padding: '0.7rem 1rem',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              fontSize: '0.82rem',
+              flexWrap: 'wrap',
+              gap: '0.5rem',
+              fontSize: '0.8rem',
               color: '#0369a1'
             }}>
               <span>
-                💡 <strong>Destino:</strong> Se comunicará a <strong>{selectedTeachers.length}</strong> docente(s) de <strong>{selectedCourse}</strong>
-                {channels !== 'platform' && ` (${selectedWithEmail.length} recibirán correo electrónico)`}.
+                💡 <strong>Resumen de Envío:</strong> {totalSelectedCount} destinatario(s) en <strong>{scopeDisplay}</strong>
+                {channels !== 'platform' && ` (${totalUniqueEmails} correo(s) electrónico(s) + Portal de Apoderados/Docentes)`}.
               </span>
-              <span style={{ fontWeight: 700, color: '#0284c7' }}>
+              <span style={{ fontWeight: 800, color: '#0284c7' }}>
                 {channels === 'both' ? 'Plataforma + Email' : channels === 'platform' ? 'Solo Plataforma' : 'Solo Email'}
               </span>
             </div>
@@ -719,12 +1011,12 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
 
           {/* Botones de acción */}
           <div style={{
-            marginTop: '1.5rem',
+            marginTop: '1.25rem',
             display: 'flex',
             justifyContent: 'flex-end',
             gap: '0.75rem',
             borderTop: '1px solid #e2e8f0',
-            paddingTop: '1.25rem'
+            paddingTop: '1rem'
           }}>
             <button
               type="button"
@@ -735,8 +1027,8 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
                 color: '#475569',
                 border: '1px solid #cbd5e1',
                 borderRadius: '10px',
-                padding: '0.65rem 1.25rem',
-                fontSize: '0.9rem',
+                padding: '0.6rem 1.25rem',
+                fontSize: '0.88rem',
                 fontWeight: 700,
                 cursor: 'pointer'
               }}
@@ -746,14 +1038,14 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
 
             <button
               type="submit"
-              disabled={sending || selectedTeachers.length === 0}
+              disabled={sending || totalSelectedCount === 0}
               style={{
                 background: sending ? '#94a3b8' : 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
                 color: '#ffffff',
                 border: 'none',
                 borderRadius: '10px',
-                padding: '0.65rem 1.5rem',
-                fontSize: '0.9rem',
+                padding: '0.6rem 1.4rem',
+                fontSize: '0.88rem',
                 fontWeight: 800,
                 cursor: sending ? 'not-allowed' : 'pointer',
                 display: 'flex',
@@ -763,10 +1055,10 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
               }}
             >
               {sending ? (
-                <>⏳ Despachando mensaje...</>
+                <>⏳ Despachando Comunicado...</>
               ) : (
                 <>
-                  <Send size={16} /> Enviar Mensaje a {selectedTeachers.length} Profesores
+                  <Send size={16} /> Despachar a {totalSelectedCount} Destinatario(s)
                 </>
               )}
             </button>

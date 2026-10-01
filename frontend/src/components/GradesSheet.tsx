@@ -74,6 +74,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
   const [showReorderModal, setShowReorderModal] = useState<boolean>(false);
   const [selectedCumulativeCol, setSelectedCumulativeCol] = useState<GradeColumn | null>(null);
   const [cumulativeColumnsMap, setCumulativeColumnsMap] = useState<Record<string, { isCumulative: boolean; count: number }>>({});
+  const [printCourseOverview, setPrintCourseOverview] = useState<any>(null);
 
   // FUNCIÓN PARA ORDENAR ALUMNOS STRICTAMENTE POR NÚMERO DE LISTA (NUMÉRICO)
   const sortStudentsByListNumber = (arr: Student[]) => {
@@ -175,7 +176,18 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       const sorted = sortCoursesList(combined);
 
       if (sorted.length > 0) {
-        setAllLevels(sorted.map((cName, idx) => ({ id: idx + 1, name: cName })));
+        const usedIds = new Set<number>();
+        setAllLevels(sorted.map((cName, idx) => {
+          const nName = normalizeStr(cName);
+          const foundCourse = cList.find((c: any) => normalizeStr(c.name) === nName);
+          let canonicalId = foundCourse && foundCourse.level_id ? Number(foundCourse.level_id) : 0;
+          if (!canonicalId || isNaN(canonicalId) || usedIds.has(canonicalId)) {
+            canonicalId = idx + 1;
+            while (usedIds.has(canonicalId)) canonicalId++;
+          }
+          usedIds.add(canonicalId);
+          return { id: canonicalId, name: cName };
+        }));
       } else {
         setAllLevels([]);
       }
@@ -224,9 +236,37 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
     // 1. Obtener las asignaturas oficiales que aplican a este curso específico
     const nCourse = normalizeStr(currentCourseName);
-    const findSubjectInDb = (nameOrId: any, fallbackId?: any) => {
+    const isBasic1To6 = /\b[1-6]\s*basico/.test(nCourse);
+
+    const getCanonicalSubGroup = (nameOrId: any, idVal?: any): string => {
       const n = normalizeStr(nameOrId);
-      let found = allSubjects.find(sub => String(sub.id) === String(fallbackId) || String(sub.id) === String(nameOrId) || normalizeStr(sub.name) === n);
+      const idStr = String(idVal ?? nameOrId ?? '').trim();
+      if (idStr === '111' || idStr === '120' || n === 'educacion fisica y salud') return 'eq_ed_fisica';
+      if (idStr === '115' || idStr === '117' || n === 'ingles' || n === 'idioma extranjero ingles') return 'eq_ingles';
+      if (idStr === '105' || idStr === '116' || n === 'lenguaje y comunicacion' || n === 'lengua y literatura') return 'eq_lenguaje';
+      if (idStr === '113' || idStr === '119' || n === 'tecnologia' || n === 'educacion tecnologica') return 'eq_tecnologia';
+      return n || `id_${idStr}`;
+    };
+
+    const findSubjectInDb = (nameOrId: any, fallbackId?: any) => {
+      const grp = getCanonicalSubGroup(nameOrId, fallbackId);
+      if (grp === 'eq_ed_fisica') {
+        return { id: 120, name: 'Educación Física y Salud' };
+      }
+      if (grp === 'eq_ingles') {
+        return { id: 117, name: 'Idioma Extranjero Inglés' };
+      }
+      if (grp === 'eq_tecnologia') {
+        return { id: 113, name: 'Tecnología' };
+      }
+      if (grp === 'eq_lenguaje') {
+        return isBasic1To6
+          ? { id: 105, name: 'Lenguaje y Comunicación' }
+          : { id: 116, name: 'Lengua y Literatura' };
+      }
+      const n = normalizeStr(nameOrId);
+      const fbStr = fallbackId !== undefined && fallbackId !== null ? String(fallbackId).trim() : '';
+      let found = allSubjects.find(sub => (fbStr && String(sub.id) === fbStr) || String(sub.id) === String(nameOrId) || normalizeStr(sub.name) === n);
       if (!found && n.includes('historia')) {
         found = allSubjects.find(sub => normalizeStr(sub.name).includes('historia'));
       }
@@ -241,7 +281,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       return Boolean(tName && tName.toLowerCase() !== 'sin asignar');
     });
 
-    const subMap = new Map<number, { id: number; name: string }>();
+    const subMap = new Map<string, { id: number; name: string }>();
 
     // Si existe un orden personalizado para este curso, agregarlo primero
     if (courseSubjectOrders[currentCourseName] && Array.isArray(courseSubjectOrders[currentCourseName]) && courseSubjectOrders[currentCourseName].length > 0) {
@@ -249,19 +289,21 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
         const found = findSubjectInDb(s.name, s.id);
         const numId = found ? Number(found.id) : (parseInt(String(s.id), 10) || (idx + 1));
         const subName = found ? found.name : s.name;
-        if (subName && !subMap.has(numId)) {
-          subMap.set(numId, { id: numId, name: subName });
+        const groupKey = getCanonicalSubGroup(subName, numId);
+        if (subName && !subMap.has(groupKey)) {
+          subMap.set(groupKey, { id: numId, name: subName });
         }
       });
     }
 
-    // Agregar todas las asignaturas realmente asignadas a docentes en este curso (con su ID real de BD)
+    // Agregar todas las asignaturas realmente asignadas a docentes en este curso (con su ID y denominación canónica)
     courseAssigns.forEach((a: any, idx: number) => {
       const found = findSubjectInDb(a.subject_name, a.subject_id);
       const numId = found ? Number(found.id) : (parseInt(String(a.subject_id), 10) || (idx + 100));
       const subName = found ? found.name : (a.subject_name || `Asignatura ${numId}`);
-      if (subName && !subMap.has(numId)) {
-        subMap.set(numId, { id: numId, name: subName });
+      const groupKey = getCanonicalSubGroup(subName, numId);
+      if (subName && !subMap.has(groupKey)) {
+        subMap.set(groupKey, { id: numId, name: subName });
       }
     });
 
@@ -272,8 +314,9 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
         const found = findSubjectInDb(name);
         const numId = found ? Number(found.id) : (idx + 1);
         const subName = found ? found.name : name;
-        if (!subMap.has(numId)) {
-          subMap.set(numId, { id: numId, name: subName });
+        const groupKey = getCanonicalSubGroup(subName, numId);
+        if (!subMap.has(groupKey)) {
+          subMap.set(groupKey, { id: numId, name: subName });
         }
       });
     }
@@ -300,9 +343,11 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
     return courseSubs.filter(s => {
       const sNameNorm = normalizeStr(s.name);
+      const sGroup = getCanonicalSubGroup(s.name, s.id);
       return myAssignmentsInCourse.some(a => {
         const aSubNorm = normalizeStr(a.subject_name || a.subject_id);
-        return aSubNorm === sNameNorm || String(a.subject_id) === String(s.id) || aSubNorm.includes(sNameNorm) || sNameNorm.includes(aSubNorm);
+        const aGroup = getCanonicalSubGroup(a.subject_name, a.subject_id);
+        return aGroup === sGroup || aSubNorm === sNameNorm || String(a.subject_id) === String(s.id) || aSubNorm.includes(sNameNorm) || sNameNorm.includes(aSubNorm);
       });
     });
   }, [isAdmin, currentCourseName, user, allSubjects, teacherAssignments, isCurrentCourseHomeroom, courseSubjectOrders]);
@@ -450,7 +495,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       .catch(err => console.error(err));
 
     // Columnas (Iniciar con N1 o las que el docente haya creado)
-    fetch(`/api/grade-columns?levelId=${targetLevelId}&subjectId=${targetSubjectId}&academicYear=${academicYear}&period=${encodeURIComponent(period)}`, {
+    fetch(`/api/grade-columns?levelId=${targetLevelId}&subjectId=${targetSubjectId}&courseName=${encodeURIComponent(courseParam)}&subjectName=${encodeURIComponent(validSubject.name)}&academicYear=${academicYear}&period=${encodeURIComponent(period)}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -478,7 +523,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       });
 
     // Calificaciones
-    fetch(`/api/grades?levelId=${targetLevelId}&subjectId=${targetSubjectId}&academicYear=${academicYear}&period=${encodeURIComponent(period)}`, {
+    fetch(`/api/grades?levelId=${targetLevelId}&subjectId=${targetSubjectId}&courseName=${encodeURIComponent(courseParam)}&subjectName=${encodeURIComponent(validSubject.name)}&academicYear=${academicYear}&period=${encodeURIComponent(period)}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -487,7 +532,10 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
         if (Array.isArray(data)) {
           const map: Record<string, number> = {};
           data.forEach((g: any) => {
-            map[`${g.student_id}_${g.grade_column_id}`] = parseFloat(g.grade_value);
+            const rawVal = parseFloat(g.grade_value);
+            if (!isNaN(rawVal)) {
+              map[`${g.student_id}_${g.grade_column_id}`] = rawVal > 7.0 && rawVal <= 70.0 ? rawVal / 10.0 : rawVal;
+            }
           });
           setGradesMap(map);
         }
@@ -554,6 +602,20 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       isCancelled = true;
     };
   }, [levelId, subjectId, academicYear, period, token, currentLevelObj, allowedLevels, allowedSubjects]);
+
+  useEffect(() => {
+    if (!showPrintModal || !currentCourseName) return;
+    fetch(`/api/grades/course-overview?courseName=${encodeURIComponent(currentCourseName)}&year=${academicYear}&period=${encodeURIComponent(period)}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data && Array.isArray(data.students)) {
+          setPrintCourseOverview(data);
+        }
+      })
+      .catch(() => {});
+  }, [showPrintModal, currentCourseName, academicYear, period, token]);
 
   // CAMBIO LOCAL DE NOTA CON SOPORTE PARA CONCEPTOS (MB, B, S, I) Y ESCALA 10-70 / DECIMAL
   const handleGradeChange = (studentId: string, columnId: string, valStr: string) => {
@@ -628,6 +690,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           gradeValue: val,
           levelId,
           subjectId,
+          courseName: currentCourseName,
+          subjectName: currentSubjectName,
           academicYear,
           period
         })
@@ -863,7 +927,10 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           body: JSON.stringify({
             levelId,
             subjectId,
+            courseName: currentCourseName,
+            subjectName: currentSubjectName,
             academicYear,
+            period,
             title: cleanTitle,
             weighting: 0,
             position: columns.length + 1
@@ -922,7 +989,10 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           body: JSON.stringify({
             levelId,
             subjectId,
+            courseName: currentCourseName,
+            subjectName: currentSubjectName,
             academicYear,
+            period,
             title: cleanTitle,
             weighting: 0,
             position: columns.length + 1,
@@ -960,6 +1030,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
             subGrades: {},
             levelId,
             subjectId,
+            courseName: currentCourseName,
+            subjectName: currentSubjectName,
             academicYear,
             period
           })
@@ -991,6 +1063,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               gradeValue: val,
               levelId,
               subjectId,
+              courseName: currentCourseName,
+              subjectName: currentSubjectName,
               academicYear,
               period
             });
@@ -1005,6 +1079,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               gradeValue: finalVal,
               levelId,
               subjectId,
+              courseName: currentCourseName,
+              subjectName: currentSubjectName,
               academicYear,
               period
             });
@@ -1034,6 +1110,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           grades: gradesToSave,
           levelId,
           subjectId,
+          courseName: currentCourseName,
+          subjectName: currentSubjectName,
           academicYear,
           period
         })
@@ -1107,6 +1185,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           gradeValue: numVal,
           levelId,
           subjectId,
+          courseName: currentCourseName,
+          subjectName: currentSubjectName,
           academicYear,
           period
         });
@@ -1120,7 +1200,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
         await fetch('/api/grades/batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ grades: gradesToSave, levelId, subjectId, academicYear, period })
+          body: JSON.stringify({ grades: gradesToSave, levelId, subjectId, courseName: currentCourseName, subjectName: currentSubjectName, academicYear, period })
         });
         Swal.fire({
           icon: 'success',
@@ -1648,6 +1728,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                                     gradeValue: numVal,
                                     levelId,
                                     subjectId,
+                                    courseName: currentCourseName,
+                                    subjectName: currentSubjectName,
                                     academicYear,
                                     period
                                   })
@@ -1668,7 +1750,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                             outline: 'none',
                             boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
                           }}
-                          title="Promedio final conceptual llenado manualmente por el docente (Decreto 67 y 924)"
+                          title="Promedio final salida conceptual llenado manualmente por el docente (Decreto 67 y 924)"
                         >
                           <option value="">- (Sin asignar)</option>
                           <option value="MB">MB (Muy Bueno)</option>
@@ -1713,8 +1795,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           period={period}
           onClose={() => setShowPrintModal(false)}
           students={students.map((s, idx) => {
-            const currentSubName = (allowedSubjects.find(sub => sub.id === subjectId) || allSubjects.find(sub => sub.id === subjectId))?.name || 'Asignatura';
-            
+            const overviewSt = printCourseOverview?.students?.find((os: any) => String(os.id) === String(s.id) || (s.run && os.run === s.run));
+
             const nVals: Record<string, number | string> = {};
             columns.slice(0, 10).forEach((col, cIdx) => {
               const val = gradesMap[`${s.id}_${col.id}`];
@@ -1739,15 +1821,29 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               fullName: s.full_name,
               run: s.run || '',
               course: currentCourseName || 'Curso',
-              promedioGeneral: avg,
-              azules: azulCount,
-              rojas: rojaCount,
+              promedioGeneral: overviewSt?.promedioGeneral || avg,
+              azules: overviewSt?.azules ?? azulCount,
+              rojas: overviewSt?.rojas ?? rojaCount,
               subjectGrades: (allowedSubjects.length > 0 ? allowedSubjects : allSubjects).map(sub => {
                 if (sub.id === subjectId) {
                   return {
                     name: sub.name,
                     ...nVals,
                     average: avg
+                  };
+                }
+                const perf = overviewSt?.subjectGrades?.[sub.name] ||
+                  (overviewSt?.subjectGrades ? Object.entries(overviewSt.subjectGrades).find(([k]) => normalizeStr(k) === normalizeStr(sub.name))?.[1] as any : null);
+                if (perf && Array.isArray(perf.grades)) {
+                  const subNVals: Record<string, number | string> = {};
+                  for (let i = 1; i <= 10; i++) {
+                    const foundGrade = perf.grades.find((g: any) => g.label?.toLowerCase() === `nota ${i}` || g.label === `N${i}`);
+                    subNVals[`n${i}`] = foundGrade ? foundGrade.value : (i <= perf.grades.length ? perf.grades[i - 1]?.value || '-' : '-');
+                  }
+                  return {
+                    name: sub.name,
+                    ...subNVals,
+                    average: perf.average || '-'
                   };
                 }
                 return {

@@ -592,6 +592,26 @@ export const Login: React.FC = () => {
           >
             {loading ? 'Ingresando...' : 'Iniciar Sesión'}
           </button>
+
+          {/* GUÍA RÁPIDA DE ACCESO PARA APODERADOS Y ESTUDIANTES */}
+          <div style={{
+            marginTop: '1.25rem',
+            padding: '0.75rem 0.9rem',
+            background: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            borderRadius: '10px',
+            fontSize: '0.76rem',
+            color: '#166534',
+            lineHeight: 1.45,
+            textAlign: 'left'
+          }}>
+            <div style={{ fontWeight: 800, marginBottom: '2px', color: '#14532d' }}>
+              👨‍👩‍👧 ¿Eres Apoderado o Estudiante del Liceo?
+            </div>
+            <div>
+              Ingresa con tu <strong>RUT</strong> (registrado en matrícula). Si es tu primer ingreso, tu contraseña inicial son los <strong>primeros 6 dígitos de tu RUT</strong> (sin puntos).
+            </div>
+          </div>
         </form>
       </div>
     </div>

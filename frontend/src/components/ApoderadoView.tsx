@@ -95,7 +95,7 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
   const [pupilos, setPupilos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPupiloId, setSelectedPupiloId] = useState<string>('');
-  const [activeSubTab, setActiveSubTab] = useState<'grades' | 'observations' | 'interviews' | 'lates'>('grades');
+  const [activeSubTab, setActiveSubTab] = useState<'grades' | 'observations' | 'interviews' | 'lates' | 'communications'>('grades');
   const [previewPass, setPreviewPass] = useState<ThermalPassData | null>(null);
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
   const [searchRut, setSearchRut] = useState('');
@@ -564,6 +564,24 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                   </span>
                 )}
               </button>
+              <button
+                onClick={() => setActiveSubTab('communications')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.6rem 1.1rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  background: activeSubTab === 'communications' ? '#4f46e5' : '#f1f5f9',
+                  color: activeSubTab === 'communications' ? '#ffffff' : '#64748b'
+                }}
+              >
+                📢 Comunicados Oficiales ({(currentPupilo.communications || []).length})
+              </button>
             </div>
 
             {/* CONTENIDO TAB 1: LIBRETA DE CALIFICACIONES DEL PUPILO */}
@@ -940,6 +958,85 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* CONTENIDO TAB 5: COMUNICADOS OFICIALES DEL LICEO Y DEL CURSO */}
+            {activeSubTab === 'communications' && (
+              <div>
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem' }}>
+                  📢 Comunicados Oficiales y Circulares — {currentPupilo.levelName} & Liceo
+                </h3>
+                <p style={{ fontSize: '0.84rem', color: '#64748b', marginTop: 0, marginBottom: '1.1rem' }}>
+                  Aquí se muestran todas las comunicaciones oficiales enviadas por Dirección, UTP, Inspectoría o Jefatura de Curso tanto a nivel de <strong>{currentPupilo.levelName}</strong> como masivas a todo el establecimiento.
+                </p>
+
+                {(!currentPupilo.communications || currentPupilo.communications.length === 0) ? (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '2.5rem 1.5rem',
+                    color: '#64748b',
+                    background: '#f8fafc',
+                    borderRadius: '12px',
+                    border: '1px dashed #cbd5e1',
+                    fontWeight: 600
+                  }}>
+                    📭 No hay comunicados oficiales registrados para este curso en este momento.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                    {currentPupilo.communications.map((comm: any, idx: number) => {
+                      const dt = formatDateTime24h(comm.created_at, comm.created_at);
+                      const isUrgent = String(comm.title || '').includes('🚨') || String(comm.message || '').includes('URGENTE');
+                      const isImportant = String(comm.title || '').includes('⚠️') || String(comm.message || '').includes('IMPORTANTE');
+                      return (
+                        <div
+                          key={comm.id || idx}
+                          style={{
+                            background: isUrgent ? '#fef2f2' : isImportant ? '#fffbeb' : '#f8fafc',
+                            border: `1px solid ${isUrgent ? '#fca5a5' : isImportant ? '#fde68a' : '#e2e8f0'}`,
+                            borderLeft: `5px solid ${isUrgent ? '#dc2626' : isImportant ? '#d97706' : '#4f46e5'}`,
+                            borderRadius: '12px',
+                            padding: '1.1rem 1.25rem'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                              <span style={{
+                                background: comm.scope === 'Masivo Liceo' ? '#dbeafe' : '#e0e7ff',
+                                color: comm.scope === 'Masivo Liceo' ? '#1e40af' : '#3730a3',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                padding: '2px 8px',
+                                borderRadius: '999px'
+                              }}>
+                                {comm.scope === 'Masivo Liceo' ? '🌐 Comunicado General Liceo' : `🏫 Curso ${comm.scope}`}
+                              </span>
+                              <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                                {comm.title}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 700 }}>
+                              📅 {dt.date} {dt.time ? `• ${dt.time}` : ''}
+                            </span>
+                          </div>
+                          <div style={{
+                            fontSize: '0.86rem',
+                            color: '#334155',
+                            lineHeight: 1.6,
+                            whiteSpace: 'pre-line',
+                            background: '#ffffff',
+                            padding: '0.85rem 1rem',
+                            borderRadius: '8px',
+                            border: '1px solid #e2e8f0'
+                          }}>
+                            {comm.message}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

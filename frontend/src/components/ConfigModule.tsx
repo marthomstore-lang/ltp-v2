@@ -4,7 +4,8 @@ import { PermissionsMatrix } from './PermissionsMatrix';
 import { ChecklistTemplatesEditor } from './ChecklistTemplatesEditor';
 import { CourseSupportModal } from './CourseSupportModal';
 import { formatRut } from '../utils/rut';
-import { getStudentCourse, isStudentRetired, sortCoursesList, isParvulariaCourse, getDefaultSubjectsForCourse } from '../utils/course';
+import { getStudentCourse, isStudentRetired, sortCoursesList, getCourseSortRank, isParvulariaCourse, getDefaultSubjectsForCourse } from '../utils/course';
+import { getModuleSubTabFromUrl, syncModuleSubUrl } from '../utils/urlRouter';
 import Swal from 'sweetalert2';
 
 interface ConfigModuleProps {
@@ -12,7 +13,21 @@ interface ConfigModuleProps {
 }
 
 export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
-  const [subTab, setSubTab] = useState<'teachers' | 'courses' | 'subjects' | 'assignments' | 'homeroom' | 'subject_order' | 'templates' | 'locks' | 'links' | 'permissions' | 'enrollment_config' | 'institution_config' | 'checklists_config'>('courses');
+  const [subTab, setSubTab] = useState<'teachers' | 'courses' | 'subjects' | 'assignments' | 'homeroom' | 'subject_order' | 'templates' | 'locks' | 'links' | 'permissions' | 'enrollment_config' | 'institution_config' | 'checklists_config'>(() =>
+    getModuleSubTabFromUrl('config', 'courses') as any
+  );
+
+  useEffect(() => {
+    syncModuleSubUrl('config', subTab);
+  }, [subTab]);
+
+  useEffect(() => {
+    const handlePop = () => {
+      setSubTab(getModuleSubTabFromUrl('config', 'courses') as any);
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
   const [showPlainPassword, setShowPlainPassword] = useState<Record<string, boolean>>({});
 
   // CONFIGURACIÓN CENTRALIZADA DEL ESTABLECIMIENTO Y DIRECTOR
@@ -160,7 +175,9 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
               roles: parsedRoles,
               staff_type: s.staff_type || (primaryRole === 'Administrativo' || primaryRole === 'Asistente' ? 'Asistente de la Educación' : 'Docente'),
               job_function: s.job_function || 'Docente de Aula',
-              password_plain: s.password_plain || 'Profe2026!'
+              password_plain: s.password_plain || 'Profe2026!',
+              avatar: s.avatar || null,
+              themeConfig: s.themeConfig || null
             };
           }));
         } else {
@@ -488,6 +505,10 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
 
   // 4. Asignaciones Docentes (Cargadas dinámicamente desde la base de datos)
   const [assignmentsList, setAssignmentsList] = useState<any[]>([]);
+  const [assignSearchTerm, setAssignSearchTerm] = useState<string>('');
+  const [assignCourseFilter, setAssignCourseFilter] = useState<string>('Todos');
+  const [assignSubjectFilter, setAssignSubjectFilter] = useState<string>('Todas');
+  const [assignTeacherFilter, setAssignTeacherFilter] = useState<string>('Todos');
 
   // 6.6 Orden de Asignaturas por Curso (Sub-ventana 6.6)
   const [selectedCourseForOrder, setSelectedCourseForOrder] = useState<string>('');
@@ -2344,7 +2365,63 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                         {formatRut(u.run) || u.run}
                       </td>
                       <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap', fontWeight: 700, color: '#1e293b', fontSize: '0.88rem' }}>
-                        {u.name}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <div
+                            title={u.avatar ? 'Imagen de perfil personalizada' : 'Avatar predeterminado'}
+                            style={{
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '50%',
+                              background: u.themeConfig?.primaryColor
+                                ? `linear-gradient(135deg, ${u.themeConfig.primaryColor} 0%, ${u.themeConfig.accentColor || '#4f46e5'} 100%)`
+                                : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                              color: '#ffffff',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              overflow: 'hidden',
+                              flexShrink: 0,
+                              border: '1px solid #cbd5e1'
+                            }}
+                          >
+                            {u.avatar ? (
+                              <img src={u.avatar} alt={u.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              String(u.name || 'US').substring(0, 2).toUpperCase()
+                            )}
+                          </div>
+                          <div>
+                            <div>{u.name}</div>
+                            {u.themeConfig && (
+                              <div
+                                title={`Tema personalizado: Principal ${u.themeConfig.primaryColor || ''}, Menú ${u.themeConfig.sidebarColor || ''}`}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}
+                              >
+                                <span style={{ fontSize: '0.66rem', color: '#64748b', fontWeight: 600 }}>Tema:</span>
+                                {[
+                                  u.themeConfig.primaryColor,
+                                  u.themeConfig.buttonColor,
+                                  u.themeConfig.accentColor,
+                                  u.themeConfig.sidebarColor
+                                ].filter(Boolean).map((hex: string, idx: number) => (
+                                  <span
+                                    key={idx}
+                                    style={{
+                                      width: '10px',
+                                      height: '10px',
+                                      borderRadius: '50%',
+                                      background: hex,
+                                      border: '1px solid #cbd5e1',
+                                      display: 'inline-block'
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>
                         <span style={{ fontSize: '0.82rem', color: u.email ? '#0284c7' : '#94a3b8', fontWeight: u.email ? 600 : 400 }}>
@@ -2657,105 +2734,376 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
       )}
 
       {/* SUB-VENTANA 6.4: ASIGNACIÓN DOCENTE */}
-      {subTab === 'assignments' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#0f172a', margin: 0 }}>
-              Asignación de Cursos y Asignaturas a Docentes
-            </h3>
-            <button
-              onClick={() => {
-                setEditingAssignment(null);
-                setNewAssignment({ teacherName: '', teacherName2: '', levelName: '', subjectName: '' });
-                setShowAssignmentModal(true);
-              }}
-              className="btn btn-primary"
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}
-            >
-              <Plus size={16} /> + Nueva Asignación Docente
-            </button>
-          </div>
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Profesor Docente (Titular)</th>
-                  <th>2° Docente / Co-Docente</th>
-                  <th>Curso / Nivel Asignado</th>
-                  <th>Asignatura Mapeada</th>
-                  <th>Año Lectivo</th>
-                  <th>Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {assignmentsList.map(a => {
-                  let t1 = (a.teacher_name || '').trim();
-                  let t2 = (a.teacher_name_2 || '').trim();
-                  if (!t2 && t1.includes(' / ')) {
-                    const parts = t1.split(' / ');
-                    t1 = parts[0].trim();
-                    t2 = parts[1].trim();
-                  }
+      {subTab === 'assignments' && (() => {
+        const uniqueCoursesInAssigns = sortCoursesList(
+          Array.from(new Set([
+            ...coursesList.map((c: any) => c.name).filter(Boolean),
+            ...assignmentsList.map((a: any) => (a.level_name || '').trim()).filter(Boolean)
+          ]))
+        );
 
-                  return (
-                    <tr key={a.id}>
-                      <td><strong>👩‍🏫 {t1}</strong></td>
-                      <td>
-                        {t2 ? (
-                          <span style={{ color: '#0369a1', fontWeight: 700 }}>👩‍🏫 {t2}</span>
-                        ) : (
-                          <span style={{ color: '#94a3b8', fontSize: '0.82rem', fontStyle: 'italic' }}>🚫 Sin Co-Docente</span>
-                        )}
-                      </td>
-                      <td><span style={{ background: '#e0e7ff', color: '#3730a3', padding: '0.2rem 0.6rem', borderRadius: '6px', fontWeight: 700, fontSize: '0.85rem' }}>{a.level_name}</span></td>
-                      <td><strong>{a.subject_name}</strong></td>
-                      <td>{a.academic_year || a.year || 2026}</td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '0.4rem' }}>
-                          <button
-                            onClick={() => {
-                              setEditingAssignment(a);
-                              setNewAssignment({
-                                teacherName: t1,
-                                teacherName2: t2,
-                                levelName: a.level_name || '',
-                                subjectName: a.subject_name || ''
-                              });
-                              setShowAssignmentModal(true);
-                            }}
-                            className="btn btn-primary"
-                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                          >
-                            <Edit size={12} /> Editar
-                          </button>
-                        <button
-                          onClick={() => confirmDelete(`Asignación de ${a.subject_name} en ${a.level_name} para ${a.teacher_name}`, async () => {
-                            try {
-                              await fetch(`/api/assignments/${a.id}`, {
-                                method: 'DELETE',
-                                headers: { 'Authorization': `Bearer ${token}` }
-                              });
-                              setAssignmentsList(prev => prev.filter(x => x.id !== a.id));
-                              Swal.fire('Eliminado', 'Asignación docente eliminada de la base de datos.', 'success');
-                            } catch (err) {
-                              Swal.fire('Error', 'No se pudo eliminar la asignación.', 'error');
-                            }
-                          })}
-                          className="btn"
-                          style={{ background: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3', padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <Trash2 size={12} /> Eliminar
-                        </button>
-                      </div>
-                    </td>
+        const uniqueSubjectsInAssigns = Array.from(
+          new Set([
+            ...subjectsList.map((s: any) => (s.name || '').trim()).filter(Boolean),
+            ...assignmentsList.map((a: any) => (a.subject_name || '').trim()).filter(Boolean)
+          ])
+        ).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+
+        const uniqueTeachersInAssigns = Array.from(
+          new Set(
+            assignmentsList
+              .flatMap((a: any) => {
+                let t1 = (a.teacher_name || '').trim();
+                let t2 = (a.teacher_name_2 || '').trim();
+                if (!t2 && t1.includes(' / ')) {
+                  const parts = t1.split(' / ');
+                  t1 = parts[0].trim();
+                  t2 = parts[1].trim();
+                }
+                return [t1, t2];
+              })
+              .filter(t => t && t.toLowerCase() !== 'sin asignar')
+          )
+        ).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+
+        const q = normalizeStr(assignSearchTerm);
+        const filteredAssignments = [...assignmentsList]
+          .filter(a => {
+            let t1 = (a.teacher_name || '').trim();
+            let t2 = (a.teacher_name_2 || '').trim();
+            if (!t2 && t1.includes(' / ')) {
+              const parts = t1.split(' / ');
+              t1 = parts[0].trim();
+              t2 = parts[1].trim();
+            }
+            const courseName = (a.level_name || '').trim();
+            const subjName = (a.subject_name || '').trim();
+
+            if (assignCourseFilter !== 'Todos' && normalizeStr(courseName) !== normalizeStr(assignCourseFilter)) {
+              return false;
+            }
+            if (assignSubjectFilter !== 'Todas' && normalizeStr(subjName) !== normalizeStr(assignSubjectFilter)) {
+              return false;
+            }
+            if (assignTeacherFilter !== 'Todos') {
+              const isUnassigned = !t1 || t1.toLowerCase() === 'sin asignar';
+              if (assignTeacherFilter === '__ASIGNADOS__' && isUnassigned) return false;
+              if (assignTeacherFilter === '__SIN_ASIGNAR__' && !isUnassigned) return false;
+              if (
+                assignTeacherFilter !== '__ASIGNADOS__' &&
+                assignTeacherFilter !== '__SIN_ASIGNAR__' &&
+                normalizeStr(t1) !== normalizeStr(assignTeacherFilter) &&
+                normalizeStr(t2) !== normalizeStr(assignTeacherFilter)
+              ) {
+                return false;
+              }
+            }
+            if (q) {
+              const haystack = normalizeStr(`${t1} ${t2} ${courseName} ${subjName} ${a.academic_year || 2026}`);
+              if (!haystack.includes(q)) return false;
+            }
+            return true;
+          })
+          .sort((a, b) => {
+            const rankA = getCourseSortRank(a.level_name || '');
+            const rankB = getCourseSortRank(b.level_name || '');
+            if (rankA !== rankB) return rankA - rankB;
+            return String(a.subject_name || '').localeCompare(String(b.subject_name || ''), 'es', { sensitivity: 'base' });
+          });
+
+        const hasActiveFilters =
+          assignSearchTerm.trim() !== '' ||
+          assignCourseFilter !== 'Todos' ||
+          assignSubjectFilter !== 'Todas' ||
+          assignTeacherFilter !== 'Todos';
+
+        return (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div>
+                <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#0f172a', margin: 0 }}>
+                  Asignación de Cursos y Asignaturas a Docentes
+                </h3>
+                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+                  Filtra y administra qué docente titular y co-docente imparte cada asignatura oficial por curso.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingAssignment(null);
+                  setNewAssignment({
+                    teacherName: assignTeacherFilter !== 'Todos' && !assignTeacherFilter.startsWith('__') ? assignTeacherFilter : '',
+                    teacherName2: '',
+                    levelName: assignCourseFilter !== 'Todos' ? assignCourseFilter : '',
+                    subjectName: assignSubjectFilter !== 'Todas' ? assignSubjectFilter : ''
+                  });
+                  setShowAssignmentModal(true);
+                }}
+                className="btn btn-primary"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}
+              >
+                <Plus size={16} /> + Nueva Asignación Docente
+              </button>
+            </div>
+
+            {/* BARRA DE FILTROS INTERACTIVA */}
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                borderRadius: '12px',
+                padding: '0.9rem 1rem',
+                marginBottom: '1rem',
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
+                alignItems: 'flex-end'
+              }}
+            >
+              {/* Buscador rápido */}
+              <div style={{ flex: '1 1 240px', minWidth: '210px' }}>
+                <label style={{ display: 'block', fontSize: '0.73rem', fontWeight: 800, color: '#475569', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
+                  🔍 Buscar (Docente, Curso o Asignatura)
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <Search size={15} style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                  <input
+                    type="text"
+                    value={assignSearchTerm}
+                    onChange={e => setAssignSearchTerm(e.target.value)}
+                    placeholder="Ej: Solange, 1° Básico, Lengua, Inglés..."
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.65rem 0.5rem 2rem',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.84rem',
+                      background: '#ffffff',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Filtro por Curso */}
+              <div style={{ flex: '1 1 200px', minWidth: '180px' }}>
+                <label style={{ display: 'block', fontSize: '0.73rem', fontWeight: 800, color: '#475569', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
+                  🏫 Curso / Nivel Asignado
+                </label>
+                <select
+                  value={assignCourseFilter}
+                  onChange={e => setAssignCourseFilter(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem 0.65rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="Todos">Todos los Cursos ({uniqueCoursesInAssigns.length})</option>
+                  {uniqueCoursesInAssigns.map(cName => (
+                    <option key={cName} value={cName}>{cName}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtro por Asignatura */}
+              <div style={{ flex: '1 1 200px', minWidth: '180px' }}>
+                <label style={{ display: 'block', fontSize: '0.73rem', fontWeight: 800, color: '#475569', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
+                  📚 Asignatura Mapeada
+                </label>
+                <select
+                  value={assignSubjectFilter}
+                  onChange={e => setAssignSubjectFilter(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem 0.65rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="Todas">Todas las Asignaturas ({uniqueSubjectsInAssigns.length})</option>
+                  {uniqueSubjectsInAssigns.map(sName => (
+                    <option key={sName} value={sName}>{sName}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtro por Docente */}
+              <div style={{ flex: '1 1 210px', minWidth: '180px' }}>
+                <label style={{ display: 'block', fontSize: '0.73rem', fontWeight: 800, color: '#475569', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
+                  👩‍🏫 Profesor Docente
+                </label>
+                <select
+                  value={assignTeacherFilter}
+                  onChange={e => setAssignTeacherFilter(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem 0.65rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="Todos">Todos los Docentes</option>
+                  <option value="__ASIGNADOS__">✅ Solo Con Docente Asignado</option>
+                  <option value="__SIN_ASIGNAR__">⚠️ Solo Sin Asignar</option>
+                  {uniqueTeachersInAssigns.map(tName => (
+                    <option key={tName} value={tName}>👩‍🏫 {tName}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Contador y Botón Limpiar */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span
+                  style={{
+                    background: '#e0e7ff',
+                    color: '#3730a3',
+                    padding: '0.45rem 0.75rem',
+                    borderRadius: '8px',
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {filteredAssignments.length} de {assignmentsList.length} registros
+                </span>
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAssignSearchTerm('');
+                      setAssignCourseFilter('Todos');
+                      setAssignSubjectFilter('Todas');
+                      setAssignTeacherFilter('Todos');
+                    }}
+                    className="btn"
+                    style={{
+                      background: '#fee2e2',
+                      color: '#be123c',
+                      border: '1px solid #fecdd3',
+                      padding: '0.45rem 0.75rem',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <X size={14} /> Limpiar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Profesor Docente (Titular)</th>
+                    <th>2° Docente / Co-Docente</th>
+                    <th>Curso / Nivel Asignado</th>
+                    <th>Asignatura Mapeada</th>
+                    <th>Año Lectivo</th>
+                    <th>Acción</th>
                   </tr>
-                );
-              })}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredAssignments.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontWeight: 600 }}>
+                        No se encontraron asignaciones docentes con los filtros seleccionados.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredAssignments.map(a => {
+                      let t1 = (a.teacher_name || '').trim();
+                      let t2 = (a.teacher_name_2 || '').trim();
+                      if (!t2 && t1.includes(' / ')) {
+                        const parts = t1.split(' / ');
+                        t1 = parts[0].trim();
+                        t2 = parts[1].trim();
+                      }
+
+                      return (
+                        <tr key={a.id}>
+                          <td><strong>👩‍🏫 {t1}</strong></td>
+                          <td>
+                            {t2 ? (
+                              <span style={{ color: '#0369a1', fontWeight: 700 }}>👩‍🏫 {t2}</span>
+                            ) : (
+                              <span style={{ color: '#94a3b8', fontSize: '0.82rem', fontStyle: 'italic' }}>🚫 Sin Co-Docente</span>
+                            )}
+                          </td>
+                          <td><span style={{ background: '#e0e7ff', color: '#3730a3', padding: '0.2rem 0.6rem', borderRadius: '6px', fontWeight: 700, fontSize: '0.85rem' }}>{a.level_name}</span></td>
+                          <td><strong>{a.subject_name}</strong></td>
+                          <td>{a.academic_year || a.year || 2026}</td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                              <button
+                                onClick={() => {
+                                  setEditingAssignment(a);
+                                  setNewAssignment({
+                                    teacherName: t1,
+                                    teacherName2: t2,
+                                    levelName: a.level_name || '',
+                                    subjectName: a.subject_name || ''
+                                  });
+                                  setShowAssignmentModal(true);
+                                }}
+                                className="btn btn-primary"
+                                style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <Edit size={12} /> Editar
+                              </button>
+                              <button
+                                onClick={() => confirmDelete(`Asignación de ${a.subject_name} en ${a.level_name} para ${a.teacher_name}`, async () => {
+                                  try {
+                                    await fetch(`/api/assignments/${a.id}`, {
+                                      method: 'DELETE',
+                                      headers: { 'Authorization': `Bearer ${token}` }
+                                    });
+                                    setAssignmentsList(prev => prev.filter(x => x.id !== a.id));
+                                    Swal.fire('Eliminado', 'Asignación docente eliminada de la base de datos.', 'success');
+                                  } catch (err) {
+                                    Swal.fire('Error', 'No se pudo eliminar la asignación.', 'error');
+                                  }
+                                })}
+                                className="btn"
+                                style={{ background: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3', padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <Trash2 size={12} /> Eliminar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* SUB-VENTANA 6.5: PROFESOR JEFE & DIRECTIVA */}
       {subTab === 'homeroom' && (
