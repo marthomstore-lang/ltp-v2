@@ -54,6 +54,7 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
     { id: 'sub-2', title: 'Sub-Nota 2 (Control / Trabajo)' }
   ]);
   const [subGradesMap, setSubGradesMap] = useState<Record<string, number>>({});
+  const [editingCell, setEditingCell] = useState<{ key: string; text: string; freshFocus?: boolean } | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [gradeScaleMode, setGradeScaleMode] = useState<'decimal' | 'entera'>('decimal');
@@ -83,12 +84,44 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
     if (st && isStudentRetired(st)) return;
 
     const key = `${studentId}_${subId}`;
-    if (!valStr || !valStr.trim()) {
+    let workingStr = valStr;
+    if (editingCell && editingCell.key === key && editingCell.freshFocus && editingCell.text) {
+      const prevFormatted = editingCell.text;
+      if (workingStr.length === prevFormatted.length + 1 && workingStr.startsWith(prevFormatted)) {
+        const addedChar = workingStr.slice(prevFormatted.length);
+        if (/^[1-7]$/.test(addedChar)) {
+          workingStr = addedChar;
+        }
+      } else if (workingStr.length === prevFormatted.length + 1 && workingStr.endsWith(prevFormatted)) {
+        const addedChar = workingStr.slice(0, 1);
+        if (/^[1-7]$/.test(addedChar)) {
+          workingStr = addedChar;
+        }
+      }
+    }
+
+    const cleanedInput = workingStr.replace(/[^0-9.,]/g, '').slice(0, 4);
+    setEditingCell({ key, text: cleanedInput, freshFocus: false });
+
+    if (!cleanedInput || !cleanedInput.trim()) {
       setSubGradesMap(prev => ({ ...prev, [key]: 0 }));
       return;
     }
 
-    let val = parseFloat(valStr.replace(',', '.'));
+    const digitsOnly = cleanedInput.replace(/[.,]/g, '');
+    let val = parseFloat(cleanedInput.replace(',', '.'));
+
+    if (!cleanedInput.includes(',') && !cleanedInput.includes('.')) {
+      if (digitsOnly.length === 1) {
+        val = parseInt(digitsOnly, 10);
+      } else if (digitsOnly.length >= 2) {
+        const twoDigits = parseInt(digitsOnly.slice(0, 2), 10);
+        val = twoDigits / 10.0;
+      }
+    } else if (cleanedInput.endsWith(',') || cleanedInput.endsWith('.')) {
+      val = parseFloat(cleanedInput.slice(0, -1));
+    }
+
     if (isNaN(val) || val <= 0) {
       setSubGradesMap(prev => ({ ...prev, [key]: 0 }));
       return;
@@ -98,6 +131,7 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
     if (val > 7.0 && val <= 70.0) {
       val = val / 10.0;
     }
+    if (val > 7.0) val = 7.0;
 
     setSubGradesMap(prev => ({ ...prev, [key]: val }));
   };
@@ -568,6 +602,8 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
                           const key = `${st.id}_${sub.id}`;
                           const rawVal = subGradesMap[key];
                           const formattedVal = formatCellValue(rawVal);
+                          const isEditingThis = editingCell?.key === key;
+                          const displayVal = isEditingThis ? editingCell.text : formattedVal;
                           const isSubRed = rawVal !== undefined && rawVal > 0 && rawVal < 4.0;
 
                           return (
@@ -576,10 +612,23 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
                                 id={`sub-grade-${idx}-${subIdx}`}
                                 type="text"
                                 disabled={isLocked || retired}
-                                value={formattedVal}
+                                value={displayVal}
                                 onChange={e => handleSubGradeChange(st.id, sub.id, e.target.value)}
+                                onBlur={() => setEditingCell(prev => (prev?.key === key ? null : prev))}
                                 onKeyDown={e => handleKeyDown(e, idx, subIdx)}
-                                onFocus={e => !retired && e.target.select()}
+                                onFocus={e => {
+                                  if (!retired) {
+                                    setEditingCell({ key, text: formattedVal, freshFocus: true });
+                                    e.target.select();
+                                    setTimeout(() => { try { e.target.select(); } catch (_) {} }, 0);
+                                  }
+                                }}
+                                onMouseUp={e => {
+                                  if (!retired && editingCell?.key === key && editingCell.freshFocus) {
+                                    e.preventDefault();
+                                    try { e.currentTarget.select(); } catch (_) {}
+                                  }
+                                }}
                                 placeholder="-"
                                 title={retired ? `Estudiante retirado ${retiredDate ? `(${retiredDate})` : ''}: No admite ingreso de calificaciones` : undefined}
                                 style={{

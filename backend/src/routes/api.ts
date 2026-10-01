@@ -4235,9 +4235,23 @@ router.post('/grades', authMiddleware, checkRoles(['Admin', 'Docente']), async (
       return res.status(400).json({ error: 'No se pueden registrar calificaciones para un estudiante retirado.' });
     }
 
+    if (gradeValue === null || gradeValue === '' || gradeValue === 0 || gradeValue === '0') {
+      await query('DELETE FROM grades WHERE student_id = $1 AND grade_column_id = $2', [studentId, gradeColumnId]);
+      await logAudit(req, 'DELETE_GRADE', `Nota eliminada para estudiante ${studentId} en columna ${gradeColumnId}`);
+      return res.json({ success: true, deleted: true });
+    }
+
     let valNum = parseFloat(gradeValue);
     if (isNaN(valNum)) {
       valNum = conceptToNumberHelper(gradeValue);
+    }
+    if (valNum > 7.0 && valNum <= 70.0) {
+      valNum = Math.round((valNum / 10.0) * 10) / 10;
+    }
+
+    if (isNaN(valNum) || valNum <= 0) {
+      await query('DELETE FROM grades WHERE student_id = $1 AND grade_column_id = $2', [studentId, gradeColumnId]);
+      return res.json({ success: true, deleted: true });
     }
 
     const gradeId = `GRD-${studentId}-${gradeColumnId}`;
@@ -4249,7 +4263,7 @@ router.post('/grades', authMiddleware, checkRoles(['Admin', 'Docente']), async (
       [gradeId, studentId, gradeColumnId, valNum, period || '1er Semestre', ctx.canonicalLevelId, ctx.canonicalSubjectId, parseInt(String(academicYear || 2026), 10)]
     );
 
-    await logAudit(req, 'SAVE_GRADE', `Nota ${gradeValue} registrada para estudiante ${studentId}`);
+    await logAudit(req, 'SAVE_GRADE', `Nota ${valNum} registrada para estudiante ${studentId}`);
     res.json({ success: true });
   } catch (err) {
     console.error('Error al guardar la calificación:', err);

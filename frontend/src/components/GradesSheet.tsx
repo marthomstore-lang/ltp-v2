@@ -69,12 +69,18 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
   const [students, setStudents] = useState<Student[]>([]);
   const [columns, setColumns] = useState<GradeColumn[]>(defaultSingleColumn);
   const [gradesMap, setGradesMap] = useState<Record<string, number>>({});
+  const gradesMapRef = React.useRef<Record<string, number>>({});
+  const [editingCell, setEditingCell] = useState<{ key: string; text: string; freshFocus?: boolean } | null>(null);
   const [isLocked, setIsLocked] = useState<boolean>(false);
   const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
   const [showReorderModal, setShowReorderModal] = useState<boolean>(false);
   const [selectedCumulativeCol, setSelectedCumulativeCol] = useState<GradeColumn | null>(null);
   const [cumulativeColumnsMap, setCumulativeColumnsMap] = useState<Record<string, { isCumulative: boolean; count: number }>>({});
   const [printCourseOverview, setPrintCourseOverview] = useState<any>(null);
+
+  useEffect(() => {
+    gradesMapRef.current = gradesMap;
+  }, [gradesMap]);
 
   // FUNCIÓN PARA ORDENAR ALUMNOS STRICTAMENTE POR NÚMERO DE LISTA (NUMÉRICO)
   const sortStudentsByListNumber = (arr: Student[]) => {
@@ -617,25 +623,33 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       .catch(() => {});
   }, [showPrintModal, currentCourseName, academicYear, period, token]);
 
+  const dirtyCellsRef = React.useRef<Set<string>>(new Set());
+
   // CAMBIO LOCAL DE NOTA CON SOPORTE PARA CONCEPTOS (MB, B, S, I) Y ESCALA 10-70 / DECIMAL
   const handleGradeChange = (studentId: string, columnId: string, valStr: string) => {
     const st = students.find(s => s.id === studentId);
     if (st && isStudentRetired(st)) return;
 
+    const key = `${studentId}_${columnId}`;
+    dirtyCellsRef.current.add(key);
+
     if (!valStr || !valStr.trim()) {
-      setGradesMap(prev => ({ ...prev, [`${studentId}_${columnId}`]: 0 }));
+      setEditingCell({ key, text: '', freshFocus: false });
+      gradesMapRef.current = { ...gradesMapRef.current, [key]: 0 };
+      setGradesMap(prev => ({ ...prev, [key]: 0 }));
       return;
     }
 
     if (isConceptual) {
-      const v = valStr.toUpperCase().trim();
+      const v = valStr.toUpperCase().replace(/[^MBSI0-9.,]/g, '').slice(0, 2);
+      setEditingCell({ key, text: v, freshFocus: false });
       let mappedVal = 0;
       if (v === 'MB' || v === 'M') mappedVal = 7.0;
       else if (v === 'B') mappedVal = 5.5;
       else if (v === 'S') mappedVal = 4.5;
       else if (v === 'I') mappedVal = 3.0;
       else {
-        let num = parseFloat(valStr.replace(',', '.'));
+        let num = parseFloat(v.replace(',', '.'));
         if (!isNaN(num) && num > 0) {
           if (num > 7.0 && num <= 70.0) num = num / 10.0;
           if (num >= 6.0) mappedVal = 7.0;
@@ -645,27 +659,57 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
         }
       }
 
+      gradesMapRef.current = { ...gradesMapRef.current, [key]: mappedVal };
       setGradesMap(prev => ({
         ...prev,
-        [`${studentId}_${columnId}`]: mappedVal
+        [key]: mappedVal
       }));
       return;
     }
 
-    let val = parseFloat(valStr.replace(',', '.'));
+    let raw = valStr;
+    const prevFormatted = formatCellValue(gradesMapRef.current[key]);
+
+    // Si la casilla tenía un valor previo formateado (ej. "5,0") y al hacer clic el cursor quedó al final
+    // sin reemplazar la selección (ej. el usuario tecleó "5" generando "5,05" o tecleó "4" generando "5,04"):
+    if (editingCell?.key === key && editingCell.freshFocus && prevFormatted && raw.length > prevFormatted.length && raw.startsWith(prevFormatted)) {
+      raw = raw.slice(prevFormatted.length);
+    } else if (/^([1-7])[,.]0([1-9])$/.test(raw)) {
+      raw = raw.replace(/^([1-7])[,.]0([1-9])$/, '$1,$2');
+    }
+
+    // Permitir dígitos y a lo sumo un separador decimal (coma o punto)
+    let cleaned = raw.replace(/[^0-9,.]/g, '');
+    const sepMatch = cleaned.match(/[,.]/);
+    if (sepMatch && sepMatch.index !== undefined) {
+      const intPart = cleaned.slice(0, sepMatch.index).slice(0, 1);
+      const decPart = cleaned.slice(sepMatch.index + 1).replace(/[,.]/g, '').slice(0, 1);
+      cleaned = `${intPart},${decPart}`;
+    } else {
+      // Sin coma ni punto (ej: "54"), permitir hasta 2 dígitos mientras escribe
+      cleaned = cleaned.slice(0, 2);
+    }
+
+    setEditingCell({ key, text: cleaned, freshFocus: false });
+
+    let val = parseFloat(cleaned.replace(',', '.'));
     if (isNaN(val) || val <= 0) {
-      setGradesMap(prev => ({ ...prev, [`${studentId}_${columnId}`]: 0 }));
+      gradesMapRef.current = { ...gradesMapRef.current, [key]: 0 };
+      setGradesMap(prev => ({ ...prev, [key]: 0 }));
       return;
     }
 
-    // Normalizar escala enteros (ej: 65 -> 6.5)
+    // Normalizar escala enteros (ej: 54 -> 5.4, 65 -> 6.5)
     if (val > 7.0 && val <= 70.0) {
-      val = val / 10.0;
+      val = Math.round((val / 10.0) * 10) / 10;
+    } else if (val > 70.0) {
+      val = 7.0;
     }
 
+    gradesMapRef.current = { ...gradesMapRef.current, [key]: val };
     setGradesMap(prev => ({
       ...prev,
-      [`${studentId}_${columnId}`]: val
+      [key]: val
     }));
   };
 
@@ -674,8 +718,13 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
     const st = students.find(s => s.id === studentId);
     if (st && isStudentRetired(st)) return;
 
-    const val = gradesMap[`${studentId}_${columnId}`];
-    if (val === undefined || val <= 0) return;
+    const key = `${studentId}_${columnId}`;
+    setEditingCell(prev => (prev?.key === key ? null : prev));
+
+    if (!dirtyCellsRef.current.has(key)) return;
+    dirtyCellsRef.current.delete(key);
+
+    const val = gradesMapRef.current[key] ?? gradesMap[key] ?? 0;
 
     try {
       const res = await fetch('/api/grades', {
@@ -687,7 +736,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
         body: JSON.stringify({
           studentId,
           gradeColumnId: columnId,
-          gradeValue: val,
+          gradeValue: val > 0 ? val : 0,
           levelId,
           subjectId,
           courseName: currentCourseName,
@@ -699,7 +748,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error guardando calificación');
 
-      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Nota guardada', timer: 1000, showConfirmButton: false });
+      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: val > 0 ? 'Nota guardada' : 'Nota eliminada', timer: 1000, showConfirmButton: false });
     } catch (err: any) {
       Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'Nota guardada en pantalla', timer: 1000, showConfirmButton: false });
     }
@@ -749,9 +798,11 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       }
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
+      handleSaveGrade(studentId, colId);
       targetS = Math.min(students.length - 1, sIndex + 1);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
+      handleSaveGrade(studentId, colId);
       targetS = Math.max(0, sIndex - 1);
     } else if (e.key === 'ArrowRight') {
       const input = e.currentTarget;
@@ -761,6 +812,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       ) {
         if (cIndex < columns.length - 1) {
           e.preventDefault();
+          handleSaveGrade(studentId, colId);
           targetC = cIndex + 1;
         }
       }
@@ -772,6 +824,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       ) {
         if (cIndex > 0) {
           e.preventDefault();
+          handleSaveGrade(studentId, colId);
           targetC = cIndex - 1;
         }
       }
@@ -1626,6 +1679,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                     const key = `${s.id}_${col.id}`;
                     const rawVal = gradesMap[key];
                     const formattedVal = formatCellValue(rawVal);
+                    const isEditingThis = editingCell?.key === key;
+                    const displayVal = isEditingThis ? editingCell.text : formattedVal;
                     const numForColor = typeof rawVal === 'number' ? rawVal : parseFloat(String(rawVal));
                     const isRed = !isConceptual && !isNaN(numForColor) && numForColor > 0 && numForColor < 4.0;
                     const conceptBadge = isConceptual && formattedVal ? getConceptBadgeStyle(formattedVal) : null;
@@ -1646,11 +1701,23 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                             id={`grade-input-${idx}-${cIdx}`}
                             type="text"
                             disabled={isLocked || retired}
-                            value={formattedVal}
+                            value={displayVal}
                             onChange={e => handleGradeChange(s.id, col.id, e.target.value)}
                             onBlur={() => handleSaveGrade(s.id, col.id)}
                             onKeyDown={e => handleKeyDown(e, idx, cIdx, s.id, col.id)}
-                            onFocus={e => !retired && e.target.select()}
+                            onFocus={e => {
+                              if (!retired) {
+                                setEditingCell({ key, text: formattedVal, freshFocus: true });
+                                e.target.select();
+                                setTimeout(() => { try { e.target.select(); } catch (_) {} }, 0);
+                              }
+                            }}
+                            onMouseUp={e => {
+                              if (!retired && editingCell?.key === key && editingCell.freshFocus) {
+                                e.preventDefault();
+                                try { e.currentTarget.select(); } catch (_) {}
+                              }
+                            }}
                             placeholder={isConceptual ? 'MB/B/S/I' : '-'}
                             title={retired ? `Estudiante retirado ${retiredDate ? `(${retiredDate})` : ''}: No admite ingreso de calificaciones` : (isConceptual ? 'Ingresa concepto (MB, B, S, I)' : undefined)}
                             style={{
