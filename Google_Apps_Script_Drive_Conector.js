@@ -72,27 +72,42 @@ function readAllCalendarEvents(calendarId, since, until) {
   var fromDate = since  || new Date("2024-01-01T00:00:00.000Z");
   var toDate   = until  || new Date(Date.now() + 365 * 2 * 24 * 60 * 60 * 1000);
 
-  var cal    = CalendarApp.getCalendarById(calendarId);
+  var cal = CalendarApp.getCalendarById(calendarId);
   if (!cal) return [];
 
   var events = cal.getEvents(fromDate, toDate);
-  return events.map(function(ev) {
-    var allDay = ev.isAllDayEvent();
-    return {
-      id:           ev.getId(),
-      title:        ev.getTitle(),
-      description:  ev.getDescription() || "",
-      location:     ev.getLocation()    || "",
-      start:        allDay ? ev.getAllDayStartDate().toISOString() : ev.getStartTime().toISOString(),
-      end:          allDay ? ev.getAllDayEndDate().toISOString()   : ev.getEndTime().toISOString(),
-      allDay:       allDay,
-      status:       ev.getMyStatus().toString(),
-      created:      ev.getDateCreated().toISOString(),
-      updated:      ev.getLastUpdated().toISOString(),
-      calendarId:   calendarId,
-      calendarName: cal.getName()
-    };
-  });
+  var results = [];
+
+  for (var i = 0; i < events.length; i++) {
+    try {
+      var ev     = events[i];
+      var allDay = ev.isAllDayEvent();
+      var status = '';
+      try { status = ev.getMyStatus() ? ev.getMyStatus().toString() : 'CONFIRMED'; } catch(se) { status = 'CONFIRMED'; }
+      var created = '';
+      try { created = ev.getDateCreated().toISOString(); } catch(ce) { created = new Date().toISOString(); }
+      var updated = '';
+      try { updated = ev.getLastUpdated().toISOString(); } catch(ue) { updated = new Date().toISOString(); }
+
+      results.push({
+        id:           ev.getId(),
+        title:        ev.getTitle() || '(Sin título)',
+        description:  ev.getDescription() || '',
+        location:     ev.getLocation()    || '',
+        start:        allDay ? ev.getAllDayStartDate().toISOString() : ev.getStartTime().toISOString(),
+        end:          allDay ? ev.getAllDayEndDate().toISOString()   : ev.getEndTime().toISOString(),
+        allDay:       allDay,
+        status:       status,
+        created:      created,
+        updated:      updated,
+        calendarId:   calendarId,
+        calendarName: cal.getName()
+      });
+    } catch(e) {
+      // Saltar eventos con error silenciosamente
+    }
+  }
+  return results;
 }
 
 // =========================================================================

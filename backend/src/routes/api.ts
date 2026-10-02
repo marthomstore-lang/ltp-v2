@@ -8064,7 +8064,7 @@ router.delete('/room-reservations/:id', authMiddleware, async (req: Request, res
 //    (el actual corresponde al script antiguo de david.vidal@eduvallediguillin.gob.cl)
 // =========================================================================
 
-const DEFAULT_EVAL_SCRIPT_ID = 'AKfycbzjuiG-CKcmaJ1cDwcSq1sJKqXJq2vdqDAzuxcjlEQgdcniL3A5A9cdkiiOTS6PaS5Y'; // ← REEMPLAZAR tras nuevo despliegue
+const DEFAULT_EVAL_SCRIPT_ID = 'AKfycbzuaS4l3DCDOpkEV70J9_3RFejncNrAfuWAyRHxzbY7ioW-zk0i2kDrlOEhwawu6hDi0g'; // ltp.campanario@eduvallediguillin.gob.cl — GAS v2.1 (fix null safety)
 const DEFAULT_DRIVE_ACCOUNT_EMAIL = 'ltp.campanario@eduvallediguillin.gob.cl';
 const DEFAULT_EVALUATIONS_CALENDAR_ID = 'c_9c0e390266d24cb3953c3a911df0e237820c32beed34ab89df4e336239008b06@group.calendar.google.com';
 const DEFAULT_SALA_COMPUTO_CALENDAR_ID = 'c_19d0bf8733f11c48ab179877049714b6a4c2bec9ee54190075af32f2384aa4fc@group.calendar.google.com';
