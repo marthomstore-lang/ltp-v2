@@ -197,9 +197,17 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [supportModalCourse, setSupportModalCourse] = useState('1° Básico');
 
-  // Estado del Calendario Interactivo Mensual
-  const [calendarViewMode, setCalendarViewMode] = useState<'interactive' | 'google_embed' | 'both'>('both');
+  // Estado del Calendario Interno Institucional (Vista Mensual y Vista Semanal por Bloques)
+  const [calendarViewMode, setCalendarViewMode] = useState<'monthly' | 'weekly_blocks'>('monthly');
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
+  const [calendarWeekStart, setCalendarWeekStart] = useState<Date>(() => {
+    const now = new Date();
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return d;
+  });
   const [calendarCourseFilter, setCalendarCourseFilter] = useState<string>('');
   const [calendarSubjectFilter, setCalendarSubjectFilter] = useState<string>('');
   const [selectedDayEvaluations, setSelectedDayEvaluations] = useState<{ dateStr: string; items: Evaluation[] } | null>(null);
@@ -1225,69 +1233,58 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
         </div>
       )}
 
-      {/* PESTAÑA 2: CALENDARIO INSTITUCIONAL (INTERACTIVO + GOOGLE CALENDAR SINCRONIZADO) */}
+      {/* PESTAÑA 2: CALENDARIO INTERNO INSTITUCIONAL (MENSUAL Y SEMANAL POR BLOQUES) */}
       {activeTab === 'calendario' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          {/* Barra de Controles y Filtros del Calendario */}
+          {/* Barra de Controles y Filtros del Calendario Interno */}
           <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.25rem 1.5rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.85rem', marginBottom: '1rem' }}>
               <div>
-                <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#1e1b4b', margin: 0, fontSize: '1.18rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <CalendarIcon size={21} color="#4f46e5" /> Calendario Institucional de Evaluaciones ({calendarFilteredEvaluations.length} evaluaciones)
-                </h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#1e1b4b', margin: 0, fontSize: '1.18rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <CalendarIcon size={21} color="#4f46e5" /> Calendario Interno de Evaluaciones y Actividades ({calendarFilteredEvaluations.length})
+                  </h3>
+                  <span style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '0.18rem 0.6rem', borderRadius: '9999px', fontSize: '0.72rem', fontWeight: 800 }}>
+                    ● Calendario Nativo Integrado (Sin requerir inicio de sesión externo)
+                  </span>
+                </div>
                 <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.2rem' }}>
-                  Sincronizado en vivo con Google Calendar (<code>{calendarId.slice(0, 28)}...</code>) y Google Drive (<code>{driveAccountEmail}</code>)
+                  Haz clic sobre cualquier evaluación para ver/descargar sus archivos de Google Drive o sobre un espacio libre para planificar una nueva evaluación.
                 </div>
               </div>
 
               <div style={{ display: 'flex', gap: '0.4rem', background: '#f1f5f9', padding: '0.25rem', borderRadius: '10px' }}>
                 <button
                   type="button"
-                  onClick={() => setCalendarViewMode('both')}
+                  onClick={() => setCalendarViewMode('monthly')}
                   style={{
-                    padding: '0.4rem 0.75rem',
+                    padding: '0.42rem 0.85rem',
                     borderRadius: '7px',
                     border: 'none',
                     fontSize: '0.78rem',
                     fontWeight: 700,
                     cursor: 'pointer',
-                    background: calendarViewMode === 'both' ? '#4f46e5' : 'transparent',
-                    color: calendarViewMode === 'both' ? '#ffffff' : '#475569'
+                    background: calendarViewMode === 'monthly' ? '#4f46e5' : 'transparent',
+                    color: calendarViewMode === 'monthly' ? '#ffffff' : '#475569'
                   }}
                 >
-                  📅 Vista Completa (Interactivo + Google)
+                  🗓️ Vista Mensual Completa
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCalendarViewMode('interactive')}
+                  onClick={() => setCalendarViewMode('weekly_blocks')}
                   style={{
-                    padding: '0.4rem 0.75rem',
+                    padding: '0.42rem 0.85rem',
                     borderRadius: '7px',
                     border: 'none',
                     fontSize: '0.78rem',
                     fontWeight: 700,
                     cursor: 'pointer',
-                    background: calendarViewMode === 'interactive' ? '#4f46e5' : 'transparent',
-                    color: calendarViewMode === 'interactive' ? '#ffffff' : '#475569'
+                    background: calendarViewMode === 'weekly_blocks' ? '#4f46e5' : 'transparent',
+                    color: calendarViewMode === 'weekly_blocks' ? '#ffffff' : '#475569'
                   }}
                 >
-                  🗓️ Solo Grilla Interactiva
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCalendarViewMode('google_embed')}
-                  style={{
-                    padding: '0.4rem 0.75rem',
-                    borderRadius: '7px',
-                    border: 'none',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    background: calendarViewMode === 'google_embed' ? '#4f46e5' : 'transparent',
-                    color: calendarViewMode === 'google_embed' ? '#ffffff' : '#475569'
-                  }}
-                >
-                  🌐 Solo Google Calendar Embed
+                  ⏰ Vista Semanal por Bloques
                 </button>
               </div>
             </div>
@@ -1300,7 +1297,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
               <select
                 value={calendarCourseFilter}
                 onChange={e => setCalendarCourseFilter(e.target.value)}
-                style={{ padding: '0.42rem 0.7rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.8rem', fontWeight: 600 }}
+                style={{ padding: '0.42rem 0.7rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.8rem', fontWeight: 600, background: '#ffffff' }}
               >
                 <option value="">📚 Todos los Cursos ({allAvailableCourses.length})</option>
                 {allAvailableCourses.map(c => (
@@ -1311,7 +1308,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
               <select
                 value={calendarSubjectFilter}
                 onChange={e => setCalendarSubjectFilter(e.target.value)}
-                style={{ padding: '0.42rem 0.7rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.8rem', fontWeight: 600 }}
+                style={{ padding: '0.42rem 0.7rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.8rem', fontWeight: 600, background: '#ffffff' }}
               >
                 <option value="">📖 Todas las Asignaturas ({allAvailableSubjects.length})</option>
                 {allAvailableSubjects.map(s => (
@@ -1345,10 +1342,10 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
               </div>
             </div>
 
-            {/* GRILLA MENSUAL INTERACTIVA DE EVALUACIONES */}
-            {(calendarViewMode === 'interactive' || calendarViewMode === 'both') && (
+            {/* MODO A: GRILLA MENSUAL INTERACTIVA DE EVALUACIONES Y ACTIVIDADES */}
+            {calendarViewMode === 'monthly' && (
               <div style={{ marginTop: '1.15rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <button
                       type="button"
@@ -1371,13 +1368,22 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                     </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setCalendarMonth(new Date())}
-                    style={{ padding: '0.35rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    Ir al Mes Actual
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => setCalendarMonth(new Date())}
+                      style={{ padding: '0.35rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Ir al Mes Actual
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('nueva')}
+                      style={{ padding: '0.35rem 0.8rem', borderRadius: '8px', border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4338ca', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <PlusCircle size={14} /> Nueva Evaluación / Actividad
+                    </button>
+                  </div>
                 </div>
 
                 {/* Cabecera Lunes a Domingo */}
@@ -1401,21 +1407,25 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                         onClick={() => {
                           if (dayEvals.length > 0) {
                             setSelectedDayEvaluations({ dateStr: cell.dateStr, items: dayEvals });
+                          } else {
+                            setNewEvalForm(prev => ({ ...prev, evaluation_date: cell.dateStr }));
+                            setActiveTab('nueva');
                           }
                         }}
                         style={{
-                          minHeight: '105px',
+                          minHeight: '108px',
                           background: !cell.isCurrentMonth ? '#f8fafc' : isToday ? '#eef2ff' : '#ffffff',
                           border: isToday ? '2px solid #4f46e5' : '1px solid #e2e8f0',
                           borderRadius: '10px',
                           padding: '0.4rem',
                           opacity: cell.isCurrentMonth ? 1 : 0.55,
-                          cursor: dayEvals.length > 0 ? 'pointer' : 'default',
+                          cursor: 'pointer',
                           display: 'flex',
                           flexDirection: 'column',
                           gap: '3px',
                           overflow: 'hidden'
                         }}
+                        title={dayEvals.length > 0 ? `Ver ${dayEvals.length} evaluación(es) del ${cell.dateStr}` : `Clic para planificar evaluación el ${cell.dateStr}`}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{
@@ -1428,14 +1438,18 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                           }}>
                             {cell.dayNumber}
                           </span>
-                          {dayEvals.length > 0 && (
+                          {dayEvals.length > 0 ? (
                             <span style={{ fontSize: '0.66rem', fontWeight: 800, background: '#1e1b4b', color: '#ffffff', padding: '1px 5px', borderRadius: '999px' }}>
                               {dayEvals.length}
                             </span>
+                          ) : (
+                            cell.isCurrentMonth && (
+                              <span style={{ fontSize: '0.62rem', color: '#94a3b8', fontWeight: 600 }}>+ Agendar</span>
+                            )
                           )}
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', overflowY: 'auto', maxHeight: '76px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', overflowY: 'auto', maxHeight: '78px' }}>
                           {dayEvals.slice(0, 3).map(ev => {
                             const isPieDone = ev.status === 'Adecuado PIE' || Boolean(ev.pie_file_url);
                             const isOrigDone = Boolean(ev.original_file_url);
@@ -1455,7 +1469,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis'
                                 }}
-                                title={`${ev.course_name} - ${ev.subject_name} (${ev.teacher_name})`}
+                                title={`${ev.course_name} - ${ev.subject_name}: ${ev.evaluation_title} (${ev.teacher_name})`}
                               >
                                 {ev.course_name}: {ev.subject_name}
                               </div>
@@ -1473,35 +1487,194 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                 </div>
               </div>
             )}
+
+            {/* MODO B: VISTA SEMANAL POR BLOQUES (LUNES A VIERNES x 1° A 5° BLOQUE) */}
+            {calendarViewMode === 'weekly_blocks' && (() => {
+              const weekDaysList: Array<{ dateStr: string; dayName: string; dayNum: string; monthShort: string; isToday: boolean }> = [];
+              const dayLabels = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+              const todayYMD = new Date().toISOString().split('T')[0];
+              for (let i = 0; i < 5; i++) {
+                const d = new Date(calendarWeekStart.getFullYear(), calendarWeekStart.getMonth(), calendarWeekStart.getDate() + i);
+                const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                weekDaysList.push({
+                  dateStr: ds,
+                  dayName: dayLabels[i],
+                  dayNum: String(d.getDate()).padStart(2, '0'),
+                  monthShort: MONTH_NAMES_ES[d.getMonth()].slice(0, 3),
+                  isToday: ds === todayYMD
+                });
+              }
+
+              return (
+                <div style={{ marginTop: '1.15rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const prev = new Date(calendarWeekStart);
+                          prev.setDate(prev.getDate() - 7);
+                          setCalendarWeekStart(prev);
+                        }}
+                        style={{ padding: '0.35rem 0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.78rem', fontWeight: 700 }}
+                      >
+                        <ChevronLeft size={16} /> Semana Anterior
+                      </button>
+                      <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', padding: '0 0.5rem' }}>
+                        Semana del {weekDaysList[0]?.dayNum} {weekDaysList[0]?.monthShort} al {weekDaysList[4]?.dayNum} {weekDaysList[4]?.monthShort} {calendarWeekStart.getFullYear()}
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = new Date(calendarWeekStart);
+                          next.setDate(next.getDate() + 7);
+                          setCalendarWeekStart(next);
+                        }}
+                        style={{ padding: '0.35rem 0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.78rem', fontWeight: 700 }}
+                      >
+                        Semana Siguiente <ChevronRight size={16} />
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                        const day = d.getDay();
+                        const diff = day === 0 ? -6 : 1 - day;
+                        d.setDate(d.getDate() + diff);
+                        setCalendarWeekStart(d);
+                      }}
+                      style={{ padding: '0.35rem 0.75rem', borderRadius: '8px', border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4338ca', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Ir a Esta Semana
+                    </button>
+                  </div>
+
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '6px', minWidth: '680px' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: '150px', padding: '0.55rem', background: '#f1f5f9', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 800, color: '#334155', textAlign: 'center' }}>
+                            Bloque Horario
+                          </th>
+                          {weekDaysList.map(d => (
+                            <th
+                              key={d.dateStr}
+                              style={{
+                                padding: '0.55rem',
+                                background: d.isToday ? '#eef2ff' : '#f8fafc',
+                                border: d.isToday ? '2px solid #4f46e5' : '1px solid #e2e8f0',
+                                borderRadius: '8px',
+                                textAlign: 'center'
+                              }}
+                            >
+                              <div style={{ fontSize: '0.8rem', fontWeight: 800, color: d.isToday ? '#4f46e5' : '#0f172a' }}>{d.dayName}</div>
+                              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: d.isToday ? '#4338ca' : '#64748b' }}>{d.dayNum} {d.monthShort}</div>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {BLOCKS.map((blockLabel, bIdx) => {
+                          const blockNumStr = `${bIdx + 1}° Bloque`;
+                          const blockAltStr = `Bloque ${bIdx + 1}`;
+                          return (
+                            <tr key={blockLabel}>
+                              <td style={{ padding: '0.65rem 0.5rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', textAlign: 'center', verticalAlign: 'middle' }}>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#1e1b4b' }}>{blockLabel.split('(')[0].trim()}</div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#4f46e5' }}>{blockLabel.includes('(') ? `(${blockLabel.split('(')[1]}` : ''}</div>
+                              </td>
+                              {weekDaysList.map(d => {
+                                const dayEvals = (evaluationsByDateMap.get(d.dateStr) || []).filter(ev => {
+                                  const bl = String(ev.block_label || '');
+                                  if (bl === blockLabel || bl.includes(blockNumStr) || bl.includes(blockAltStr)) return true;
+                                  if (bIdx === 0 && !bl) return true;
+                                  return false;
+                                });
+
+                                return (
+                                  <td
+                                    key={`${d.dateStr}-${blockLabel}`}
+                                    style={{
+                                      padding: '0.5rem',
+                                      background: dayEvals.length > 0 ? '#ffffff' : '#f8fafc',
+                                      border: dayEvals.length > 0 ? '1px solid #c7d2fe' : '1px dashed #cbd5e1',
+                                      borderRadius: '10px',
+                                      verticalAlign: 'top',
+                                      minHeight: '78px'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      {dayEvals.map(ev => {
+                                        const isPieDone = ev.status === 'Adecuado PIE' || Boolean(ev.pie_file_url);
+                                        const isOrigDone = Boolean(ev.original_file_url);
+                                        const bg = isPieDone ? '#dcfce7' : isOrigDone ? '#e0e7ff' : '#fef3c7';
+                                        const fg = isPieDone ? '#166534' : isOrigDone ? '#3730a3' : '#92400e';
+                                        return (
+                                          <div
+                                            key={ev.id}
+                                            onClick={() => setSelectedDayEvaluations({ dateStr: d.dateStr, items: [ev] })}
+                                            style={{
+                                              background: bg,
+                                              color: fg,
+                                              padding: '0.35rem 0.45rem',
+                                              borderRadius: '6px',
+                                              fontSize: '0.7rem',
+                                              fontWeight: 700,
+                                              cursor: 'pointer',
+                                              border: '1px solid rgba(0,0,0,0.06)'
+                                            }}
+                                            title="Clic para ver archivos y detalles"
+                                          >
+                                            <div style={{ fontWeight: 800 }}>{ev.course_name} • {ev.subject_name}</div>
+                                            <div style={{ fontSize: '0.66rem', opacity: 0.9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                              {ev.evaluation_title}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setNewEvalForm(prev => ({
+                                            ...prev,
+                                            evaluation_date: d.dateStr,
+                                            block_label: blockLabel,
+                                            course_name: calendarCourseFilter || prev.course_name,
+                                            subject_name: calendarSubjectFilter || prev.subject_name
+                                          }));
+                                          setActiveTab('nueva');
+                                        }}
+                                        style={{
+                                          background: 'transparent',
+                                          border: 'none',
+                                          color: '#64748b',
+                                          fontSize: '0.67rem',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          padding: '3px 0',
+                                          textAlign: 'center'
+                                        }}
+                                      >
+                                        + Agendar aquí
+                                      </button>
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
-
-          {/* VISTA EMBEBIDA DE GOOGLE CALENDAR INSTITUCIONAL */}
-          {(calendarViewMode === 'google_embed' || calendarViewMode === 'both') && (
-            <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.25rem 1.5rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <h4 style={{ fontFamily: 'Outfit, sans-serif', color: '#1e1b4b', margin: 0, fontSize: '1.02rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Cloud size={18} color="#4f46e5" /> Vista Directa Google Calendar Institucional ({driveAccountEmail})
-                </h4>
-                <a
-                  href={`https://calendar.google.com/calendar/embed?src=${encodeURIComponent(calendarId)}&ctz=America%2FSantiago`}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ fontSize: '0.78rem', color: '#4f46e5', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
-                >
-                  Abrir en Google Calendar <ExternalLink size={13} />
-                </a>
-              </div>
-
-              <div style={{ width: '100%', height: '540px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #cbd5e1' }}>
-                <iframe
-                  key={calendarKey}
-                  src={`https://calendar.google.com/calendar/embed?src=${encodeURIComponent(calendarId)}&ctz=America%2FSantiago&showTitle=0&showPrint=0&showTabs=1&showCalendars=0&showTz=0&bgcolor=%23ffffff`}
-                  style={{ width: '100%', height: '100%', border: 0 }}
-                  title="Google Calendar Evaluaciones"
-                />
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -2066,17 +2239,36 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                 Cada vez que un Docente o Funcionario sube su foto de perfil, el sistema genera un nombre aleatorio criptográfico (ej. <code>AVT_9F3A12B4C8D1E0F2.jpg</code>) en Google Drive y guarda la asociación internamente en la base de datos.
               </p>
               {driveFoldersData?.rootFolders?.profiles?.encodedFiles?.length > 0 ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '0.75rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.85rem' }}>
                   {driveFoldersData.rootFolders.profiles.encodedFiles.map((item: any) => (
-                    <div key={item.vaultId} style={{ background: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#3730a3', fontFamily: 'monospace' }}>
-                        🔒 {item.randomDriveCode}
+                    <div key={item.vaultId} style={{ background: '#ffffff', padding: '0.9rem', borderRadius: '12px', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                      <div style={{ width: '54px', height: '54px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #4f46e5', background: '#eef2ff', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <img
+                          src={item.fileUrl}
+                          alt={item.randomDriveCode}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#475569' }}>
-                        Carpeta: <code>{item.folderPath}</code>
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                        Codificado internamente para: <strong>{item.uploadedBy}</strong>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', overflow: 'hidden', flex: 1 }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#3730a3', fontFamily: 'monospace' }}>
+                          🔒 {item.randomDriveCode}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          Carpeta: <code>{item.folderPath}</code>
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                          Asociado a: <strong>{item.uploadedBy}</strong>
+                        </div>
+                        <div style={{ marginTop: '4px', display: 'flex', gap: '6px' }}>
+                          <a
+                            href={item.driveFileId || item.fileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ fontSize: '0.7rem', fontWeight: 700, color: '#4f46e5', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                          >
+                            Ver imagen respaldada <ExternalLink size={11} />
+                          </a>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -2314,6 +2506,29 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const dateToUse = selectedDayEvaluations.dateStr;
+                  setSelectedDayEvaluations(null);
+                  setNewEvalForm(prev => ({ ...prev, evaluation_date: dateToUse }));
+                  setActiveTab('nueva');
+                }}
+                style={{ padding: '0.45rem 0.9rem', borderRadius: '8px', border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4338ca', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+              >
+                <PlusCircle size={15} /> Planificar otra evaluación en este día
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedDayEvaluations(null)}
+                className="btn btn-secondary"
+                style={{ padding: '0.45rem 1rem', fontSize: '0.8rem', fontWeight: 700 }}
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         </div>

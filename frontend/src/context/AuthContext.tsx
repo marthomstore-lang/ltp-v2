@@ -103,6 +103,13 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+export const normalizeAvatarUrl = (avatar?: string | null): string | null => {
+  if (!avatar || typeof avatar !== 'string') return null;
+  const clean = avatar.trim().replace(/&#x2F;/gi, '/').replace(/&#47;/g, '/');
+  if (!clean || clean === 'null' || clean === 'undefined') return null;
+  return clean;
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Inicializar estado desde localStorage para persistir la sesión tras recargar la página (F5)
   const [token, setToken] = useState<string | null>(() => {
@@ -116,7 +123,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(() => {
     try {
       const saved = localStorage.getItem('ltp_user');
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      if (parsed && parsed.avatar) {
+        parsed.avatar = normalizeAvatarUrl(parsed.avatar);
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -148,7 +160,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             name: data.user.name || prev.name,
             email: data.user.email ?? prev.email,
             phone: data.user.phone ?? prev.phone,
-            avatar: data.user.avatar ?? null,
+            avatar: normalizeAvatarUrl(data.user.avatar ?? prev.avatar ?? null),
             themeConfig: data.user.themeConfig ?? null,
             canCustomize: data.user.canCustomize ?? canUserCustomizeAppearance(prev.role)
           };
@@ -170,7 +182,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...newUser,
       originalRole: newUser.originalRole || newUser.role,
       roles: newUser.roles && newUser.roles.length > 0 ? newUser.roles : [newUser.role],
-      avatar: allowed ? (newUser.avatar || null) : null,
+      avatar: allowed ? normalizeAvatarUrl(newUser.avatar) : null,
       themeConfig: allowed ? (newUser.themeConfig || null) : null,
       canCustomize: allowed
     };
@@ -189,7 +201,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateUser = (updatedUser: Partial<User>) => {
     setUser(prev => {
       if (!prev) return null;
-      const merged = { ...prev, ...updatedUser };
+      const merged: User = {
+        ...prev,
+        ...updatedUser,
+        avatar: updatedUser.avatar !== undefined ? normalizeAvatarUrl(updatedUser.avatar) : normalizeAvatarUrl(prev.avatar)
+      };
       applyUserThemeToDocument(merged.themeConfig || null, merged.role);
       try {
         localStorage.setItem('ltp_user', JSON.stringify(merged));

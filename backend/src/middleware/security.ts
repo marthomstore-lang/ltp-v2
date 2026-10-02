@@ -52,14 +52,22 @@ export const authRateLimiter = rateLimit({
 export const sanitizeString = (str: string): string => {
   if (typeof str !== 'string') return str;
 
-  // Escapar HTML peligroso y prevenir XSS
-  let clean = str
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/javascript:/gi, '')
-    .replace(/onerror\s*=/gi, '')
-    .replace(/onload\s*=/gi, '');
+  const trimmed = str.trim();
+  // Si es un Data URI de imagen/archivo válido (ej. data:image/jpeg;base64,...), reparar posibles &#x2F; previos y conservar intacto
+  if (/^data:(image|application|text\/plain)(&#x2F;|\/)[a-zA-Z0-9.+-]+;base64,/i.test(trimmed)) {
+    return trimmed.replace(/&#x2F;/gi, '/');
+  }
 
-  return validator.escape(clean.trim());
+  // Escapar/eliminar HTML peligroso y prevenir XSS sin corromper barras '/' en URLs, fechas o rutas de carpetas
+  const clean = trimmed
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<\/?(script|iframe|object|embed|svg|math|style|link|meta)\b[^>]*>/gi, '')
+    .replace(/javascript\s*:/gi, '')
+    .replace(/vbscript\s*:/gi, '')
+    .replace(/data\s*:\s*text\/html/gi, '')
+    .replace(/\bon[a-z]+\s*=/gi, '');
+
+  return clean;
 };
 
 export const sanitizeInputs = (req: Request, res: Response, next: NextFunction) => {
@@ -69,7 +77,7 @@ export const sanitizeInputs = (req: Request, res: Response, next: NextFunction) 
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
         if (typeof obj[key] === 'string') {
-          // No escapar passwords ni hashes para no alterarlos
+          // No alterar passwords ni hashes
           if (key.includes('password') || key.includes('hash')) {
             obj[key] = obj[key].trim();
           } else {

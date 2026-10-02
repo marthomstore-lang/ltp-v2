@@ -24,7 +24,8 @@ import {
   UserThemeConfig,
   DEFAULT_PLATFORM_THEME,
   applyUserThemeToDocument,
-  canUserCustomizeAppearance
+  canUserCustomizeAppearance,
+  normalizeAvatarUrl
 } from '../context/AuthContext';
 import { formatRut } from '../utils/rut';
 import Swal from 'sweetalert2';
@@ -127,7 +128,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose, ini
 
   // Estado de imagen de perfil (Avatar) y código aleatorio en Google Drive
   const [avatarDraft, setAvatarDraft] = useState<string | null>(
-    allowedToCustomize ? (user?.avatar || null) : null
+    allowedToCustomize ? normalizeAvatarUrl(user?.avatar) : null
   );
   const [avatarDriveCode, setAvatarDriveCode] = useState<string | null>(null);
 

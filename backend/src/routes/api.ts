@@ -542,7 +542,7 @@ const loginHandler = async (req: Request, res: Response) => {
     const activeRole = user.role;
     const allowedCustomize = canCustomizeProfileRole(activeRole);
     const parsedTheme = allowedCustomize ? parseUserThemeConfig(user.theme_config) : null;
-    const safeAvatar = allowedCustomize && user.avatar ? String(user.avatar) : null;
+    const safeAvatar = allowedCustomize ? normalizeAvatarDataUri(user.avatar) : null;
 
     const token = jwt.sign(
       { id: user.id, run: user.run, name: user.name, role: activeRole, roles: rolesList },
@@ -608,6 +608,13 @@ const canCustomizeProfileRole = (role?: string | null): boolean => {
   return !norm.includes('apoderad') && !norm.includes('estudiant') && !norm.includes('alumn') && !norm.includes('visita');
 };
 
+const normalizeAvatarDataUri = (raw: any): string | null => {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return null;
+  return trimmed.replace(/&#x2F;/gi, '/').replace(/&amp;/gi, '&');
+};
+
 const parseUserThemeConfig = (raw: any): Record<string, string> | null => {
   if (!raw) return null;
   try {
@@ -628,7 +635,7 @@ const parseUserThemeConfig = (raw: any): Record<string, string> | null => {
   }
 };
 
-// Asegurar que las columnas de personalización existan en Supabase
+// Asegurar que las columnas de personalización existan en Supabase y reparar Data URIs escapados
 (async () => {
   try {
     await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);').catch(() => {});
@@ -637,6 +644,8 @@ const parseUserThemeConfig = (raw: any): Record<string, string> | null => {
     await query('ALTER TABLE staff_profiles ADD COLUMN IF NOT EXISTS phone VARCHAR(50);').catch(() => {});
     await query('ALTER TABLE staff_profiles ADD COLUMN IF NOT EXISTS avatar TEXT;').catch(() => {});
     await query('ALTER TABLE staff_profiles ADD COLUMN IF NOT EXISTS theme_config TEXT;').catch(() => {});
+    await query("UPDATE users SET avatar = REPLACE(avatar, '&#x2F;', '/') WHERE avatar LIKE '%&#x2F;%'").catch(() => {});
+    await query("UPDATE staff_profiles SET avatar = REPLACE(avatar, '&#x2F;', '/') WHERE avatar LIKE '%&#x2F;%'").catch(() => {});
   } catch (_) {}
 })();
 
@@ -660,7 +669,7 @@ router.get('/auth/me', authMiddleware, async (req: Request, res: Response) => {
     const dbUser = userRes.rows[0];
     const allowedCustomize = canCustomizeProfileRole(activeRole);
     const parsedTheme = allowedCustomize ? parseUserThemeConfig(dbUser.theme_config) : null;
-    const safeAvatar = allowedCustomize && dbUser.avatar ? String(dbUser.avatar) : null;
+    const safeAvatar = allowedCustomize ? normalizeAvatarDataUri(dbUser.avatar) : null;
     const rolesList = Array.isArray((req.user as any)?.roles) && (req.user as any).roles.length > 0
       ? (req.user as any).roles
       : parseRolesArray(dbUser.roles, activeRole);
@@ -1512,7 +1521,7 @@ router.post('/auth/update-profile', authMiddleware, async (req: Request, res: Re
 
     let avatarDriveCode: string | null = null;
     if (avatar !== undefined && allowedCustomize) {
-      const cleanAvatar = (avatar === null || String(avatar).trim() === '') ? null : String(avatar).trim();
+      const cleanAvatar = normalizeAvatarDataUri(avatar);
       updatedAvatar = cleanAvatar;
       params.push(cleanAvatar);
       updateFields.push(`avatar = $${params.length}`);
@@ -1525,7 +1534,7 @@ router.post('/auth/update-profile', authMiddleware, async (req: Request, res: Re
         const folderPath = 'LTP_PERFILES_CODIFICADOS_2026 / Avatares';
         const approxSize = Math.round((cleanAvatar.length * 3) / 4);
 
-        await query("DELETE FROM secure_file_vault WHERE entity_type = 'profile_avatar' AND entity_id = $1", [user.id]).catch(() => {});
+        await query("DELETE FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1", [user.id]).catch(() => {});
         await query(`
           INSERT INTO secure_file_vault (
             id, file_id, storage_name, original_name, entity_type, entity_id,
@@ -1541,13 +1550,13 @@ router.post('/auth/update-profile', authMiddleware, async (req: Request, res: Re
           `/api/drive/file/${avatarDriveCode}`,
           cleanAvatar,
           approxSize,
-          updatedRun || user.id
+          updatedName || updatedRun || user.id
         ]).catch(err => console.warn('Aviso guardando avatar en vault:', err));
 
         // Subir en segundo plano a Google Drive con el nombre aleatorio codificado
         uploadEncodedAvatarToDriveBg(vaultId, avatarDriveCode, cleanAvatar).catch(() => {});
       } else if (cleanAvatar === null) {
-        await query("DELETE FROM secure_file_vault WHERE entity_type = 'profile_avatar' AND entity_id = $1", [user.id]).catch(() => {});
+        await query("DELETE FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1", [user.id]).catch(() => {});
       }
     }
 
@@ -1584,7 +1593,7 @@ router.post('/auth/update-profile', authMiddleware, async (req: Request, res: Re
 
     if (!avatarDriveCode && allowedCustomize) {
       const existingVault = await query(
-        "SELECT storage_name FROM secure_file_vault WHERE entity_type = 'profile_avatar' AND entity_id = $1 ORDER BY created_at DESC LIMIT 1",
+        "SELECT storage_name FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1 ORDER BY created_at DESC LIMIT 1",
         [user.id]
       ).catch(() => ({ rows: [] }));
       if (existingVault.rows.length > 0) {
@@ -1593,7 +1602,7 @@ router.post('/auth/update-profile', authMiddleware, async (req: Request, res: Re
     }
 
     const finalThemeConfig = allowedCustomize ? parseUserThemeConfig(updatedThemeRaw) : null;
-    const finalAvatar = allowedCustomize ? updatedAvatar : null;
+    const finalAvatar = allowedCustomize ? normalizeAvatarDataUri(updatedAvatar) : null;
 
     res.json({
       success: true,
@@ -1623,10 +1632,46 @@ router.post('/auth/update-profile', authMiddleware, async (req: Request, res: Re
 router.get('/auth/my-avatar-vault', authMiddleware, async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
-    const vaultRes = await query(
-      "SELECT id, file_id, storage_name, folder_path, file_url, file_size, created_at FROM secure_file_vault WHERE entity_type = 'profile_avatar' AND entity_id = $1 ORDER BY created_at DESC LIMIT 1",
+    let vaultRes = await query(
+      "SELECT id, file_id, storage_name, folder_path, file_url, file_size, created_at FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1 ORDER BY created_at DESC LIMIT 1",
       [userId]
-    ).catch(() => ({ rows: [] }));
+    ).catch(() => ({ rows: [] as any[] }));
+
+    if (vaultRes.rows.length === 0 && userId) {
+      const uRes = await query('SELECT id, name, run, avatar FROM users WHERE id = $1 LIMIT 1', [userId]).catch(() => ({ rows: [] as any[] }));
+      const rawAv = uRes.rows[0]?.avatar;
+      const cleanAv = normalizeAvatarDataUri(rawAv);
+      if (cleanAv && cleanAv.startsWith('data:image/')) {
+        const randomHex = crypto.randomBytes(8).toString('hex').toUpperCase();
+        const avatarDriveCode = `AVT_${randomHex}.jpg`;
+        const vaultId = `VLT-AVT-${Date.now()}-${randomHex.slice(0, 6)}`;
+        const folderPath = 'LTP_PERFILES_CODIFICADOS_2026 / Avatares';
+        const approxSize = Math.round((cleanAv.length * 3) / 4);
+        await query(`
+          INSERT INTO secure_file_vault (
+            id, file_id, storage_name, original_name, entity_type, entity_id,
+            folder_path, mime_type, file_url, file_data_base64, file_size, uploaded_by, is_anonymized
+          ) VALUES ($1, $2, $3, $4, 'profile_avatar', $5, $6, 'image/jpeg', $7, $8, $9, $10, 1)
+        `, [
+          vaultId,
+          avatarDriveCode,
+          avatarDriveCode,
+          `Perfil_${userId}.jpg`,
+          userId,
+          folderPath,
+          `/api/drive/file/${avatarDriveCode}`,
+          cleanAv,
+          approxSize,
+          uRes.rows[0]?.name || uRes.rows[0]?.run || userId
+        ]).catch(() => {});
+        uploadEncodedAvatarToDriveBg(vaultId, avatarDriveCode, cleanAv).catch(() => {});
+        vaultRes = await query(
+          "SELECT id, file_id, storage_name, folder_path, file_url, file_size, created_at FROM secure_file_vault WHERE id = $1 LIMIT 1",
+          [vaultId]
+        ).catch(() => ({ rows: [] as any[] }));
+      }
+    }
+
     res.json({
       success: true,
       vault: vaultRes.rows[0] || null
@@ -8381,6 +8426,7 @@ router.post('/evaluations', authMiddleware, uploadMemory.single('file'), async (
         origFolderPath,
         extractedFile.mimeType,
         finalFileUrl,
+        extractedFile.buffer.toString('base64'),
         extractedFile.buffer.length,
         tName
       ]).catch(() => {});
@@ -8570,6 +8616,7 @@ router.post('/evaluations/:id/attach-original', authMiddleware, uploadMemory.sin
         folderPath,
         extractedFile.mimeType,
         finalUrl,
+        extractedFile.buffer.toString('base64'),
         extractedFile.buffer.length,
         user?.name || ev.teacher_name || 'Docente'
       ]).catch(() => {});
@@ -9075,15 +9122,54 @@ router.get('/drive/status', authMiddleware, async (_req: Request, res: Response)
 router.get('/drive/folders', authMiddleware, async (_req: Request, res: Response) => {
   try {
     const evalsRes = await query(`
-      SELECT id, course_name, subject_name, evaluation_date, block_schedule, status,
+      SELECT id, course_name, subject_name, evaluation_date, block_label, status,
              teacher_name, original_file_name, original_file_url, original_folder_path,
              pie_file_name, pie_file_url, pie_teacher_name, pie_folder_path
       FROM pedagogical_evaluations
       ORDER BY course_name ASC, subject_name ASC, evaluation_date DESC
     `);
 
+    // Asegurar que cualquier avatar existente en users esté registrado en secure_file_vault
+    try {
+      const usersWithAvatars = await query("SELECT id, name, run, avatar FROM users WHERE avatar IS NOT NULL AND avatar != '' AND avatar != 'null'");
+      for (const u of usersWithAvatars.rows || []) {
+        const cleanAv = normalizeAvatarDataUri(u.avatar);
+        if (cleanAv && cleanAv.startsWith('data:image/')) {
+          const checkV = await query(
+            "SELECT id FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1 LIMIT 1",
+            [u.id]
+          ).catch(() => ({ rows: [] as any[] }));
+          if (checkV.rows.length === 0) {
+            const randomHex = crypto.randomBytes(8).toString('hex').toUpperCase();
+            const avatarDriveCode = `AVT_${randomHex}.jpg`;
+            const vaultId = `VLT-AVT-${Date.now()}-${randomHex.slice(0, 6)}`;
+            const folderPath = 'LTP_PERFILES_CODIFICADOS_2026 / Avatares';
+            const approxSize = Math.round((cleanAv.length * 3) / 4);
+            await query(`
+              INSERT INTO secure_file_vault (
+                id, file_id, storage_name, original_name, entity_type, entity_id,
+                folder_path, mime_type, file_url, file_data_base64, file_size, uploaded_by, is_anonymized
+              ) VALUES ($1, $2, $3, $4, 'profile_avatar', $5, $6, 'image/jpeg', $7, $8, $9, $10, 1)
+            `, [
+              vaultId,
+              avatarDriveCode,
+              avatarDriveCode,
+              `Perfil_${u.id}.jpg`,
+              u.id,
+              folderPath,
+              `/api/drive/file/${avatarDriveCode}`,
+              cleanAv,
+              approxSize,
+              u.name || u.run || u.id
+            ]).catch(() => {});
+            uploadEncodedAvatarToDriveBg(vaultId, avatarDriveCode, cleanAv).catch(() => {});
+          }
+        }
+      }
+    } catch (_) {}
+
     const vaultRes = await query(`
-      SELECT id, storage_name, original_name, entity_type, entity_id, folder_path,
+      SELECT id, file_id, storage_name, original_name, entity_type, entity_id, folder_path,
              mime_type, file_url, file_size, uploaded_by, is_anonymized, created_at
       FROM secure_file_vault
       ORDER BY created_at DESC
@@ -9110,7 +9196,7 @@ router.get('/drive/folders', authMiddleware, async (_req: Request, res: Response
           fileName: ev.original_file_name || `Evaluacion_${ev.id}.pdf`,
           fileUrl: ev.original_file_url,
           evaluationDate: ev.evaluation_date,
-          blockSchedule: ev.block_schedule,
+          blockSchedule: ev.block_label,
           teacherName: ev.teacher_name,
           status: ev.status,
           folderPath: ev.original_folder_path || `Evaluaciones Originales / ${course} / ${subject}`
@@ -9125,7 +9211,7 @@ router.get('/drive/folders', authMiddleware, async (_req: Request, res: Response
           fileName: ev.pie_file_name || `Adecuacion_PIE_${ev.id}.pdf`,
           fileUrl: ev.pie_file_url,
           evaluationDate: ev.evaluation_date,
-          blockSchedule: ev.block_schedule,
+          blockSchedule: ev.block_label,
           pieTeacherName: ev.pie_teacher_name || 'Equipo PIE',
           status: ev.status,
           folderPath: ev.pie_folder_path || `Evaluaciones PIE Aparte / ${course} / ${subject}`
@@ -9134,12 +9220,14 @@ router.get('/drive/folders', authMiddleware, async (_req: Request, res: Response
     }
 
     const encodedAvatars = vaultRes.rows
-      .filter((v: any) => v.entity_type === 'avatar_perfil')
+      .filter((v: any) => v.entity_type === 'profile_avatar' || v.entity_type === 'avatar_perfil')
       .map((v: any) => ({
         vaultId: v.id,
         randomDriveCode: v.storage_name,
         internalEntityId: v.entity_id,
         uploadedBy: v.uploaded_by,
+        fileUrl: v.file_url || `/api/drive/file/${v.storage_name}`,
+        driveFileId: v.file_id && String(v.file_id).startsWith('http') ? v.file_id : null,
         folderPath: v.folder_path || 'LTP_PERFILES_CODIFICADOS_2026 / Avatares',
         createdAt: v.created_at
       }));
@@ -9189,7 +9277,7 @@ router.get('/drive/file/:code', async (req: Request, res: Response) => {
       return res.redirect(record.file_url);
     }
     if (record.file_data_base64) {
-      let rawB64 = String(record.file_data_base64);
+      let rawB64 = String(record.file_data_base64).replace(/&#x2F;/gi, '/');
       let mime = record.mime_type || 'application/octet-stream';
       const dataUriMatch = rawB64.match(/^data:([^;]+);base64,(.+)$/i);
       if (dataUriMatch) {
