@@ -76,14 +76,27 @@ export const InstitutionalPlatformsSection: React.FC<Props> = ({ token, userName
       {/* GRID DE TARJETAS MULTICOLOR CON IMÁGENES TEMÁTICAS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem' }}>
         {links.map((item, idx) => {
-          const defaultRef = DEFAULT_LINKS[idx % DEFAULT_LINKS.length];
-          const bgGradient = item.color || defaultRef.color;
-          const imgUrl = item.image || defaultRef.image;
+          const defaultRef = DEFAULT_LINKS[idx % Math.max(1, DEFAULT_LINKS.length)];
+          const bgGradient = item.color || defaultRef?.color || 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)';
+          const imgUrl = item.image || defaultRef?.image || '/platform_images/mobile_devices.jpg';
+          const lowerName = (item.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const isInternalEval = lowerName.includes('evaluacion') || item.url === '/evaluaciones-pie';
+          const isInternalLab = lowerName.includes('computacion') || lowerName.includes('sala de comput') || item.url === '/sala-computacion';
 
           return (
             <div
               key={item.id || idx}
-              onClick={() => window.open(item.url, '_blank')}
+              onClick={() => {
+                if (isInternalEval) {
+                  window.dispatchEvent(new CustomEvent('ltp_navigate_tab', { detail: 'evaluations_pie' }));
+                  return;
+                }
+                if (isInternalLab) {
+                  window.dispatchEvent(new CustomEvent('ltp_navigate_tab', { detail: 'computer_lab' }));
+                  return;
+                }
+                window.open(item.url, '_blank');
+              }}
               style={{
                 borderRadius: '16px',
                 overflow: 'hidden',
@@ -128,7 +141,7 @@ export const InstitutionalPlatformsSection: React.FC<Props> = ({ token, userName
                   fontSize: '0.7rem',
                   fontWeight: 700
                 }}>
-                  {item.category || defaultRef.category}
+                  {isInternalEval || isInternalLab ? 'Módulo Interno Integrado' : (item.category || defaultRef?.category || 'Plataforma Institucional')}
                 </div>
               </div>
 

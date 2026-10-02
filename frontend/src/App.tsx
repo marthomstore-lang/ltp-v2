@@ -45,7 +45,7 @@ const MainApp: React.FC = () => {
 
   return (
     <Suspense fallback={<AppLoadingFallback />}>
-      {user?.role === 'Docente' ? <TeacherDashboard /> : <AdminDashboard />}
+      <AdminDashboard />
     </Suspense>
   );
 };

@@ -4789,9 +4789,6 @@ function normalizePermissionsMatrix(rawMatrix: any[]): { normalized: any[]; hadO
 }
 
 router.get('/permissions', authMiddleware, async (req: Request, res: Response) => {
-  if (req.user?.role === 'Apoderado' || req.user?.role === 'Estudiante') {
-    return res.status(403).json({ error: 'Acceso denegado. Los apoderados y estudiantes no tienen acceso a la gestión de permisos del establecimiento.' });
-  }
   try {
     if (cachedPermissionsMatrix && cachedPermissionsMatrix.length > 0) {
       return res.json(cachedPermissionsMatrix);

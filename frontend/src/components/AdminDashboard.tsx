@@ -29,6 +29,8 @@ const InspectorPassesModule = lazy(() => import('./InspectorPassesModule').then(
 const MineducReportsModule = lazy(() => import('./MineducReportsModule').then(m => ({ default: m.MineducReportsModule })));
 const CourseMessageModal = lazy(() => import('./CourseMessageModal').then(m => ({ default: m.CourseMessageModal })));
 const PedagogicalTripsModule = lazy(() => import('./PedagogicalTripsModule').then(m => ({ default: m.PedagogicalTripsModule })));
+const TeacherCoursesGrid = lazy(() => import('./TeacherCoursesGrid').then(m => ({ default: m.TeacherCoursesGrid })));
+import { DEFAULT_PERMISSIONS_MATRIX } from './PermissionsMatrix';
 
 const ModuleLoader: React.FC = () => (
   <div style={{
@@ -68,9 +70,14 @@ export const AdminDashboard: React.FC = () => {
     return 'home';
   });
 
-  const [gradesSubTab, setGradesSubTab] = useState<'sheet' | 'overview'>(() =>
+  const [gradesSubTab, setGradesSubTab] = useState<'courses' | 'sheet' | 'overview'>(() =>
     getAdminTabFromUrl() === 'overview' ? 'overview' : 'sheet'
   );
+  const [selectedCourseSubject, setSelectedCourseSubject] = useState<{
+    courseName: string;
+    subjectName: string;
+    isHomeroom: boolean;
+  } | null>(null);
 
   useEffect(() => {
     try {
@@ -79,7 +86,7 @@ export const AdminDashboard: React.FC = () => {
     syncAdminUrl(activeTab);
     if (activeTab === 'overview' && gradesSubTab !== 'overview') {
       setGradesSubTab('overview');
-    } else if (activeTab === 'grades' && gradesSubTab !== 'sheet') {
+    } else if (activeTab === 'grades' && gradesSubTab === 'overview') {
       setGradesSubTab('sheet');
     }
   }, [activeTab]);
@@ -94,7 +101,9 @@ export const AdminDashboard: React.FC = () => {
     return () => window.removeEventListener('ltp_navigate_tab', handleNav);
   }, []);
 
-  const [dynamicMatrix, setDynamicMatrix] = useState<any[]>([]);
+  const [dynamicMatrix, setDynamicMatrix] = useState<any[]>(() =>
+    DEFAULT_PERMISSIONS_MATRIX.map(r => ({ ...r }))
+  );
 
   const TAB_TO_FUNCTION: Record<string, string> = {
     home: 'dashboard',
@@ -122,13 +131,13 @@ export const AdminDashboard: React.FC = () => {
   const rolePermissions: Record<string, string[]> = {
     Admin: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
     Director: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Docente: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Docente: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
     Bibliotecario: ['home', 'computer_lab', 'evaluations_pie', 'library', 'admin_docs', 'multiview'],
     Entrevistador: ['home', 'students', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging', 'multiview'],
     Administrativo: ['home', 'students', 'apoderados', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
-    Profesionales: ['home', 'students', 'apoderados', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Asistente: ['home', 'students', 'apoderados', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
-    'Asistente de la Educación': ['home', 'students', 'apoderados', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
+    Profesionales: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Asistente: ['home', 'students', 'apoderados', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
+    'Asistente de la Educación': ['home', 'students', 'apoderados', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
     Apoderado: ['home', 'admin_docs'],
     Estudiante: ['home', 'admin_docs'],
     Visita: ['home', 'computer_lab', 'evaluations_pie', 'overview', 'admin_docs']
@@ -142,8 +151,9 @@ export const AdminDashboard: React.FC = () => {
       return 'edit';
     }
 
-    if (currentRole === 'Apoderado' || currentRole === 'Estudiante') {
-      return tab === 'home' || tab === 'admin_docs' ? 'view' : 'none';
+    // Protección vital: Apoderado y Estudiante nunca pueden acceder a gestión de permisos, configuración ni auditoría
+    if ((currentRole === 'Apoderado' || currentRole === 'Estudiante') && ['permissions', 'config', 'audit'].includes(tab)) {
+      return 'none';
     }
 
     if (dynamicMatrix && dynamicMatrix.length > 0) {
@@ -153,8 +163,8 @@ export const AdminDashboard: React.FC = () => {
         let roleCol: string = currentRole;
         if (['Admin', 'Administrador'].includes(currentRole)) roleCol = 'Admin';
         else if (['Director', 'Directivo', 'UTP', 'Inspectoría General'].includes(currentRole)) roleCol = 'Director';
-        else if (['Docente', 'Docente de Aula', 'Docente Jefatura'].includes(currentRole)) roleCol = 'Docente';
-        else if (['Asistente', 'Asistente de la Educación', 'PIE', 'Administrativo'].includes(currentRole)) roleCol = 'Asistente';
+        else if (['Docente', 'Profesor', 'Docente de Aula', 'Docente Jefatura'].includes(currentRole)) roleCol = 'Docente';
+        else if (['Asistente', 'Asistente de la Educación', 'PIE', 'Administrativo', 'Bibliotecario'].includes(currentRole)) roleCol = 'Asistente';
         else if (['Profesionales', 'Convivencia Escolar', 'Entrevistador', 'Psicólogo'].includes(currentRole)) roleCol = 'Profesionales';
         else if ((currentRole as string) === 'Estudiante') roleCol = 'Estudiante';
         else if ((currentRole as string) === 'Apoderado') roleCol = 'Apoderado';
@@ -259,7 +269,7 @@ export const AdminDashboard: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!token || user?.role === 'Apoderado' || user?.role === 'Estudiante') return;
+    if (!token) return;
     fetch('/api/permissions', { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => {
@@ -570,7 +580,8 @@ export const AdminDashboard: React.FC = () => {
             },
             { id: 'students', label: 'Matrícula Completa', icon: Users },
             { id: 'apoderados', label: 'Nómina de Apoderados', icon: UserCheck },
-            { id: 'grades', label: 'Calificaciones', icon: ClipboardList, activeMatch: (t: string) => t === 'grades' || t === 'overview' },
+            { id: 'grades', label: 'Libro de Calificaciones', icon: ClipboardList },
+            { id: 'overview', label: 'Panorama & Jefatura', icon: TrendingUp },
             { id: 'computer_lab', label: 'Sala de Computación', icon: Monitor },
             { id: 'evaluations_pie', label: 'Evaluaciones & PIE', icon: Puzzle },
             { id: 'mineduc_reports', label: 'Informes PIE', icon: FileCheck2 },
@@ -585,21 +596,23 @@ export const AdminDashboard: React.FC = () => {
             { id: 'config', label: 'Configuración', icon: Settings },
             { id: 'audit', label: 'Auditoría "Silent-Watch"', icon: Lock },
           ]
-            .filter(item => item.id === 'grades' ? (canAccess('grades') || canAccess('overview')) : canAccess(item.id))
+            .filter(item => canAccess(item.id))
             .map(item => {
-              const isActive = item.activeMatch ? item.activeMatch(activeTab) : activeTab === item.id;
+              const isActive = activeTab === item.id;
+              const accessLevel = getAccessLevel(item.id);
+              const isViewOnly = accessLevel === 'view' && item.id !== 'home' && item.id !== 'audit';
               return (
                 <div
                   key={item.id}
                   className={`nav-item ${isActive ? 'active' : ''}`}
                   onClick={() => navigateToTab(item.id, item.label)}
-                  title={sidebarCollapsed ? item.label : undefined}
+                  title={sidebarCollapsed ? `${item.label}${isViewOnly ? ' (Solo Vista)' : ''}` : undefined}
                   style={{
-                    justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                    justifyContent: sidebarCollapsed ? 'center' : 'space-between',
                     cursor: 'pointer'
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', overflow: 'hidden', width: '100%' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', overflow: 'hidden', flex: 1 }}>
                     <item.icon size={19} style={{ flexShrink: 0 }} />
                     {!sidebarCollapsed && (
                       <span style={{ fontWeight: isActive ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -607,6 +620,24 @@ export const AdminDashboard: React.FC = () => {
                       </span>
                     )}
                   </div>
+                  {!sidebarCollapsed && isViewOnly && (
+                    <span
+                      title="Modo Solo Vista configurado en la Matriz de Permisos"
+                      style={{
+                        fontSize: '0.64rem',
+                        fontWeight: 800,
+                        background: isActive ? 'rgba(255,255,255,0.22)' : 'rgba(59, 130, 246, 0.22)',
+                        color: isActive ? '#ffffff' : '#93c5fd',
+                        padding: '1px 6px',
+                        borderRadius: '9999px',
+                        flexShrink: 0,
+                        marginLeft: '4px',
+                        letterSpacing: '0.2px'
+                      }}
+                    >
+                      Vista
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -1282,83 +1313,128 @@ export const AdminDashboard: React.FC = () => {
               token={token || ''}
               userName={user?.name}
               userRole={user?.role}
-              customSubtitle="Panel de Administración • Liceo Pro / LTP v2.0"
+              customSubtitle={
+                currentRole === 'Docente' ? 'Panel Docente • Liceo Pro / LTP v2.0' :
+                currentRole === 'Director' ? 'Panel Directivo • Liceo Pro / LTP v2.0' :
+                currentRole === 'Asistente' ? 'Portal Asistentes de la Educación • Liceo Pro / LTP v2.0' :
+                currentRole === 'Profesionales' ? 'Portal Profesionales PIE & Convivencia • Liceo Pro / LTP v2.0' :
+                'Panel de Administración • Liceo Pro / LTP v2.0'
+              }
             />
 
-            {/* TARJETAS ESTADÍSTICAS KPI CON NAVEGACIÓN DIRECTA */}
+            {/* TARJETAS ESTADÍSTICAS KPI CON NAVEGACIÓN DIRECTA SEGÚN PERMISOS DEL PERFIL */}
             <div className="card-grid">
-              <div
-                className="stat-card"
-                onClick={() => navigateToTab('students', 'Matrícula Completa')}
-                style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
-                title="Ver Nómina de Matrícula Completa"
-              >
-                <div className="stat-card-header">
-                  <span>Matrícula Total Registrada</span>
-                  <div className="stat-icon-wrapper">
-                    <Users size={22} />
+              {canAccess('students') && (
+                <div
+                  className="stat-card"
+                  onClick={() => navigateToTab('students', 'Matrícula Completa')}
+                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  title="Ver Nómina de Matrícula Completa"
+                >
+                  <div className="stat-card-header">
+                    <span>Matrícula Total Registrada</span>
+                    <div className="stat-icon-wrapper">
+                      <Users size={22} />
+                    </div>
+                  </div>
+                  <div className="stat-value">{students.length} Alumnos</div>
+                  <div className="stat-trend">
+                    <CheckCircle2 size={14} /> {students.filter(s => !s.is_retired).length} Vigentes (Ver Nómina →)
                   </div>
                 </div>
-                <div className="stat-value">{students.length} Alumnos</div>
-                <div className="stat-trend">
-                  <CheckCircle2 size={14} /> {students.filter(s => !s.is_retired).length} Vigentes (Ver Nómina →)
-                </div>
-              </div>
+              )}
 
-              <div
-                className="stat-card"
-                onClick={() => navigateToTab('interviews', 'Actas de Entrevistas')}
-                style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
-                title="Ver Actas de Entrevistas"
-              >
-                <div className="stat-card-header">
-                  <span>Actas de Entrevistas</span>
-                  <div className="stat-icon-wrapper" style={{ background: '#e0e7ff', color: '#4338ca' }}>
-                    <MessageSquare size={22} />
+              {canAccess('interviews') && (
+                <div
+                  className="stat-card"
+                  onClick={() => navigateToTab('interviews', 'Actas de Entrevistas')}
+                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  title="Ver Actas de Entrevistas"
+                >
+                  <div className="stat-card-header">
+                    <span>Actas de Entrevistas</span>
+                    <div className="stat-icon-wrapper" style={{ background: '#e0e7ff', color: '#4338ca' }}>
+                      <MessageSquare size={22} />
+                    </div>
+                  </div>
+                  <div className="stat-value">{interviews.length} Actas</div>
+                  <div className="stat-trend" style={{ color: '#4f46e5' }}>
+                    Aportes Firmados (Ver Actas →)
                   </div>
                 </div>
-                <div className="stat-value">{interviews.length} Actas</div>
-                <div className="stat-trend" style={{ color: '#4f46e5' }}>
-                  Aportes Firmados (Ver Actas →)
-                </div>
-              </div>
+              )}
 
-              <div
-                className="stat-card"
-                onClick={() => navigateToTab('observations', 'Hoja de Vida y Anotaciones')}
-                style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
-                title="Ver Hoja de Vida y Anotaciones"
-              >
-                <div className="stat-card-header">
-                  <span>Anotaciones Hoja de Vida</span>
-                  <div className="stat-icon-wrapper" style={{ background: '#ecfdf5', color: '#047857' }}>
-                    <Award size={22} />
+              {canAccess('observations') && (
+                <div
+                  className="stat-card"
+                  onClick={() => navigateToTab('observations', 'Hoja de Vida y Anotaciones')}
+                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  title="Ver Hoja de Vida y Anotaciones"
+                >
+                  <div className="stat-card-header">
+                    <span>Anotaciones Hoja de Vida</span>
+                    <div className="stat-icon-wrapper" style={{ background: '#ecfdf5', color: '#047857' }}>
+                      <Award size={22} />
+                    </div>
+                  </div>
+                  <div className="stat-value">{observations.length} Hojas RICE</div>
+                  <div className="stat-trend">
+                    Registro Disciplinario (Ver Hojas →)
                   </div>
                 </div>
-                <div className="stat-value">{observations.length} Hojas RICE</div>
-                <div className="stat-trend">
-                  Registro Disciplinario (Ver Hojas →)
-                </div>
-              </div>
+              )}
 
-              <div
-                className="stat-card"
-                onClick={() => navigateToTab('audit', 'Auditoría Silent-Watch')}
-                style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
-                title="Ver Auditoría Silent-Watch"
-              >
-                <div className="stat-card-header">
-                  <span>Auditoría "Silent-Watch"</span>
-                  <div className="stat-icon-wrapper" style={{ background: '#fef3c7', color: '#b45309' }}>
-                    <Shield size={22} />
+              {canAccess('audit') ? (
+                <div
+                  className="stat-card"
+                  onClick={() => navigateToTab('audit', 'Auditoría Silent-Watch')}
+                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  title="Ver Auditoría Silent-Watch"
+                >
+                  <div className="stat-card-header">
+                    <span>Auditoría "Silent-Watch"</span>
+                    <div className="stat-icon-wrapper" style={{ background: '#fef3c7', color: '#b45309' }}>
+                      <Shield size={22} />
+                    </div>
+                  </div>
+                  <div className="stat-value" style={{ color: '#10b981' }}>{auditLogs.length} Registros</div>
+                  <div className="stat-trend" style={{ color: '#64748b' }}>
+                    Trazabilidad e IP (Ver Registro →)
                   </div>
                 </div>
-                <div className="stat-value" style={{ color: '#10b981' }}>{auditLogs.length} Registros</div>
-                <div className="stat-trend" style={{ color: '#64748b' }}>
-                  Trazabilidad e IP (Ver Registro →)
+              ) : canAccess('evaluations_pie') ? (
+                <div
+                  className="stat-card"
+                  onClick={() => navigateToTab('evaluations_pie', 'Evaluaciones & PIE')}
+                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  title="Abrir Portal de Evaluaciones & Integración PIE"
+                >
+                  <div className="stat-card-header">
+                    <span>Evaluaciones & PIE</span>
+                    <div className="stat-icon-wrapper" style={{ background: '#f5f3ff', color: '#6d28d9' }}>
+                      <Puzzle size={22} />
+                    </div>
+                  </div>
+                  <div className="stat-value" style={{ color: '#4f46e5', fontSize: '1.35rem' }}>Calendario & Bóveda</div>
+                  <div className="stat-trend" style={{ color: '#6d28d9' }}>
+                    Instrumentos y Adecuaciones (Abrir →)
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
+
+            {/* SECCIÓN DE CURSOS Y ASIGNATURAS ASIGNADAS PARA EL PERFIL DOCENTE */}
+            {['Docente', 'Profesor', 'Docente de Aula', 'Docente Jefatura'].includes(currentRole) && canAccess('grades') && (
+              <div style={{ marginTop: '2rem' }}>
+                <TeacherCoursesGrid
+                  onSelectCourse={(courseName, subjectName, isHomeroom) => {
+                    setSelectedCourseSubject({ courseName, subjectName, isHomeroom });
+                    setGradesSubTab('sheet');
+                    navigateToTab('grades', 'Libro de Calificaciones');
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -1893,8 +1969,35 @@ export const AdminDashboard: React.FC = () => {
               background: '#f1f5f9',
               padding: '0.35rem',
               borderRadius: '12px',
-              width: 'fit-content'
+              width: 'fit-content',
+              flexWrap: 'wrap'
             }}>
+              {canAccess('grades') && ['Docente', 'Profesor', 'Docente de Aula', 'Docente Jefatura'].includes(currentRole) && (
+                <button
+                  onClick={() => {
+                    setSelectedCourseSubject(null);
+                    setGradesSubTab('courses');
+                    navigateToTab('grades', 'Mis Cursos Asignados');
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.55rem 1.25rem',
+                    borderRadius: '9px',
+                    border: 'none',
+                    fontWeight: 800,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
+                    background: gradesSubTab === 'courses' ? '#ffffff' : 'transparent',
+                    color: gradesSubTab === 'courses' ? '#4338ca' : '#64748b',
+                    boxShadow: gradesSubTab === 'courses' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <BookOpen size={17} /> Mis Cursos Asignados
+                </button>
+              )}
               {canAccess('grades') && (
                 <button
                   onClick={() => {
@@ -1947,8 +2050,27 @@ export const AdminDashboard: React.FC = () => {
               )}
             </div>
 
-            {gradesSubTab === 'sheet' && canAccess('grades') ? (
-              <GradesSheet token={token || ''} />
+            {gradesSubTab === 'courses' && canAccess('grades') ? (
+              <TeacherCoursesGrid
+                onSelectCourse={(courseName, subjectName, isHomeroom) => {
+                  setSelectedCourseSubject({ courseName, subjectName, isHomeroom });
+                  setGradesSubTab('sheet');
+                }}
+              />
+            ) : gradesSubTab === 'sheet' && canAccess('grades') ? (
+              <GradesSheet
+                token={token || ''}
+                initialCourseName={selectedCourseSubject?.courseName}
+                initialSubjectName={selectedCourseSubject?.subjectName}
+                onBackToGrid={
+                  ['Docente', 'Profesor', 'Docente de Aula', 'Docente Jefatura'].includes(currentRole)
+                    ? () => {
+                        setSelectedCourseSubject(null);
+                        setGradesSubTab('courses');
+                      }
+                    : undefined
+                }
+              />
             ) : (
               <GradesOverview token={token || ''} />
             )}

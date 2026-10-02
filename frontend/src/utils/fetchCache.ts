@@ -121,8 +121,14 @@ export function installFetchCache(): void {
     // Cualquier mutación (POST, PUT, PATCH, DELETE) invalida el caché inmediatamente
     if (method !== 'GET') {
       const currentAccess = (window as any).__ltpCurrentModuleAccess;
-      const isAuthEndpoint = relativeUrl.startsWith('/api/auth/') || relativeUrl.startsWith('/api/login');
-      if (currentAccess === 'view' && !isAuthEndpoint) {
+      const isAlwaysAllowedEndpoint =
+        relativeUrl.startsWith('/api/auth/') ||
+        relativeUrl.startsWith('/api/login') ||
+        relativeUrl.startsWith('/api/users/profile') ||
+        relativeUrl.startsWith('/api/notifications') ||
+        relativeUrl.startsWith('/api/course-messages') ||
+        relativeUrl.startsWith('/api/interviews/submit-statement');
+      if (currentAccess === 'view' && !isAlwaysAllowedEndpoint) {
         return new Response(
           JSON.stringify({
             error: 'Acción bloqueada: Tu perfil tiene acceso de SOLO VISTA en esta ventana y no permite guardar, crear ni eliminar registros.'
