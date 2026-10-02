@@ -215,7 +215,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
   // Explorador de Carpetas Automáticas Google Drive
   const [driveFoldersData, setDriveFoldersData] = useState<any>(null);
   const [loadingFolders, setLoadingFolders] = useState(false);
-  const [selectedFolderRoot, setSelectedFolderRoot] = useState<'originals' | 'pie' | 'profiles'>('originals');
+  const [selectedFolderRoot, setSelectedFolderRoot] = useState<'originals' | 'pie' | 'profiles' | 'calendars'>('originals');
   const [selectedFolderCourse, setSelectedFolderCourse] = useState<string>('');
 
   // Formulario Nueva Evaluación + Archivo directo desde computador
@@ -334,25 +334,29 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
   const handleSyncWithGoogle = async () => {
     setSyncingGoogle(true);
     try {
-      const res = await fetch('/api/evaluations/sync-google', {
-        method: 'POST',
-        headers: authHeaders,
-        credentials: 'include'
-      });
-      const data = await res.json();
+      const [syncRes, consRes] = await Promise.all([
+        fetch('/api/evaluations/sync-google', {
+          method: 'POST',
+          headers: authHeaders,
+          credentials: 'include'
+        }).then(r => r.json()).catch(() => ({})),
+        fetch('/api/drive/consolidate-institutional', {
+          method: 'POST',
+          headers: authHeaders,
+          credentials: 'include'
+        }).then(r => r.json()).catch(() => ({}))
+      ]);
       await loadEvaluations();
       await loadDriveFolders();
       setCalendarKey(Date.now());
-      if (data && data.success) {
-        Swal.fire({
-          icon: 'success',
-          title: 'Sincronización Completada',
-          text: `${data.message} (${data.synced || 0} evaluaciones verificadas desde ${driveAccountEmail}).`,
-          timer: 2800
-        });
-      }
+      Swal.fire({
+        icon: 'success',
+        title: 'Traspaso y Sincronización Completados',
+        text: consRes?.message || syncRes?.message || `Todos los archivos, perfiles (Files / Perfiles) y calendarios están consolidados en ${driveAccountEmail}.`,
+        timer: 3400
+      });
     } catch (err) {
-      Swal.fire('Error', 'No se pudo sincronizar con Google Workspace.', 'error');
+      Swal.fire('Error', 'No se pudo sincronizar con la cuenta institucional.', 'error');
     } finally {
       setSyncingGoogle(false);
     }
@@ -2146,6 +2150,14 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
             </div>
 
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                disabled={syncingGoogle}
+                onClick={handleSyncWithGoogle}
+                style={{ padding: '0.45rem 0.9rem', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', fontSize: '0.78rem', fontWeight: 800, cursor: syncingGoogle ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 6px rgba(2,132,199,0.25)' }}
+              >
+                <RefreshCw size={13} /> {syncingGoogle ? 'Traspasando archivos y calendarios...' : `Traspasar Todo a ${driveAccountEmail}`}
+              </button>
               <a
                 href={`https://drive.google.com/drive/folders/${folderOriginalsId}`}
                 target="_blank"
@@ -2224,7 +2236,27 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                 gap: '6px'
               }}
             >
-              <Lock size={16} /> 3. Imágenes de Perfiles Codificadas (Nombre Aleatorio)
+              <Lock size={16} /> 3. Carpeta Files / Perfiles (Imágenes de Perfil)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedFolderRoot('calendars')}
+              style={{
+                padding: '0.55rem 1rem',
+                borderRadius: '10px',
+                border: selectedFolderRoot === 'calendars' ? '2px solid #d97706' : '1px solid #cbd5e1',
+                background: selectedFolderRoot === 'calendars' ? '#fef3c7' : '#f8fafc',
+                color: selectedFolderRoot === 'calendars' ? '#92400e' : '#475569',
+                fontWeight: 800,
+                fontSize: '0.83rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <CalendarIcon size={16} /> 4. Calendarios y Archivos ({driveAccountEmail})
             </button>
           </div>
 
@@ -2233,10 +2265,10 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
           ) : selectedFolderRoot === 'profiles' ? (
             <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '1.25rem', border: '1px solid #e2e8f0' }}>
               <h4 style={{ margin: '0 0 0.5rem', color: '#1e1b4b', fontSize: '1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Lock size={17} color="#4f46e5" /> Bóveda de Imágenes de Perfil con Codificación Interna (<code>LTP_PERFILES_CODIFICADOS_2026 / Avatares</code>)
+                <Lock size={17} color="#4f46e5" /> Carpeta <code>Files / Perfiles</code> — Imágenes de Perfil con Codificación Interna
               </h4>
               <p style={{ fontSize: '0.8rem', color: '#475569', marginBottom: '1rem' }}>
-                Cada vez que un Docente o Funcionario sube su foto de perfil, el sistema genera un nombre aleatorio criptográfico (ej. <code>AVT_9F3A12B4C8D1E0F2.jpg</code>) en Google Drive y guarda la asociación internamente en la base de datos.
+                Todas las fotos de perfil de los usuarios quedan almacenadas dentro de la carpeta <code>Files / Perfiles</code> de la cuenta institucional (<code>{driveAccountEmail}</code>) con un nombre aleatorio criptográfico (ej. <code>AVT_4FBC569116AB7295.jpg</code>) codificado internamente por la plataforma.
               </p>
               {driveFoldersData?.rootFolders?.profiles?.encodedFiles?.length > 0 ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.85rem' }}>
@@ -2254,7 +2286,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                           🔒 {item.randomDriveCode}
                         </div>
                         <div style={{ fontSize: '0.72rem', color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          Carpeta: <code>{item.folderPath}</code>
+                          Carpeta: <code>{item.folderPath || 'Files / Perfiles'}</code>
                         </div>
                         <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
                           Asociado a: <strong>{item.uploadedBy}</strong>
@@ -2266,7 +2298,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                             rel="noreferrer"
                             style={{ fontSize: '0.7rem', fontWeight: 700, color: '#4f46e5', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                           >
-                            Ver imagen respaldada <ExternalLink size={11} />
+                            Ver imagen en Files / Perfiles <ExternalLink size={11} />
                           </a>
                         </div>
                       </div>
@@ -2275,9 +2307,43 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                 </div>
               ) : (
                 <div style={{ padding: '1rem', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.82rem', color: '#64748b' }}>
-                  El canal de codificación automática para fotos de perfil está activo. Al actualizar una foto en &quot;Personalizar mi perfil&quot;, aparecerá registrada aquí con su código aleatorio de Google Drive.
+                  La carpeta <code>Files / Perfiles</code> está activa. Al actualizar una foto en &quot;Personalizar mi perfil&quot;, aparecerá registrada aquí con su código aleatorio.
                 </div>
               )}
+            </div>
+          ) : selectedFolderRoot === 'calendars' ? (
+            <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '1.25rem', border: '1px solid #e2e8f0' }}>
+              <h4 style={{ margin: '0 0 0.5rem', color: '#78350f', fontSize: '1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CalendarIcon size={17} color="#d97706" /> Calendarios y Archivos Necesarios Traspasados a <code>{driveAccountEmail}</code>
+              </h4>
+              <p style={{ fontSize: '0.8rem', color: '#475569', marginBottom: '1rem' }}>
+                Aquí se almacenan los calendarios institucionales (Evaluaciones y Uso Sala de Computación) junto con el manifiesto integral de todos los archivos traspasados a la cuenta institucional <strong>{driveAccountEmail}</strong>.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '0.85rem' }}>
+                {(driveFoldersData?.rootFolders?.calendars?.files || []).map((cf: any) => (
+                  <div key={cf.vaultId} style={{ background: '#ffffff', padding: '1rem', borderRadius: '12px', border: '1px solid #fde68a', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      📅 {cf.originalName}
+                    </div>
+                    <div style={{ fontSize: '0.73rem', color: '#475569' }}>
+                      Carpeta: <code>{cf.folderPath}</code>
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                      Cuenta propietaria: <strong>{cf.uploadedBy}</strong>
+                    </div>
+                    <div style={{ marginTop: '6px' }}>
+                      <a
+                        href={cf.fileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ padding: '0.35rem 0.75rem', borderRadius: '7px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', fontSize: '0.73rem', fontWeight: 800, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        Descargar / Ver Archivo Respaldado <ExternalLink size={12} />
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             (() => {

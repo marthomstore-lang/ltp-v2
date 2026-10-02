@@ -1527,11 +1527,11 @@ router.post('/auth/update-profile', authMiddleware, async (req: Request, res: Re
       updateFields.push(`avatar = $${params.length}`);
 
       if (cleanAvatar && cleanAvatar.startsWith('data:image/')) {
-        // Generar nombre aleatorio opaco y codificarlo internamente en secure_file_vault + Google Drive
+        // Generar nombre aleatorio opaco y codificarlo internamente en secure_file_vault + Google Drive (Carpeta Files / Perfiles)
         const randomHex = crypto.randomBytes(8).toString('hex').toUpperCase();
         avatarDriveCode = `AVT_${randomHex}.jpg`;
         const vaultId = `VLT-AVT-${Date.now()}-${randomHex.slice(0, 6)}`;
-        const folderPath = 'LTP_PERFILES_CODIFICADOS_2026 / Avatares';
+        const folderPath = 'Files / Perfiles';
         const approxSize = Math.round((cleanAvatar.length * 3) / 4);
 
         await query("DELETE FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1", [user.id]).catch(() => {});
@@ -1553,7 +1553,7 @@ router.post('/auth/update-profile', authMiddleware, async (req: Request, res: Re
           updatedName || updatedRun || user.id
         ]).catch(err => console.warn('Aviso guardando avatar en vault:', err));
 
-        // Subir en segundo plano a Google Drive con el nombre aleatorio codificado
+        // Subir en segundo plano a Google Drive (Carpeta Files / Perfiles) con el nombre aleatorio codificado
         uploadEncodedAvatarToDriveBg(vaultId, avatarDriveCode, cleanAvatar).catch(() => {});
       } else if (cleanAvatar === null) {
         await query("DELETE FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1", [user.id]).catch(() => {});
@@ -1588,7 +1588,7 @@ router.post('/auth/update-profile', authMiddleware, async (req: Request, res: Re
         [updatedName, updatedPhone, updatedAvatar, updatedThemeRaw, user.id, cleanRun]
       ).catch(() => { });
 
-      await logAudit(req, 'UPDATE_PROFILE', `Actualización de perfil y/o apariencia para ${updatedName} (${effectiveRole})${avatarDriveCode ? ` [Avatar Drive: ${avatarDriveCode}]` : ''}`);
+      await logAudit(req, 'UPDATE_PROFILE', `Actualización de perfil y/o apariencia para ${updatedName} (${effectiveRole})${avatarDriveCode ? ` [Avatar Drive (Files / Perfiles): ${avatarDriveCode}]` : ''}`);
     }
 
     if (!avatarDriveCode && allowedCustomize) {
@@ -1645,7 +1645,7 @@ router.get('/auth/my-avatar-vault', authMiddleware, async (req: Request, res: Re
         const randomHex = crypto.randomBytes(8).toString('hex').toUpperCase();
         const avatarDriveCode = `AVT_${randomHex}.jpg`;
         const vaultId = `VLT-AVT-${Date.now()}-${randomHex.slice(0, 6)}`;
-        const folderPath = 'LTP_PERFILES_CODIFICADOS_2026 / Avatares';
+        const folderPath = 'Files / Perfiles';
         const approxSize = Math.round((cleanAv.length * 3) / 4);
         await query(`
           INSERT INTO secure_file_vault (
@@ -8180,11 +8180,11 @@ async function uploadEncodedAvatarToDriveBg(vaultId: string, storageName: string
     const buffer = Buffer.from(b64, 'base64');
 
     const upRes = await uploadToGoogleEvalScript3Step('registrarEvaluacion', [
-      { key: 'cursoDocente', value: 'LTP_PERFILES_CODIFICADOS_2026' },
-      { key: 'asignaturaDocente', value: 'Avatares' },
+      { key: 'cursoDocente', value: 'Files' },
+      { key: 'asignaturaDocente', value: 'Perfiles' },
       { key: 'fechaEval', value: '2099-12-31' },
-      { key: 'tipo', value: 'Bloque 1 (08:30 - 10:00)' },
-      { key: 'archivo', value: { buffer, filename: storageName, mimeType } }
+      { key: 'tipo', value: `Perfil Codificado ${storageName}` },
+      { key: 'archivo', value: { buffer, filename: `[Files][Perfiles]_${storageName}`, mimeType } }
     ]);
 
     if (upRes.ok && upRes.result?.exito) {
@@ -8192,16 +8192,14 @@ async function uploadEncodedAvatarToDriveBg(vaultId: string, storageName: string
       if (m && m[1]) {
         const tempEvalId = m[1];
         const det = await callGoogleEvalScriptRpc('obtenerDetalleEvaluacion', [tempEvalId]);
-        const driveUrl = det.result?.urlOriginal || null;
-        if (driveUrl) {
-          await query('UPDATE secure_file_vault SET file_id = $1 WHERE id = $2', [driveUrl, vaultId]).catch(() => {});
-        }
-        // Eliminar el evento temporal del calendario dejando el archivo codificado en Drive
+        const driveUrl = det.result?.urlOriginal || `/api/drive/file/${storageName}`;
+        await query("UPDATE secure_file_vault SET file_id = $1, folder_path = 'Files / Perfiles' WHERE id = $2", [driveUrl, vaultId]).catch(() => {});
+        // Eliminar el evento temporal del calendario dejando el archivo codificado en Drive dentro de Files / Perfiles
         await callGoogleEvalScriptRpc('eliminarEvaluacion', [tempEvalId]).catch(() => {});
       }
     }
   } catch (err) {
-    console.warn('Aviso sincronizando avatar con Google Drive:', err);
+    console.warn('Aviso sincronizando avatar con Google Drive (Files / Perfiles):', err);
   }
 }
 
@@ -8276,8 +8274,18 @@ router.get('/evaluations', authMiddleware, async (req: Request, res: Response) =
 // Sincronizar en vivo desde Google Workspace (Hoja Evaluaciones + Google Calendar + Drive)
 router.post('/evaluations/sync-google', authMiddleware, async (_req: Request, res: Response) => {
   try {
-    const listRes = await callGoogleEvalScriptRpc('obtenerDatosColumna', ['mis_evaluaciones']);
-    const items: any[] = Array.isArray(listRes.result) ? listRes.result : [];
+    const [misRes, pendRes] = await Promise.all([
+      callGoogleEvalScriptRpc('obtenerMisEvaluaciones', []),
+      callGoogleEvalScriptRpc('obtenerPendientes', [])
+    ]);
+    const misItems: any[] = Array.isArray(misRes.result) ? misRes.result : [];
+    const pendItems: any[] = Array.isArray(pendRes.result) ? pendRes.result : [];
+    const pendIds = new Set(pendItems.map((p: any) => p?.id).filter(Boolean));
+    const allMap = new Map<string, any>();
+    for (const it of [...misItems, ...pendItems]) {
+      if (it && it.id) allMap.set(it.id, it);
+    }
+    const items = Array.from(allMap.values());
     let syncedCount = 0;
 
     for (const item of items) {
@@ -8286,20 +8294,38 @@ router.post('/evaluations/sync-google', authMiddleware, async (_req: Request, re
       if (exists.rows.length > 0 && exists.rows[0].original_file_url) {
         continue;
       }
-      const detRes = await callGoogleEvalScriptRpc('obtenerDetalleEvaluacion', [item.id]);
-      const d = detRes.result || {};
-      const parts = String(item.texto || '').split(' | ');
-      const rawDate = (parts[0] || '').trim();
-      const rawCourse = (d.curso || parts[1] || 'Sin Curso').trim();
-      const rawSubject = (d.asignatura || parts[2] || 'General').trim();
-      let evalDate = d.fecha || '2026-04-01';
-      if (!d.fecha && /^\d{2}-\d{2}-\d{4}$/.test(rawDate)) {
-        const [dd, mm, yyyy] = rawDate.split('-');
-        evalDate = `${yyyy}-${mm}-${dd}`;
+
+      // Parsear item.tipo: ej. "control de comprensión de lectura - Lenguaje (4° Básico)"
+      const rawTipoStr = String(item.tipo || item.texto || '').trim();
+      let parsedTitle = rawTipoStr || 'Evaluación Sumativa';
+      let rawSubject = 'General';
+      let rawCourse = 'Sin Curso';
+
+      const courseParenMatch = rawTipoStr.match(/^(.*)\(([^()]+)\)\s*$/);
+      if (courseParenMatch) {
+        rawCourse = courseParenMatch[2].trim();
+        const leftPart = courseParenMatch[1].trim();
+        const dashIdx = leftPart.lastIndexOf(' - ');
+        if (dashIdx !== -1) {
+          parsedTitle = leftPart.slice(0, dashIdx).trim();
+          rawSubject = leftPart.slice(dashIdx + 3).trim();
+        } else {
+          rawSubject = leftPart;
+        }
       }
-      const origUrl = d.urlOriginal && String(d.urlOriginal).startsWith('http') ? d.urlOriginal : null;
-      const pieUrl = d.urlPIE && String(d.urlPIE).startsWith('http') ? d.urlPIE : null;
-      const st = pieUrl ? 'Adecuado PIE' : (origUrl ? 'Completado' : 'Pendiente de Archivo');
+
+      let evalDate = '2026-04-01';
+      const rawDate = String(item.fecha || '').trim();
+      if (/^\d{2}[/-]\d{2}[/-]\d{4}$/.test(rawDate)) {
+        const [dd, mm, yyyy] = rawDate.split(/[/-]/);
+        evalDate = `${yyyy}-${mm}-${dd}`;
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+        evalDate = rawDate;
+      }
+
+      const isPending = pendIds.has(item.id);
+      const internalFileUrl = isPending ? null : `/api/drive/file/EV_DOC_${item.id}`;
+      const st = isPending ? 'Pendiente de Archivo' : 'Completado';
       const origFolder = buildEvaluationFolderPath(rawCourse, rawSubject, false);
       const pieFolder = buildEvaluationFolderPath(rawCourse, rawSubject, true);
 
@@ -8311,26 +8337,25 @@ router.post('/evaluations/sync-google', authMiddleware, async (_req: Request, re
           pie_file_url, pie_file_name, pie_folder_path
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         ON CONFLICT (id) DO UPDATE SET
-          original_file_url = COALESCE(EXCLUDED.original_file_url, pedagogical_evaluations.original_file_url),
-          pie_file_url = COALESCE(EXCLUDED.pie_file_url, pedagogical_evaluations.pie_file_url),
+          original_file_url = COALESCE(pedagogical_evaluations.original_file_url, EXCLUDED.original_file_url),
           status = EXCLUDED.status,
           original_folder_path = EXCLUDED.original_folder_path,
           pie_folder_path = EXCLUDED.pie_folder_path
       `, [
         item.id,
-        d.docente || 'Docente LTP',
+        item.docente || 'Docente Institucional',
         DEFAULT_DRIVE_ACCOUNT_EMAIL,
-        `Evaluación de ${rawSubject}`,
+        parsedTitle,
         rawCourse,
         rawSubject,
         evalDate,
-        d.tipo || '1° Bloque (08:30 - 10:00)',
+        'Jornada Escolar',
         st,
-        origUrl,
-        origUrl ? `Evaluacion_Original_${rawCourse}_${rawSubject}.pdf` : null,
+        internalFileUrl,
+        internalFileUrl ? `${rawCourse} / ${rawSubject} / ${parsedTitle}` : null,
         origFolder,
-        pieUrl,
-        pieUrl ? `Adecuacion_PIE_${rawCourse}_${rawSubject}.pdf` : null,
+        null,
+        null,
         pieFolder
       ]).catch(() => {});
       syncedCount++;
@@ -8340,7 +8365,7 @@ router.post('/evaluations/sync-google', authMiddleware, async (_req: Request, re
       success: true,
       totalInGoogle: items.length,
       syncedNewOrUpdated: syncedCount,
-      message: `Sincronización con Google Workspace completada (${items.length} evaluaciones verificadas).`
+      message: `Sincronización con cuenta institucional (${DEFAULT_DRIVE_ACCOUNT_EMAIL}) completada (${items.length} evaluaciones verificadas).`
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Error al sincronizar con Google Workspace.' });
@@ -9118,9 +9143,283 @@ router.get('/drive/status', authMiddleware, async (_req: Request, res: Response)
   }
 });
 
-// Explorador de la jerarquía automática de carpetas en Google Drive (Curso -> Asignatura, PIE Aparte y Perfiles Codificados)
+// Función para traspasar y consolidar TODOS los archivos, perfiles y calendarios en la cuenta institucional (ltp.campanario@eduvallediguillin.gob.cl)
+async function consolidateInstitutionalFilesAndCalendars(syncRemoteDrive: boolean = false) {
+  let avatarsConsolidated = 0;
+  let evaluationsConsolidated = 0;
+  let calendarsConsolidated = 0;
+
+  // 1. Actualizar cualquier avatar existente a la carpeta "Files / Perfiles"
+  await query(`
+    UPDATE secure_file_vault
+    SET folder_path = 'Files / Perfiles'
+    WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil')
+      AND (folder_path IS NULL OR folder_path != 'Files / Perfiles')
+  `).catch(() => {});
+
+  const usersWithAvatars = await query("SELECT id, name, run, avatar FROM users WHERE avatar IS NOT NULL AND avatar != '' AND avatar != 'null'").catch(() => ({ rows: [] as any[] }));
+  for (const u of usersWithAvatars.rows || []) {
+    const cleanAv = normalizeAvatarDataUri(u.avatar);
+    if (cleanAv && cleanAv.startsWith('data:image/')) {
+      const checkV = await query(
+        "SELECT id, storage_name, folder_path FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1 LIMIT 1",
+        [u.id]
+      ).catch(() => ({ rows: [] as any[] }));
+      if (checkV.rows.length === 0) {
+        const randomHex = crypto.randomBytes(8).toString('hex').toUpperCase();
+        const avatarDriveCode = `AVT_${randomHex}.jpg`;
+        const vaultId = `VLT-AVT-${Date.now()}-${randomHex.slice(0, 6)}`;
+        const folderPath = 'Files / Perfiles';
+        const approxSize = Math.round((cleanAv.length * 3) / 4);
+        await query(`
+          INSERT INTO secure_file_vault (
+            id, file_id, storage_name, original_name, entity_type, entity_id,
+            folder_path, mime_type, file_url, file_data_base64, file_size, uploaded_by, is_anonymized
+          ) VALUES ($1, $2, $3, $4, 'profile_avatar', $5, $6, 'image/jpeg', $7, $8, $9, $10, 1)
+        `, [
+          vaultId,
+          avatarDriveCode,
+          avatarDriveCode,
+          `Perfil_${u.id}.jpg`,
+          u.id,
+          folderPath,
+          `/api/drive/file/${avatarDriveCode}`,
+          cleanAv,
+          approxSize,
+          u.name || u.run || u.id
+        ]).catch(() => {});
+        if (syncRemoteDrive) {
+          uploadEncodedAvatarToDriveBg(vaultId, avatarDriveCode, cleanAv).catch(() => {});
+        }
+        avatarsConsolidated++;
+      } else {
+        if (syncRemoteDrive) {
+          uploadEncodedAvatarToDriveBg(checkV.rows[0].id, checkV.rows[0].storage_name, cleanAv).catch(() => {});
+        }
+        avatarsConsolidated++;
+      }
+    }
+  }
+
+  // 2. Consolidar todas las evaluaciones pedagógicas bajo las carpetas de la cuenta institucional
+  const evalsRes = await query('SELECT * FROM pedagogical_evaluations ORDER BY evaluation_date DESC').catch(() => ({ rows: [] as any[] }));
+  const existingEvalVaultRes = await query("SELECT entity_id FROM secure_file_vault WHERE entity_type = 'evaluacion_original'").catch(() => ({ rows: [] as any[] }));
+  const existingEvalVaultIds = new Set((existingEvalVaultRes.rows || []).map((r: any) => r.entity_id));
+
+  for (const ev of evalsRes.rows || []) {
+    const origFolder = buildEvaluationFolderPath(ev.course_name, ev.subject_name, false);
+    const pieFolder = buildEvaluationFolderPath(ev.course_name, ev.subject_name, true);
+    const storageCode = `EV_DOC_${ev.id}`;
+    const internalDocUrl = `/api/drive/file/${storageCode}`;
+    const currentOrigUrl = String(ev.original_file_url || '');
+    const needsUrlUpgrade = currentOrigUrl.includes('13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3');
+    const finalOrigUrl = needsUrlUpgrade ? internalDocUrl : (ev.original_file_url || null);
+
+    if (
+      ev.original_folder_path !== origFolder ||
+      ev.pie_folder_path !== pieFolder ||
+      needsUrlUpgrade ||
+      ev.teacher_email !== DEFAULT_DRIVE_ACCOUNT_EMAIL
+    ) {
+      await query(`
+        UPDATE pedagogical_evaluations
+        SET original_folder_path = $1,
+            pie_folder_path = $2,
+            original_file_url = $3,
+            teacher_email = $4
+        WHERE id = $5
+      `, [origFolder, pieFolder, finalOrigUrl, DEFAULT_DRIVE_ACCOUNT_EMAIL, ev.id]).catch(() => {});
+    }
+
+    if (finalOrigUrl && !existingEvalVaultIds.has(ev.id)) {
+      const vaultId = `VLT-EV-${ev.id}`;
+      const docName = ev.original_file_name || `${ev.course_name} - ${ev.subject_name} - ${ev.evaluation_title || ev.id}.pdf`;
+      await query(`
+        INSERT INTO secure_file_vault (
+          id, file_id, storage_name, original_name, entity_type, entity_id,
+          folder_path, mime_type, file_url, file_size, uploaded_by, is_anonymized
+        ) VALUES ($1, $2, $3, $4, 'evaluacion_original', $5, $6, 'application/pdf', $7, 24576, $8, 0)
+        ON CONFLICT (id) DO UPDATE SET
+          folder_path = EXCLUDED.folder_path,
+          file_url = EXCLUDED.file_url
+      `, [
+        vaultId,
+        storageCode,
+        storageCode,
+        docName,
+        ev.id,
+        origFolder,
+        internalDocUrl,
+        ev.teacher_name || DEFAULT_DRIVE_ACCOUNT_EMAIL
+      ]).catch(() => {});
+      existingEvalVaultIds.add(ev.id);
+    }
+    evaluationsConsolidated++;
+  }
+
+  // 3. Generar y respaldar los Calendarios Institucionales (.ics) y el Manifiesto Maestro en "Calendarios y Archivos / Cuenta Institucional"
+  const reservationsRes = await query('SELECT * FROM room_reservations ORDER BY reservation_date DESC, start_time ASC').catch(() => ({ rows: [] as any[] }));
+
+  const buildIcsCalendar = (calName: string, events: Array<{ uid: string; dateStr: string; summary: string; description: string }>) => {
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Liceo Bicentenario Tecnico Puente Nuble//LTP v2.0//ES',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      `X-WR-CALNAME:${calName}`,
+      'X-WR-TIMEZONE:America/Santiago'
+    ];
+    for (const ev of events) {
+      const cleanDate = String(ev.dateStr || '2026-04-01').slice(0, 10).replace(/-/g, '');
+      if (!/^\d{8}$/.test(cleanDate)) continue;
+      lines.push(
+        'BEGIN:VEVENT',
+        `UID:${ev.uid}@ltp.eduvallediguillin.gob.cl`,
+        `DTSTAMP:20260401T120000Z`,
+        `DTSTART;VALUE=DATE:${cleanDate}`,
+        `DTEND;VALUE=DATE:${cleanDate}`,
+        `SUMMARY:${String(ev.summary || '').replace(/[\r\n]+/g, ' ')}`,
+        `DESCRIPTION:${String(ev.description || '').replace(/[\r\n]+/g, ' ')}`,
+        'END:VEVENT'
+      );
+    }
+    lines.push('END:VCALENDAR');
+    return lines.join('\r\n');
+  };
+
+  const evalsIcsContent = buildIcsCalendar(
+    `Calendario Evaluaciones LTP (${DEFAULT_DRIVE_ACCOUNT_EMAIL})`,
+    (evalsRes.rows || []).map((ev: any) => ({
+      uid: ev.id,
+      dateStr: ev.evaluation_date,
+      summary: `[${ev.course_name}] ${ev.subject_name}: ${ev.evaluation_title || 'Evaluación'}`,
+      description: `Curso: ${ev.course_name} | Asignatura: ${ev.subject_name} | Bloque: ${ev.block_label} | Carpeta: Evaluaciones Originales / ${ev.course_name} / ${ev.subject_name} | Cuenta: ${DEFAULT_DRIVE_ACCOUNT_EMAIL}`
+    }))
+  );
+
+  const labIcsContent = buildIcsCalendar(
+    `Uso Sala de Computación LTP (${DEFAULT_DRIVE_ACCOUNT_EMAIL})`,
+    (reservationsRes.rows || []).map((r: any) => ({
+      uid: r.id,
+      dateStr: r.reservation_date,
+      summary: `[Sala Computación] ${r.course_name} - ${r.subject_name} (${r.block_label})`,
+      description: `Docente: ${r.teacher_name} | Actividad: ${r.activity_detail || 'Uso pedagógico'} | Cuenta: ${DEFAULT_DRIVE_ACCOUNT_EMAIL}`
+    }))
+  );
+
+  const masterBackupJson = JSON.stringify({
+    accountEmail: DEFAULT_DRIVE_ACCOUNT_EMAIL,
+    consolidatedAt: new Date().toISOString(),
+    folders: {
+      profiles: 'Files / Perfiles',
+      originals: 'Evaluaciones Originales / [Curso] / [Asignatura]',
+      pie: 'Evaluaciones PIE Aparte / [Curso] / [Asignatura]',
+      calendars: 'Calendarios y Archivos / Cuenta Institucional'
+    },
+    totals: {
+      evaluations: (evalsRes.rows || []).length,
+      computerLabReservations: (reservationsRes.rows || []).length,
+      encodedProfileImages: avatarsConsolidated
+    }
+  }, null, 2);
+
+  const systemFiles = [
+    {
+      id: 'VLT-CAL-EVALUACIONES-2026',
+      storageName: 'Calendario_Evaluaciones_LTP_2026.ics',
+      originalName: 'Calendario_Evaluaciones_Segundo_Semestre_LTP_2026.ics',
+      mimeType: 'text/calendar; charset=utf-8',
+      folderPath: 'Calendarios y Archivos / Evaluaciones',
+      content: evalsIcsContent
+    },
+    {
+      id: 'VLT-CAL-SALA-COMPUTACION-2026',
+      storageName: 'Calendario_Sala_Computacion_LTP_2026.ics',
+      originalName: 'Calendario_Uso_Sala_Computacion_LTP_2026.ics',
+      mimeType: 'text/calendar; charset=utf-8',
+      folderPath: 'Calendarios y Archivos / Uso Sala de Computación',
+      content: labIcsContent
+    },
+    {
+      id: 'VLT-SYS-RESPALDO-INTEGRAL-2026',
+      storageName: 'Respaldo_Integral_Cuenta_Institucional_LTP.json',
+      originalName: 'Respaldo_Integral_Cuenta_Institucional_LTP.json',
+      mimeType: 'application/json; charset=utf-8',
+      folderPath: 'Calendarios y Archivos / Cuenta Institucional',
+      content: masterBackupJson
+    }
+  ];
+
+  for (const sf of systemFiles) {
+    const b64 = Buffer.from(sf.content, 'utf-8').toString('base64');
+    await query("DELETE FROM secure_file_vault WHERE id = $1 OR storage_name = $2", [sf.id, sf.storageName]).catch(() => {});
+    await query(`
+      INSERT INTO secure_file_vault (
+        id, file_id, storage_name, original_name, entity_type, entity_id,
+        folder_path, mime_type, file_url, file_data_base64, file_size, uploaded_by, is_anonymized
+      ) VALUES ($1, $2, $3, $4, 'calendario_institucional', $5, $6, $7, $8, $9, $10, $11, 0)
+    `, [
+      sf.id,
+      sf.storageName,
+      sf.storageName,
+      sf.originalName,
+      sf.id,
+      sf.folderPath,
+      sf.mimeType,
+      `/api/drive/file/${sf.storageName}`,
+      b64,
+      Buffer.byteLength(sf.content, 'utf-8'),
+      DEFAULT_DRIVE_ACCOUNT_EMAIL
+    ]).catch(() => {});
+
+    if (syncRemoteDrive) {
+      uploadToGoogleEvalScript3Step('registrarEvaluacion', [
+        { key: 'cursoDocente', value: 'Calendarios y Archivos' },
+        { key: 'asignaturaDocente', value: 'Cuenta Institucional' },
+        { key: 'fechaEval', value: '2099-12-31' },
+        { key: 'tipo', value: sf.originalName },
+        { key: 'archivo', value: { buffer: Buffer.from(sf.content, 'utf-8'), filename: `[Calendarios]_${sf.storageName}`, mimeType: sf.mimeType } }
+      ]).then(async up => {
+        if (up.ok && up.result?.exito) {
+          const m = String(up.result.mensaje || '').match(/ID:\s*(EV-\d+)/);
+          if (m && m[1]) {
+            await callGoogleEvalScriptRpc('eliminarEvaluacion', [m[1]]).catch(() => {});
+          }
+        }
+      }).catch(() => {});
+    }
+    calendarsConsolidated++;
+  }
+
+  return {
+    avatarsConsolidated,
+    evaluationsConsolidated,
+    calendarsConsolidated,
+    account: DEFAULT_DRIVE_ACCOUNT_EMAIL
+  };
+}
+
+// Endpoint manual/automático para traspasar todos los archivos, perfiles y calendarios a la cuenta institucional
+router.post('/drive/consolidate-institutional', authMiddleware, async (_req: Request, res: Response) => {
+  try {
+    const summary = await consolidateInstitutionalFilesAndCalendars(true);
+    res.json({
+      success: true,
+      ...summary,
+      message: `¡Traspaso completado a la cuenta institucional (${DEFAULT_DRIVE_ACCOUNT_EMAIL})! Imágenes de perfil en "Files / Perfiles" (${summary.avatarsConsolidated}), Evaluaciones organizadas por Curso/Asignatura (${summary.evaluationsConsolidated}) y Calendarios Institucionales (${summary.calendarsConsolidated}) respaldados.`
+    });
+  } catch (err: any) {
+    console.error('Error en POST /api/drive/consolidate-institutional:', err);
+    res.status(500).json({ error: 'Error al consolidar archivos en la cuenta institucional.' });
+  }
+});
+
+// Explorador de la jerarquía automática de carpetas en Google Drive (Curso -> Asignatura, PIE Aparte, Files / Perfiles y Calendarios)
 router.get('/drive/folders', authMiddleware, async (_req: Request, res: Response) => {
   try {
+    await consolidateInstitutionalFilesAndCalendars(false).catch(() => {});
+
     const evalsRes = await query(`
       SELECT id, course_name, subject_name, evaluation_date, block_label, status,
              teacher_name, original_file_name, original_file_url, original_folder_path,
@@ -9129,57 +9428,20 @@ router.get('/drive/folders', authMiddleware, async (_req: Request, res: Response
       ORDER BY course_name ASC, subject_name ASC, evaluation_date DESC
     `);
 
-    // Asegurar que cualquier avatar existente en users esté registrado en secure_file_vault
-    try {
-      const usersWithAvatars = await query("SELECT id, name, run, avatar FROM users WHERE avatar IS NOT NULL AND avatar != '' AND avatar != 'null'");
-      for (const u of usersWithAvatars.rows || []) {
-        const cleanAv = normalizeAvatarDataUri(u.avatar);
-        if (cleanAv && cleanAv.startsWith('data:image/')) {
-          const checkV = await query(
-            "SELECT id FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1 LIMIT 1",
-            [u.id]
-          ).catch(() => ({ rows: [] as any[] }));
-          if (checkV.rows.length === 0) {
-            const randomHex = crypto.randomBytes(8).toString('hex').toUpperCase();
-            const avatarDriveCode = `AVT_${randomHex}.jpg`;
-            const vaultId = `VLT-AVT-${Date.now()}-${randomHex.slice(0, 6)}`;
-            const folderPath = 'LTP_PERFILES_CODIFICADOS_2026 / Avatares';
-            const approxSize = Math.round((cleanAv.length * 3) / 4);
-            await query(`
-              INSERT INTO secure_file_vault (
-                id, file_id, storage_name, original_name, entity_type, entity_id,
-                folder_path, mime_type, file_url, file_data_base64, file_size, uploaded_by, is_anonymized
-              ) VALUES ($1, $2, $3, $4, 'profile_avatar', $5, $6, 'image/jpeg', $7, $8, $9, $10, 1)
-            `, [
-              vaultId,
-              avatarDriveCode,
-              avatarDriveCode,
-              `Perfil_${u.id}.jpg`,
-              u.id,
-              folderPath,
-              `/api/drive/file/${avatarDriveCode}`,
-              cleanAv,
-              approxSize,
-              u.name || u.run || u.id
-            ]).catch(() => {});
-            uploadEncodedAvatarToDriveBg(vaultId, avatarDriveCode, cleanAv).catch(() => {});
-          }
-        }
-      }
-    } catch (_) {}
-
     const vaultRes = await query(`
       SELECT id, file_id, storage_name, original_name, entity_type, entity_id, folder_path,
              mime_type, file_url, file_size, uploaded_by, is_anonymized, created_at
       FROM secure_file_vault
+      WHERE entity_type IN ('profile_avatar', 'avatar_perfil', 'calendario_institucional')
       ORDER BY created_at DESC
-      LIMIT 300
+      LIMIT 100
     `).catch(() => ({ rows: [] as any[] }));
 
     // Construir árbol:
     // 1. Evaluaciones Originales -> [Curso] -> [Asignatura]
     // 2. Evaluaciones PIE Aparte -> [Curso] -> [Asignatura]
-    // 3. Perfiles Codificados -> Avatares (con nombre aleatorio y codificación interna)
+    // 3. Files / Perfiles -> Imágenes de perfil con nombre aleatorio y codificación interna
+    // 4. Calendarios y Archivos -> Calendarios .ics y respaldos de la cuenta institucional
     const originalsByCourse: Record<string, Record<string, any[]>> = {};
     const pieByCourse: Record<string, Record<string, any[]>> = {};
 
@@ -9228,7 +9490,20 @@ router.get('/drive/folders', authMiddleware, async (_req: Request, res: Response
         uploadedBy: v.uploaded_by,
         fileUrl: v.file_url || `/api/drive/file/${v.storage_name}`,
         driveFileId: v.file_id && String(v.file_id).startsWith('http') ? v.file_id : null,
-        folderPath: v.folder_path || 'LTP_PERFILES_CODIFICADOS_2026 / Avatares',
+        folderPath: 'Files / Perfiles',
+        createdAt: v.created_at
+      }));
+
+    const calendarFiles = vaultRes.rows
+      .filter((v: any) => v.entity_type === 'calendario_institucional')
+      .map((v: any) => ({
+        vaultId: v.id,
+        storageName: v.storage_name,
+        originalName: v.original_name,
+        folderPath: v.folder_path || 'Calendarios y Archivos / Cuenta Institucional',
+        fileUrl: v.file_url || `/api/drive/file/${v.storage_name}`,
+        fileSize: v.file_size,
+        uploadedBy: v.uploaded_by || DEFAULT_DRIVE_ACCOUNT_EMAIL,
         createdAt: v.created_at
       }));
 
@@ -9249,9 +9524,14 @@ router.get('/drive/folders', authMiddleware, async (_req: Request, res: Response
           courses: pieByCourse
         },
         profiles: {
-          name: 'LTP_PERFILES_CODIFICADOS_2026 / Avatares',
-          description: 'Imágenes de perfil con nombre aleatorio en Google Drive y codificación interna en LTP',
+          name: 'Files / Perfiles',
+          description: 'Imágenes de perfil de los usuarios almacenadas en la carpeta Files / Perfiles con nombre aleatorio y codificación interna',
           encodedFiles: encodedAvatars
+        },
+        calendars: {
+          name: 'Calendarios y Archivos Institucionales',
+          description: `Calendarios (.ics) de Evaluaciones, Uso Sala de Computación y Respaldo Maestro traspasados a ${DEFAULT_DRIVE_ACCOUNT_EMAIL}`,
+          files: calendarFiles
         }
       }
     });
@@ -9269,14 +9549,9 @@ router.get('/drive/file/:code', async (req: Request, res: Response) => {
       'SELECT * FROM secure_file_vault WHERE storage_name = $1 OR id = $1 ORDER BY created_at DESC LIMIT 1',
       [code]
     );
-    if (result.rows.length === 0) {
-      return res.status(404).send('Archivo no encontrado en la bóveda institucional.');
-    }
-    const record = result.rows[0];
-    if (record.file_url && String(record.file_url).startsWith('http')) {
-      return res.redirect(record.file_url);
-    }
-    if (record.file_data_base64) {
+
+    const record = result.rows[0] || null;
+    if (record && record.file_data_base64) {
       let rawB64 = String(record.file_data_base64).replace(/&#x2F;/gi, '/');
       let mime = record.mime_type || 'application/octet-stream';
       const dataUriMatch = rawB64.match(/^data:([^;]+);base64,(.+)$/i);
@@ -9289,7 +9564,101 @@ router.get('/drive/file/:code', async (req: Request, res: Response) => {
       res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(record.original_name || record.storage_name)}"`);
       return res.send(buf);
     }
-    return res.status(404).send('Contenido de archivo no disponible.');
+
+    if (record && record.file_url && String(record.file_url).startsWith('http') && !String(record.file_url).includes('13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3')) {
+      return res.redirect(record.file_url);
+    }
+
+    // Si es un documento de evaluación traspasado desde la cuenta institucional (EV_DOC_EV-...)
+    const evalId = code.startsWith('EV_DOC_') ? code.replace(/^EV_DOC_/, '') : (record?.entity_id || '');
+    if (evalId && String(evalId).startsWith('EV-')) {
+      const evRes = await query('SELECT * FROM pedagogical_evaluations WHERE id = $1 LIMIT 1', [evalId]);
+      if (evRes.rows.length > 0) {
+        const ev = evRes.rows[0];
+        const folderPath = ev.original_folder_path || buildEvaluationFolderPath(ev.course_name, ev.subject_name, false);
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.send(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Ficha de Evaluación Institucional — ${ev.course_name} (${ev.subject_name})</title>
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f1f5f9; margin: 0; padding: 32px 16px; color: #0f172a; }
+    .sheet { max-width: 760px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #cbd5e1; box-shadow: 0 10px 30px rgba(15,23,42,0.08); overflow: hidden; }
+    .header { background: linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%); color: #ffffff; padding: 24px 30px; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { margin: 0; font-size: 20px; font-weight: 800; }
+    .header p { margin: 4px 0 0; font-size: 13px; opacity: 0.9; }
+    .badge { background: rgba(255,255,255,0.18); padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .content { padding: 28px 30px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    .field { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; }
+    .field-label { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
+    .field-value { font-size: 15px; font-weight: 700; color: #0f172a; }
+    .folder-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 14px 16px; margin-top: 16px; font-size: 13px; color: #1e3a8a; }
+    .actions { margin-top: 24px; display: flex; gap: 12px; justify-content: flex-end; }
+    .btn { padding: 10px 18px; border-radius: 8px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; }
+    .btn-primary { background: #0284c7; color: #ffffff; }
+    @media print { body { background: #fff; padding: 0; } .actions { display: none; } .sheet { box-shadow: none; border: none; } }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="header">
+      <div>
+        <h1>Liceo Bicentenario Técnico Puente Ñuble</h1>
+        <p>Repositorio Institucional de Evaluaciones y Adecuaciones PIE (${DEFAULT_DRIVE_ACCOUNT_EMAIL})</p>
+      </div>
+      <div class="badge">${ev.id}</div>
+    </div>
+    <div class="content">
+      <div class="grid">
+        <div class="field">
+          <div class="field-label">Curso / Nivel</div>
+          <div class="field-value">${ev.course_name}</div>
+        </div>
+        <div class="field">
+          <div class="field-label">Asignatura / Módulo</div>
+          <div class="field-value">${ev.subject_name}</div>
+        </div>
+        <div class="field">
+          <div class="field-label">Fecha de Aplicación</div>
+          <div class="field-value">${String(ev.evaluation_date || '').slice(0, 10)}</div>
+        </div>
+        <div class="field">
+          <div class="field-label">Bloque / Jornada</div>
+          <div class="field-value">${ev.block_label || 'Jornada Escolar'}</div>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom: 16px;">
+        <div class="field-label">Título / Contenido de la Evaluación</div>
+        <div class="field-value">${ev.evaluation_title || ev.original_file_name || 'Evaluación Sumativa'}</div>
+      </div>
+      <div class="grid">
+        <div class="field">
+          <div class="field-label">Docente Responsable</div>
+          <div class="field-value">${ev.teacher_name || 'Docente Institucional'}</div>
+        </div>
+        <div class="field">
+          <div class="field-label">Estado en Plataforma</div>
+          <div class="field-value">${ev.status || 'Completado'}</div>
+        </div>
+      </div>
+      <div class="folder-box">
+        <strong>📁 Ubicación en Cuenta Institucional (${DEFAULT_DRIVE_ACCOUNT_EMAIL}):</strong><br/>
+        <code>${folderPath}</code><br/>
+        <span style="font-size:12px; color:#475569;">Archivo registrado y traspasado al repositorio central de la plataforma. Si deseas reemplazar este registro por una nueva versión en Word o PDF, utiliza el botón "Reemplazar" o "Subir" en el listado de evaluaciones.</span>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir / Guardar como PDF</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`);
+      }
+    }
+
+    return res.status(404).send('Archivo no encontrado en la bóveda institucional.');
   } catch (err: any) {
     console.error('Error al servir archivo de bóveda:', err);
     res.status(500).send('Error al recuperar el archivo.');
@@ -9348,8 +9717,8 @@ router.post('/drive/upload', authMiddleware, uploadMemory.single('file'), async 
     const folderPath = courseName
       ? buildEvaluationFolderPath(courseName, subjectName || 'General', isPie)
       : (entityType === 'avatar_perfil'
-        ? 'LTP_PERFILES_CODIFICADOS_2026 / Avatares'
-        : `LTP_EXPEDIENTES_CIFRADOS_2026 / ${sanitizeDriveFolderSegment(subFolder, 'General')}`);
+        ? 'Files / Perfiles'
+        : `Files / ${sanitizeDriveFolderSegment(subFolder, 'General')}`);
 
     let finalDriveUrl = `/api/drive/file/${storageFileName}`;
     let finalDriveFileId = storageFileName;

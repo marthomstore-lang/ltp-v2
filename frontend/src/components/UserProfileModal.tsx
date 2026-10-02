@@ -737,11 +737,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose, ini
                           <Camera size={16} color={themeDraft.primaryColor} /> Cambiar imagen de perfil
                         </div>
                         <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.2rem' }}>
-                          Sube una foto desde tu computador. Se ajustará a formato circular/cuadrado y se respaldará en Google Drive con un código aleatorio interno.
+                          Sube una foto desde tu computador. Se ajustará a formato circular/cuadrado y se almacenará en la carpeta <strong>Files / Perfiles</strong> de la cuenta institucional con un nombre aleatorio codificado.
                         </div>
                         {avatarDraft && (
                           <div style={{ marginTop: '0.35rem', display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#eef2ff', color: '#3730a3', border: '1px solid #c7d2fe', padding: '0.18rem 0.55rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace' }}>
-                            <Lock size={12} /> Google Drive Codificado: {avatarDriveCode || 'AVT_AUTO_HASH.jpg'}
+                            <Lock size={12} /> Files / Perfiles: {avatarDriveCode || 'AVT_AUTO_HASH.jpg'}
                           </div>
                         )}
                       </div>
