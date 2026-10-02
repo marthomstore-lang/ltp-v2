@@ -8058,12 +8058,19 @@ router.delete('/room-reservations/:id', authMiddleware, async (req: Request, res
 // MÓDULO 2: PLANIFICACIÓN DE EVALUACIONES, CALENDARIO & ADECUACIONES PIE
 // CONECTADO AUTOMÁTICAMENTE A GOOGLE WORKSPACE (ltp.campanario@eduvallediguillin.gob.cl)
 // =========================================================================
+// ⚠️ NOTA: DEFAULT_EVAL_SCRIPT_ID debe actualizarse con el Deployment ID del
+//    nuevo Google Apps Script (Google_Apps_Script_Drive_Conector.js v2.1)
+//    desplegado desde ltp.campanario@eduvallediguillin.gob.cl
+//    (el actual corresponde al script antiguo de david.vidal@eduvallediguillin.gob.cl)
+// =========================================================================
 
-const DEFAULT_EVAL_SCRIPT_ID = 'AKfycbzjuiG-CKcmaJ1cDwcSq1sJKqXJq2vdqDAzuxcjlEQgdcniL3A5A9cdkiiOTS6PaS5Y';
+const DEFAULT_EVAL_SCRIPT_ID = 'AKfycbzjuiG-CKcmaJ1cDwcSq1sJKqXJq2vdqDAzuxcjlEQgdcniL3A5A9cdkiiOTS6PaS5Y'; // ← REEMPLAZAR tras nuevo despliegue
 const DEFAULT_DRIVE_ACCOUNT_EMAIL = 'ltp.campanario@eduvallediguillin.gob.cl';
 const DEFAULT_EVALUATIONS_CALENDAR_ID = 'c_9c0e390266d24cb3953c3a911df0e237820c32beed34ab89df4e336239008b06@group.calendar.google.com';
+const DEFAULT_SALA_COMPUTO_CALENDAR_ID = 'c_19d0bf8733f11c48ab179877049714b6a4c2bec9ee54190075af32f2384aa4fc@group.calendar.google.com';
 const DEFAULT_ORIGINALS_FOLDER_ID = '13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3';
 const DEFAULT_PIE_FOLDER_ID = '1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED';
+
 
 function sanitizeDriveFolderSegment(name: any, fallback: string): string {
   const str = String(name || '')
