@@ -111,22 +111,43 @@ export const normalizeAvatarUrl = (avatar?: string | null): string | null => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Al abrir el enlace (local o en línea), iniciar siempre en la pantalla de Inicio de Sesión
-  // limpiando cualquier token o sesión residual almacenada previamente en el navegador.
+  // Mantener la sesión activa al actualizar la página (F5) usando sessionStorage,
+  // pero limpiar localStorage para evitar sesiones fantasma sin datos al abrir el navegador de cero.
   const [token, setToken] = useState<string | null>(() => {
     try {
       localStorage.removeItem('ltp_token');
       localStorage.removeItem('ltp_user');
+      const savedToken = sessionStorage.getItem('ltp_token');
+      const savedUserRaw = sessionStorage.getItem('ltp_user');
+      if (savedToken && savedUserRaw) {
+        const parsed = JSON.parse(savedUserRaw);
+        if (parsed && (parsed.id || parsed.run) && parsed.name && parsed.role) {
+          return savedToken;
+        }
+      }
       sessionStorage.removeItem('ltp_token');
       sessionStorage.removeItem('ltp_user');
-      sessionStorage.removeItem('ltp_a11y_prompt_shown');
     } catch {
       // Ignorar errores de almacenamiento
     }
     return null;
   });
 
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const savedToken = sessionStorage.getItem('ltp_token');
+      const savedUserRaw = sessionStorage.getItem('ltp_user');
+      if (savedToken && savedUserRaw) {
+        const parsed = JSON.parse(savedUserRaw);
+        if (parsed && (parsed.id || parsed.run) && parsed.name && parsed.role) {
+          return parsed;
+        }
+      }
+    } catch {
+      // Ignorar
+    }
+    return null;
+  });
 
   // Aplicar tema de apariencia dinámicamente según el usuario autenticado y su rol
   useEffect(() => {

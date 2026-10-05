@@ -9,6 +9,7 @@ export type AdminTabId =
   | 'apoderados'
   | 'grades'
   | 'overview'
+  | 'personality_reports'
   | 'computer_lab'
   | 'evaluations_pie'
   | 'mineduc_reports'
@@ -36,6 +37,7 @@ export const ADMIN_TAB_TO_PATH: Record<AdminTabId, string> = {
   apoderados: '/apoderados',
   grades: '/calificaciones/planilla',
   overview: '/calificaciones/panorama',
+  personality_reports: '/informes-personalidad',
   computer_lab: '/sala-computacion',
   evaluations_pie: '/evaluaciones-pie',
   mineduc_reports: '/informes-pie',
@@ -138,6 +140,7 @@ export const ADMIN_TAB_TITLES: Record<AdminTabId, string> = {
   apoderados: 'Nómina de Apoderados — LTP',
   grades: 'Libro de Calificaciones — LTP',
   overview: 'Panorama de Notas y Jefatura — LTP',
+  personality_reports: 'Informes al Hogar y Personalidad (PK a 4°M) — LTP',
   computer_lab: 'Sala de Computación — LTP',
   evaluations_pie: 'Evaluaciones & PIE — LTP',
   mineduc_reports: 'Informes PIE (Dec. 170) — LTP',
@@ -161,6 +164,8 @@ const BASE_PATH_TO_ADMIN_TAB: Record<string, AdminTabId> = {
   '/calificaciones/planilla': 'grades',
   '/calificaciones/panorama': 'overview',
   '/panorama-notas': 'overview',
+  '/informes-personalidad': 'personality_reports',
+  '/informes-hogar': 'personality_reports',
   '/sala-computacion': 'computer_lab',
   '/evaluaciones-pie': 'evaluations_pie',
   '/informes-pie': 'mineduc_reports',

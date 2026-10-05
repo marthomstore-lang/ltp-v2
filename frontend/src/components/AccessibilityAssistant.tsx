@@ -7,8 +7,23 @@ const INITIAL_MODAL_SPEECH =
 
 export const AccessibilityAssistant: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
-  const [showModal, setShowModal] = useState(true);
-  const [a11yEnabled, setA11yEnabled] = useState(false);
+  const [showModal, setShowModal] = useState<boolean>(() => {
+    try {
+      if (sessionStorage.getItem('ltp_token') && sessionStorage.getItem('ltp_user')) {
+        return false;
+      }
+      return sessionStorage.getItem('ltp_a11y_prompt_shown') !== 'true';
+    } catch {
+      return true;
+    }
+  });
+  const [a11yEnabled, setA11yEnabled] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('ltp_a11y_enabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [modalSelectedBtn, setModalSelectedBtn] = useState<'yes' | 'no'>('yes');
   const [currentCaption, setCurrentCaption] = useState<string>('');
 
@@ -347,7 +362,10 @@ export const AccessibilityAssistant: React.FC = () => {
     stopWelcomeAudio();
     setA11yEnabled(true);
     setShowModal(false);
-    sessionStorage.setItem('ltp_a11y_prompt_shown', 'true');
+    try {
+      sessionStorage.setItem('ltp_a11y_prompt_shown', 'true');
+      sessionStorage.setItem('ltp_a11y_enabled', 'true');
+    } catch {}
     document.body.classList.add('high-contrast-mode');
 
     setTimeout(() => {
@@ -373,7 +391,10 @@ export const AccessibilityAssistant: React.FC = () => {
     stopWelcomeAudio();
     setA11yEnabled(false);
     setShowModal(false);
-    sessionStorage.setItem('ltp_a11y_prompt_shown', 'true');
+    try {
+      sessionStorage.setItem('ltp_a11y_prompt_shown', 'true');
+      sessionStorage.setItem('ltp_a11y_enabled', 'false');
+    } catch {}
     document.body.classList.remove('high-contrast-mode');
     document.querySelectorAll('.a11y-focused-ring').forEach(item => item.classList.remove('a11y-focused-ring'));
     setCurrentCaption('');

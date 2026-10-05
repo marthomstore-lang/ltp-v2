@@ -27,6 +27,7 @@ const EvaluationsPieModule = lazy(() => import('./EvaluationsPieModule').then(m 
 const GuardiansListModule = lazy(() => import('./GuardiansListModule').then(m => ({ default: m.GuardiansListModule })));
 const InspectorPassesModule = lazy(() => import('./InspectorPassesModule').then(m => ({ default: m.InspectorPassesModule })));
 const MineducReportsModule = lazy(() => import('./MineducReportsModule').then(m => ({ default: m.MineducReportsModule })));
+const PersonalityReportsModule = lazy(() => import('./PersonalityReportsModule').then(m => ({ default: m.PersonalityReportsModule })));
 const CourseMessageModal = lazy(() => import('./CourseMessageModal').then(m => ({ default: m.CourseMessageModal })));
 const PedagogicalTripsModule = lazy(() => import('./PedagogicalTripsModule').then(m => ({ default: m.PedagogicalTripsModule })));
 const TeacherCoursesGrid = lazy(() => import('./TeacherCoursesGrid').then(m => ({ default: m.TeacherCoursesGrid })));
@@ -63,7 +64,7 @@ export const AdminDashboard: React.FC = () => {
     try {
       localStorage.removeItem('ltp_admin_tab');
       const saved = sessionStorage.getItem('ltp_admin_tab');
-      if (saved && ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips'].includes(saved)) {
+      if (saved && ['home', 'students', 'apoderados', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips'].includes(saved)) {
         return saved as AdminTabId;
       }
     } catch {}
@@ -93,7 +94,7 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     const handleNav = (e: any) => {
-      if (e.detail && ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips'].includes(e.detail)) {
+      if (e.detail && ['home', 'students', 'apoderados', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips'].includes(e.detail)) {
         setActiveTab(e.detail);
       }
     };
@@ -111,6 +112,7 @@ export const AdminDashboard: React.FC = () => {
     apoderados: 'apoderados',
     grades: 'grades',
     overview: 'overview',
+    personality_reports: 'overview',
     computer_lab: 'computer_lab',
     evaluations_pie: 'evaluations_pie',
     interviews: 'interviews',
@@ -129,15 +131,15 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const rolePermissions: Record<string, string[]> = {
-    Admin: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Director: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Docente: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Admin: ['home', 'students', 'apoderados', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Director: ['home', 'students', 'apoderados', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Docente: ['home', 'students', 'apoderados', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
     Bibliotecario: ['home', 'computer_lab', 'evaluations_pie', 'library', 'admin_docs', 'multiview'],
     Entrevistador: ['home', 'students', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging', 'multiview'],
-    Administrativo: ['home', 'students', 'apoderados', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
-    Profesionales: ['home', 'students', 'apoderados', 'grades', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Asistente: ['home', 'students', 'apoderados', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
-    'Asistente de la Educación': ['home', 'students', 'apoderados', 'overview', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
+    Administrativo: ['home', 'students', 'apoderados', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
+    Profesionales: ['home', 'students', 'apoderados', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Asistente: ['home', 'students', 'apoderados', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
+    'Asistente de la Educación': ['home', 'students', 'apoderados', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
     Apoderado: ['home', 'admin_docs'],
     Estudiante: ['home', 'admin_docs'],
     Visita: ['home', 'computer_lab', 'evaluations_pie', 'overview', 'admin_docs']
@@ -582,6 +584,7 @@ export const AdminDashboard: React.FC = () => {
             { id: 'apoderados', label: 'Nómina de Apoderados', icon: UserCheck },
             { id: 'grades', label: 'Libro de Calificaciones', icon: ClipboardList },
             { id: 'overview', label: 'Panorama & Jefatura', icon: TrendingUp },
+            { id: 'personality_reports', label: 'Informes Hogar y Personalidad', icon: Award },
             { id: 'computer_lab', label: 'Sala de Computación', icon: Monitor },
             { id: 'evaluations_pie', label: 'Evaluaciones & PIE', icon: Puzzle },
             { id: 'mineduc_reports', label: 'Informes PIE', icon: FileCheck2 },
@@ -2048,6 +2051,29 @@ export const AdminDashboard: React.FC = () => {
                   <TrendingUp size={17} /> Panorama y Reporte por Asignatura
                 </button>
               )}
+              {canAccess('personality_reports') && (
+                <button
+                  onClick={() => {
+                    navigateToTab('personality_reports', 'Informes al Hogar y Personalidad');
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.55rem 1.25rem',
+                    borderRadius: '9px',
+                    border: '1px solid #86efac',
+                    fontWeight: 800,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
+                    background: '#f0fdf4',
+                    color: '#15803d',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <Award size={17} /> 🌟 Informes al Hogar y Personalidad (PK a 4° Medio)
+                </button>
+              )}
             </div>
 
             {gradesSubTab === 'courses' && canAccess('grades') ? (
@@ -2075,6 +2101,14 @@ export const AdminDashboard: React.FC = () => {
               <GradesOverview token={token || ''} />
             )}
           </div>
+        )}
+
+        {/* VISTA: INFORMES AL HOGAR E INFORMES DE PERSONALIDAD (PRE-KÍNDER A 4° MEDIO) */}
+        {activeTab === 'personality_reports' && (
+          <PersonalityReportsModule
+            token={token || ''}
+            selectedYear={selectedYear}
+          />
         )}
 
         {/* VISTA: SALA DE COMPUTACIÓN */}
