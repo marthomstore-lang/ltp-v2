@@ -2156,7 +2156,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                 onClick={handleSyncWithGoogle}
                 style={{ padding: '0.45rem 0.9rem', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', fontSize: '0.78rem', fontWeight: 800, cursor: syncingGoogle ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 6px rgba(2,132,199,0.25)' }}
               >
-                <RefreshCw size={13} /> {syncingGoogle ? 'Traspasando archivos y calendarios...' : `Traspasar Todo a ${driveAccountEmail}`}
+                <RefreshCw size={13} /> {syncingGoogle ? 'Sincronizando archivos y calendarios...' : `Sincronizar Todo con ${driveAccountEmail}`}
               </button>
               <a
                 href={`https://drive.google.com/drive/folders/${folderOriginalsId}`}
@@ -2164,7 +2164,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                 rel="noreferrer"
                 style={{ padding: '0.45rem 0.85rem', borderRadius: '8px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', fontSize: '0.78rem', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               >
-                📂 Abrir Raíz Evaluaciones Originales en Drive <ExternalLink size={13} />
+                📂 Abrir Planificaciones y Evaluaciones en Drive <ExternalLink size={13} />
               </a>
               <a
                 href={`https://drive.google.com/drive/folders/${folderPieId}`}
@@ -2172,8 +2172,29 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                 rel="noreferrer"
                 style={{ padding: '0.45rem 0.85rem', borderRadius: '8px', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', fontSize: '0.78rem', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               >
-                🧩 Abrir Raíz Evaluaciones PIE en Drive <ExternalLink size={13} />
+                🧩 Abrir Evaluaciones PIE en Drive <ExternalLink size={13} />
               </a>
+              <a
+                href="https://drive.google.com/drive/folders/1N1U5hpf6Q92aZy6ajO6tSB3wMKgyEJ4f"
+                target="_blank"
+                rel="noreferrer"
+                style={{ padding: '0.45rem 0.85rem', borderRadius: '8px', background: '#eef2ff', color: '#3730a3', border: '1px solid #c7d2fe', fontSize: '0.78rem', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+              >
+                🔒 Abrir Carpeta Perfiles en Drive <ExternalLink size={13} />
+              </a>
+            </div>
+          </div>
+
+          {/* Banner de Rutas y API Bloqueadas Permanentemente */}
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '0.85rem 1.1rem', marginBottom: '1.15rem', fontSize: '0.78rem', color: '#14532d' }}>
+            <div style={{ fontWeight: 800, marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Lock size={14} color="#15803d" /> API Google Drive v2.1 Bloqueada y Registrada Permanentemente (Rutas Inmutables en Supabase + Google Workspace):
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.45rem', color: '#166534' }}>
+              <div>• <strong>Planificaciones / Pruebas:</strong> <code>13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3</code> (<code>[Curso] → [Asignatura]</code>)</div>
+              <div>• <strong>Evaluaciones PIE Aparte:</strong> <code>1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED</code> (<code>[Curso] → [Asignatura]</code>)</div>
+              <div>• <strong>Files / Perfiles (Avatares):</strong> <code>1N1U5hpf6Q92aZy6ajO6tSB3wMKgyEJ4f</code> (<code>AVT_...jpg</code>)</div>
+              <div>• <strong>Calendarios Institucionales:</strong> <code>14WoWo0Afw064wYbuwp05pPWE2IwTIYzP</code></div>
             </div>
           </div>
 

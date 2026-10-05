@@ -269,6 +269,21 @@ async function ensureTablesExist() {
       ALTER TABLE pedagogical_evaluations ADD COLUMN IF NOT EXISTS pie_folder_path TEXT;
       ALTER TABLE pedagogical_evaluations ADD COLUMN IF NOT EXISTS original_drive_file_id TEXT;
       ALTER TABLE pedagogical_evaluations ADD COLUMN IF NOT EXISTS pie_drive_file_id TEXT;
+
+      INSERT INTO integration_settings (setting_key, setting_value, description, updated_at) VALUES
+        ('GOOGLE_DRIVE_ACCOUNT_EMAIL', 'ltp.campanario@eduvallediguillin.gob.cl', 'Cuenta Google Workspace Oficial para Drive y Calendar (Bloqueada)', CURRENT_TIMESTAMP),
+        ('GOOGLE_EVALUATIONS_SCRIPT_ID', 'AKfycbzuaS4l3DCDOpkEV70J9_3RFejncNrAfuWAyRHxzbY7ioW-zk0i2kDrlOEhwawu6hDi0g', 'Deployment ID Oficial Google Apps Script Drive & Calendar v2.1', CURRENT_TIMESTAMP),
+        ('GOOGLE_DRIVE_WEBHOOK_URL', 'https://script.google.com/macros/s/AKfycbzuaS4l3DCDOpkEV70J9_3RFejncNrAfuWAyRHxzbY7ioW-zk0i2kDrlOEhwawu6hDi0g/exec', 'URL API Fija Google Drive y Calendar', CURRENT_TIMESTAMP),
+        ('DRIVE_FOLDER_PROFILES_ID', '1N1U5hpf6Q92aZy6ajO6tSB3wMKgyEJ4f', 'ID Carpeta Fija Google Drive para Files - Perfiles', CURRENT_TIMESTAMP),
+        ('DRIVE_FOLDER_ORIGINALS_ID', '13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3', 'ID Carpeta Fija Google Drive para Planificaciones y Evaluaciones Originales', CURRENT_TIMESTAMP),
+        ('DRIVE_FOLDER_PIE_ID', '1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED', 'ID Carpeta Fija Google Drive para Evaluaciones PIE Aparte', CURRENT_TIMESTAMP),
+        ('DRIVE_FOLDER_CALENDARS_ID', '14WoWo0Afw064wYbuwp05pPWE2IwTIYzP', 'ID Carpeta Fija Google Drive para Calendarios Institucionales', CURRENT_TIMESTAMP),
+        ('EVALUATIONS_CALENDAR_ID', 'c_9c0e390266d24cb3953c3a911df0e237820c32beed34ab89df4e336239008b06@group.calendar.google.com', 'ID Fijo Google Calendar Evaluaciones', CURRENT_TIMESTAMP),
+        ('COMPUTER_LAB_CALENDAR_ID', 'c_19d0bf8733f11c48ab179877049714b6a4c2bec9ee54190075af32f2384aa4fc@group.calendar.google.com', 'ID Fijo Google Calendar Sala de Computacion', CURRENT_TIMESTAMP)
+      ON CONFLICT (setting_key) DO UPDATE SET
+        setting_value = EXCLUDED.setting_value,
+        description = EXCLUDED.description,
+        updated_at = CURRENT_TIMESTAMP;
     `);
   } catch (err) {
     console.error('⚠️ Error al verificar tablas y columnas en la base de datos:', err);
@@ -1553,8 +1568,8 @@ router.post('/auth/update-profile', authMiddleware, async (req: Request, res: Re
           updatedName || updatedRun || user.id
         ]).catch(err => console.warn('Aviso guardando avatar en vault:', err));
 
-        // Subir en segundo plano a Google Drive (Carpeta Files / Perfiles) con el nombre aleatorio codificado
-        uploadEncodedAvatarToDriveBg(vaultId, avatarDriveCode, cleanAvatar).catch(() => {});
+        // Subir directamente a Google Drive (Carpeta Fija Files - Perfiles: 1N1U5hpf6Q92aZy6ajO6tSB3wMKgyEJ4f)
+        await uploadEncodedAvatarToDriveBg(vaultId, avatarDriveCode, cleanAvatar).catch(() => {});
       } else if (cleanAvatar === null) {
         await query("DELETE FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1", [user.id]).catch(() => {});
       }
@@ -1591,13 +1606,17 @@ router.post('/auth/update-profile', authMiddleware, async (req: Request, res: Re
       await logAudit(req, 'UPDATE_PROFILE', `Actualización de perfil y/o apariencia para ${updatedName} (${effectiveRole})${avatarDriveCode ? ` [Avatar Drive (Files / Perfiles): ${avatarDriveCode}]` : ''}`);
     }
 
-    if (!avatarDriveCode && allowedCustomize) {
+    let avatarDriveUrl: string | null = null;
+    if (allowedCustomize) {
       const existingVault = await query(
-        "SELECT storage_name FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1 ORDER BY created_at DESC LIMIT 1",
+        "SELECT storage_name, file_id FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1 ORDER BY created_at DESC LIMIT 1",
         [user.id]
-      ).catch(() => ({ rows: [] }));
+      ).catch(() => ({ rows: [] as any[] }));
       if (existingVault.rows.length > 0) {
-        avatarDriveCode = existingVault.rows[0].storage_name;
+        avatarDriveCode = avatarDriveCode || existingVault.rows[0].storage_name;
+        if (String(existingVault.rows[0].file_id || '').startsWith('http')) {
+          avatarDriveUrl = existingVault.rows[0].file_id;
+        }
       }
     }
 
@@ -1607,6 +1626,8 @@ router.post('/auth/update-profile', authMiddleware, async (req: Request, res: Re
     res.json({
       success: true,
       avatarDriveCode,
+      avatarDriveUrl,
+      driveFolderUrl: `https://drive.google.com/drive/folders/${DEFAULT_PROFILES_FOLDER_ID}`,
       updatedUser: {
         id: user.id,
         username: user.id,
@@ -1619,6 +1640,7 @@ router.post('/auth/update-profile', authMiddleware, async (req: Request, res: Re
         roles: (req.user as any)?.roles || parseRolesArray(user.roles, effectiveRole),
         avatar: finalAvatar,
         avatarDriveCode,
+        avatarDriveUrl,
         themeConfig: finalThemeConfig,
         canCustomize: allowedCustomize
       }
@@ -1633,7 +1655,7 @@ router.get('/auth/my-avatar-vault', authMiddleware, async (req: Request, res: Re
   try {
     const userId = req.user?.id;
     let vaultRes = await query(
-      "SELECT id, file_id, storage_name, folder_path, file_url, file_size, created_at FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1 ORDER BY created_at DESC LIMIT 1",
+      "SELECT id, file_id, storage_name, folder_path, file_url, file_size, file_data_base64, created_at FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1 ORDER BY created_at DESC LIMIT 1",
       [userId]
     ).catch(() => ({ rows: [] as any[] }));
 
@@ -1664,17 +1686,40 @@ router.get('/auth/my-avatar-vault', authMiddleware, async (req: Request, res: Re
           approxSize,
           uRes.rows[0]?.name || uRes.rows[0]?.run || userId
         ]).catch(() => {});
-        uploadEncodedAvatarToDriveBg(vaultId, avatarDriveCode, cleanAv).catch(() => {});
+        await uploadEncodedAvatarToDriveBg(vaultId, avatarDriveCode, cleanAv).catch(() => {});
         vaultRes = await query(
           "SELECT id, file_id, storage_name, folder_path, file_url, file_size, created_at FROM secure_file_vault WHERE id = $1 LIMIT 1",
           [vaultId]
         ).catch(() => ({ rows: [] as any[] }));
       }
+    } else if (vaultRes.rows.length > 0) {
+      const row = vaultRes.rows[0];
+      if (!String(row.file_id || '').startsWith('http') && row.file_data_base64) {
+        const newUrl = await uploadEncodedAvatarToDriveBg(row.id, row.storage_name, row.file_data_base64).catch(() => null);
+        if (newUrl) {
+          row.file_id = newUrl;
+        }
+      }
     }
 
+    const row = vaultRes.rows[0] || null;
     res.json({
       success: true,
-      vault: vaultRes.rows[0] || null
+      driveFolderId: DEFAULT_PROFILES_FOLDER_ID,
+      driveFolderUrl: `https://drive.google.com/drive/folders/${DEFAULT_PROFILES_FOLDER_ID}`,
+      vault: row
+        ? {
+            id: row.id,
+            file_id: row.file_id,
+            driveFileUrl: String(row.file_id || '').startsWith('http') ? row.file_id : null,
+            driveFolderUrl: `https://drive.google.com/drive/folders/${DEFAULT_PROFILES_FOLDER_ID}`,
+            storage_name: row.storage_name,
+            folder_path: row.folder_path || 'Files / Perfiles',
+            file_url: row.file_url || `/api/drive/file/${row.storage_name}`,
+            file_size: row.file_size,
+            created_at: row.created_at
+          }
+        : null
     });
   } catch (err) {
     res.json({ success: false, vault: null });
@@ -8194,8 +8239,10 @@ const DEFAULT_EVAL_SCRIPT_ID = 'AKfycbzuaS4l3DCDOpkEV70J9_3RFejncNrAfuWAyRHxzbY7
 const DEFAULT_DRIVE_ACCOUNT_EMAIL = 'ltp.campanario@eduvallediguillin.gob.cl';
 const DEFAULT_EVALUATIONS_CALENDAR_ID = 'c_9c0e390266d24cb3953c3a911df0e237820c32beed34ab89df4e336239008b06@group.calendar.google.com';
 const DEFAULT_SALA_COMPUTO_CALENDAR_ID = 'c_19d0bf8733f11c48ab179877049714b6a4c2bec9ee54190075af32f2384aa4fc@group.calendar.google.com';
+const DEFAULT_PROFILES_FOLDER_ID = '1N1U5hpf6Q92aZy6ajO6tSB3wMKgyEJ4f';
 const DEFAULT_ORIGINALS_FOLDER_ID = '13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3';
 const DEFAULT_PIE_FOLDER_ID = '1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED';
+const DEFAULT_CALENDARS_FOLDER_ID = '14WoWo0Afw064wYbuwp05pPWE2IwTIYzP';
 
 
 function sanitizeDriveFolderSegment(name: any, fallback: string): string {
@@ -8221,6 +8268,43 @@ async function getGoogleEvalScriptId(): Promise<string> {
     if (val && String(val).trim().length > 20) return String(val).trim();
   } catch (_) {}
   return DEFAULT_EVAL_SCRIPT_ID;
+}
+
+async function callGoogleDriveConnectorJson(action: string, extraPayload: Record<string, any> = {}): Promise<any> {
+  try {
+    const scriptId = await getGoogleEvalScriptId();
+    const url = `https://script.google.com/macros/s/${scriptId}/exec`;
+    const normalizedPayload: Record<string, any> = {
+      authToken: DRIVE_AUTH_TOKEN,
+      action,
+      originalsFolderId: DEFAULT_ORIGINALS_FOLDER_ID,
+      pieFolderId: DEFAULT_PIE_FOLDER_ID,
+      profilesFolderId: DEFAULT_PROFILES_FOLDER_ID,
+      ...extraPayload
+    };
+    if (normalizedPayload.fileDataBase64 && !normalizedPayload.base64) {
+      normalizedPayload.base64 = normalizedPayload.fileDataBase64;
+    }
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(normalizedPayload),
+      signal: AbortSignal.timeout(35000)
+    });
+    const text = await res.text();
+    if (text && text.trim().startsWith('{')) {
+      const parsed = JSON.parse(text);
+      return {
+        ...parsed,
+        ok: Boolean(parsed?.success),
+        data: parsed
+      };
+    }
+    return { ok: false, success: false, data: null, error: 'Respuesta no JSON del conector Drive' };
+  } catch (err: any) {
+    console.warn(`⚠️ Aviso Conector JSON Google Drive (${action}):`, err?.message || err);
+    return { ok: false, success: false, data: null, error: err?.message || 'Error en conector Drive' };
+  }
 }
 
 async function callGoogleEvalScriptRpc(fnName: string, args: any[] = []): Promise<{ ok: boolean; result: any }> {
@@ -8307,8 +8391,26 @@ async function uploadEncodedAvatarToDriveBg(vaultId: string, storageName: string
     const match = dataUri.match(/^data:([^;]+);base64,(.+)$/);
     const mimeType = match ? match[1] : 'image/jpeg';
     const b64 = match ? match[2] : dataUri;
-    const buffer = Buffer.from(b64, 'base64');
 
+    // 1. Subir directamente mediante el conector JSON v2.1 a la carpeta fija Files - Perfiles (1N1U5hpf6Q92aZy6ajO6tSB3wMKgyEJ4f)
+    const jsonUp = await callGoogleDriveConnectorJson('upload_profile_avatar', {
+      profilesFolderId: DEFAULT_PROFILES_FOLDER_ID,
+      storageFileName: storageName,
+      mimeType,
+      base64: b64
+    });
+
+    if (jsonUp && jsonUp.success && (jsonUp.fileUrl || jsonUp.fileId)) {
+      const driveUrl = jsonUp.fileUrl || `https://drive.google.com/file/d/${jsonUp.fileId}/view`;
+      await query(
+        "UPDATE secure_file_vault SET file_id = $1, folder_path = 'Files / Perfiles' WHERE id = $2",
+        [driveUrl, vaultId]
+      ).catch(() => {});
+      return driveUrl;
+    }
+
+    // 2. Fallback RPC en caso de script anterior
+    const buffer = Buffer.from(b64, 'base64');
     const upRes = await uploadToGoogleEvalScript3Step('registrarEvaluacion', [
       { key: 'cursoDocente', value: 'Files' },
       { key: 'asignaturaDocente', value: 'Perfiles' },
@@ -8324,13 +8426,14 @@ async function uploadEncodedAvatarToDriveBg(vaultId: string, storageName: string
         const det = await callGoogleEvalScriptRpc('obtenerDetalleEvaluacion', [tempEvalId]);
         const driveUrl = det.result?.urlOriginal || `/api/drive/file/${storageName}`;
         await query("UPDATE secure_file_vault SET file_id = $1, folder_path = 'Files / Perfiles' WHERE id = $2", [driveUrl, vaultId]).catch(() => {});
-        // Eliminar el evento temporal del calendario dejando el archivo codificado en Drive dentro de Files / Perfiles
         await callGoogleEvalScriptRpc('eliminarEvaluacion', [tempEvalId]).catch(() => {});
+        return driveUrl;
       }
     }
   } catch (err) {
     console.warn('Aviso sincronizando avatar con Google Drive (Files / Perfiles):', err);
   }
+  return null;
 }
 
 function extractFileFromReq(req: Request, fallbackName: string): {
@@ -8536,36 +8639,51 @@ router.post('/evaluations', authMiddleware, uploadMemory.single('file'), async (
     let finalFileUrl = original_file_url ? String(original_file_url).trim() : null;
     let finalFileName = original_file_name ? String(original_file_name).trim() : (extractedFile?.originalName || null);
 
-    // 1. Si viene archivo físico/base64, guardarlo en secure_file_vault + subir a Google Drive y Google Calendar
+    // 1. Si viene archivo físico/base64, guardarlo en secure_file_vault + subir directamente a Google Drive (Curso -> Asignatura)
+    let driveWebUrl: string | null = null;
     if (extractedFile) {
       const ext = path.extname(extractedFile.originalName).toLowerCase() || '.pdf';
       const storageCode = `EV_ORIG_${crypto.randomBytes(6).toString('hex').toUpperCase()}${ext}`;
       const vaultId = `VLT-EV-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
       const formattedDriveFileName = `[${sanitizeDriveFolderSegment(course_name, 'Curso')}][${sanitizeDriveFolderSegment(subject_name, 'Asignatura')}]_${extractedFile.originalName}`;
 
-      // Subir a Google Drive y crear evento en Google Calendar vía 3-Step Protocol
+      // Subir directamente a la carpeta bloqueada de Google Drive (13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3 -> [Curso] -> [Asignatura]) vía API JSON v2.1
+      const directDriveRes = await callGoogleDriveConnectorJson('upload_evaluation', {
+        courseName: course_name,
+        subjectName: subject_name,
+        fileName: formattedDriveFileName,
+        mimeType: extractedFile.mimeType,
+        fileDataBase64: extractedFile.buffer.toString('base64'),
+        isPie: false
+      });
+
+      if (directDriveRes.ok && directDriveRes.data?.fileUrl) {
+        driveWebUrl = directDriveRes.data.fileUrl;
+      }
+
+      // También sincronizar evento con Google Calendar si está disponible
       const gUpload = await uploadToGoogleEvalScript3Step('registrarEvaluacion', [
         { key: 'cursoDocente', value: course_name },
         { key: 'asignaturaDocente', value: `${subject_name} - ${evaluation_title}` },
         { key: 'fechaEval', value: evaluation_date },
         { key: 'tipo', value: cleanBlock },
         { key: 'archivo', value: { buffer: extractedFile.buffer, filename: formattedDriveFileName, mimeType: extractedFile.mimeType } }
-      ]);
+      ]).catch(() => ({ ok: false, result: null as any }));
 
       if (gUpload.ok && gUpload.result?.exito) {
         const idMatch = String(gUpload.result.mensaje || '').match(/ID:\s*(EV-\d+)/);
         if (idMatch && idMatch[1]) {
           id = idMatch[1];
-          const det = await callGoogleEvalScriptRpc('obtenerDetalleEvaluacion', [id]);
-          if (det.ok && det.result?.urlOriginal && String(det.result.urlOriginal).startsWith('http')) {
-            finalFileUrl = det.result.urlOriginal;
+          if (!driveWebUrl) {
+            const det = await callGoogleEvalScriptRpc('obtenerDetalleEvaluacion', [id]);
+            if (det.ok && det.result?.urlOriginal && String(det.result.urlOriginal).startsWith('http')) {
+              driveWebUrl = det.result.urlOriginal;
+            }
           }
         }
       }
 
-      if (!finalFileUrl) {
-        finalFileUrl = `/api/drive/file/${storageCode}`;
-      }
+      finalFileUrl = driveWebUrl || `/api/drive/file/${storageCode}`;
 
       await query(`
         INSERT INTO secure_file_vault (
@@ -8574,7 +8692,7 @@ router.post('/evaluations', authMiddleware, uploadMemory.single('file'), async (
         ) VALUES ($1, $2, $3, $4, 'evaluacion_original', $5, $6, $7, $8, $9, $10, $11, 0)
       `, [
         vaultId,
-        finalFileUrl,
+        driveWebUrl || storageCode,
         storageCode,
         extractedFile.originalName,
         id,
@@ -8740,17 +8858,18 @@ router.post('/evaluations/:id/attach-original', authMiddleware, uploadMemory.sin
       const vaultId = `VLT-ORIG-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
       const formattedDriveFileName = `[${sanitizeDriveFolderSegment(ev.course_name, 'Curso')}][${sanitizeDriveFolderSegment(ev.subject_name, 'Asignatura')}]_${extractedFile.originalName}`;
 
-      // Subir a Google Drive (carpeta Evaluaciones Originales -> Curso -> Asignatura)
-      const gUpload = await uploadToGoogleEvalScript3Step('actualizarArchivoPendiente', [
-        { key: 'idPendiente', value: id },
-        { key: 'archivoRezagado', value: { buffer: extractedFile.buffer, filename: formattedDriveFileName, mimeType: extractedFile.mimeType } }
-      ]);
+      // 1. Subir directamente a la carpeta oficial de Google Drive (13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3 -> [Curso] -> [Asignatura])
+      const directDriveRes = await callGoogleDriveConnectorJson('upload_evaluation', {
+        courseName: ev.course_name,
+        subjectName: ev.subject_name,
+        fileName: formattedDriveFileName,
+        mimeType: extractedFile.mimeType,
+        fileDataBase64: extractedFile.buffer.toString('base64'),
+        isPie: false
+      });
 
-      if (gUpload.ok && gUpload.result?.exito) {
-        const det = await callGoogleEvalScriptRpc('obtenerDetalleEvaluacion', [id]);
-        if (det.ok && det.result?.urlOriginal && String(det.result.urlOriginal).startsWith('http')) {
-          finalUrl = det.result.urlOriginal;
-        }
+      if (directDriveRes.ok && directDriveRes.data?.fileUrl) {
+        finalUrl = directDriveRes.data.fileUrl;
       }
 
       if (!finalUrl) {
@@ -8831,39 +8950,18 @@ router.post('/evaluations/:id/attach-pie', authMiddleware, uploadMemory.single('
       const vaultId = `VLT-PIE-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
       const formattedPieDriveName = `[PIE][${sanitizeDriveFolderSegment(ev.course_name, 'Curso')}][${sanitizeDriveFolderSegment(ev.subject_name, 'Asignatura')}]_${extractedFile.originalName}`;
 
-      // Intentar subir a la carpeta PIE Aparte (1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED) en Google Drive
-      const gPieUpload = await uploadToGoogleEvalScript3Step('subirAdecuacionPIE', [
-        { key: 'idEvaluacion', value: id },
-        { key: 'archivoPIE', value: { buffer: extractedFile.buffer, filename: formattedPieDriveName, mimeType: extractedFile.mimeType } }
-      ]);
+      // Subir directamente a la carpeta PIE Aparte (1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED -> [Curso] -> [Asignatura]) en Google Drive vía API JSON v2.1
+      const directPieDrive = await callGoogleDriveConnectorJson('upload_evaluation', {
+        courseName: ev.course_name,
+        subjectName: ev.subject_name,
+        fileName: formattedPieDriveName,
+        mimeType: extractedFile.mimeType,
+        fileDataBase64: extractedFile.buffer.toString('base64'),
+        isPie: true
+      });
 
-      if (gPieUpload.ok && gPieUpload.result?.exito) {
-        const det = await callGoogleEvalScriptRpc('obtenerDetalleEvaluacion', [id]);
-        if (det.ok && det.result?.urlPIE && String(det.result.urlPIE).startsWith('http')) {
-          finalPieUrl = det.result.urlPIE;
-        }
-      }
-
-      // Si la cuenta actual no estaba en la hoja Permisos_PIE del script antiguo, subir vía canal directo de Drive manteniendo el vínculo PIE
-      if (!finalPieUrl) {
-        const fallbackUp = await uploadToGoogleEvalScript3Step('registrarEvaluacion', [
-          { key: 'cursoDocente', value: `PIE - ${ev.course_name}` },
-          { key: 'asignaturaDocente', value: `${ev.subject_name} (Adecuación PIE)` },
-          { key: 'fechaEval', value: '2099-12-31' },
-          { key: 'tipo', value: '1° Bloque (08:30 - 10:00)' },
-          { key: 'archivo', value: { buffer: extractedFile.buffer, filename: formattedPieDriveName, mimeType: extractedFile.mimeType } }
-        ]);
-        if (fallbackUp.ok && fallbackUp.result?.exito) {
-          const m = String(fallbackUp.result.mensaje || '').match(/ID:\s*(EV-\d+)/);
-          if (m && m[1]) {
-            const tempId = m[1];
-            const det = await callGoogleEvalScriptRpc('obtenerDetalleEvaluacion', [tempId]);
-            if (det.ok && det.result?.urlOriginal && String(det.result.urlOriginal).startsWith('http')) {
-              finalPieUrl = det.result.urlOriginal;
-            }
-            await callGoogleEvalScriptRpc('eliminarEvaluacion', [tempId]).catch(() => {});
-          }
-        }
+      if (directPieDrive.ok && directPieDrive.data?.fileUrl) {
+        finalPieUrl = directPieDrive.data.fileUrl;
       }
 
       if (!finalPieUrl) {
@@ -9211,61 +9309,76 @@ router.get('/drive/status', authMiddleware, async (_req: Request, res: Response)
     const accountEmail = settings['GOOGLE_DRIVE_ACCOUNT_EMAIL'] || DEFAULT_DRIVE_ACCOUNT_EMAIL;
     const originalsFolderId = settings['DRIVE_FOLDER_ORIGINALS_ID'] || '13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3';
     const pieFolderId = settings['DRIVE_FOLDER_PIE_ID'] || '1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED';
+    const profilesFolderId = settings['DRIVE_FOLDER_PROFILES_ID'] || DEFAULT_PROFILES_FOLDER_ID;
+    const calendarsFolderId = settings['DRIVE_FOLDER_CALENDARS_ID'] || DEFAULT_CALENDARS_FOLDER_ID;
     const calendarId = settings['EVALUATIONS_CALENDAR_ID'] || 'c_9c0e390266d24cb3953c3a911df0e237820c32beed34ab89df4e336239008b06@group.calendar.google.com';
 
-    // 1. Intentar ping JSON directo si es el conector v3
-    try {
-      const resp = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'ping', authToken: DRIVE_AUTH_TOKEN }),
-        signal: AbortSignal.timeout(5000)
+    // 1. Intentar ping JSON directo al conector v2.1 bloqueado
+    const pingRes = await callGoogleDriveConnectorJson('ping');
+    if (pingRes.ok) {
+      return res.json({
+        connected: true,
+        routesLocked: true,
+        connectorVersion: 'v2.1-LOCKED',
+        user: pingRes.data?.user || accountEmail,
+        account: accountEmail,
+        webhookUrl,
+        originalsFolderId,
+        originalsDriveUrl: `https://drive.google.com/drive/folders/${originalsFolderId}`,
+        pieFolderId,
+        pieDriveUrl: `https://drive.google.com/drive/folders/${pieFolderId}`,
+        profilesFolderId,
+        profilesDriveUrl: `https://drive.google.com/drive/folders/${profilesFolderId}`,
+        calendarsFolderId,
+        calendarsDriveUrl: `https://drive.google.com/drive/folders/${calendarsFolderId}`,
+        calendarId,
+        message: `API Google Drive v2.1 Bloqueada y Activa (${accountEmail}) — Rutas fijas permanentes para Planificaciones/Evaluaciones (Curso -> Asignatura), PIE Aparte y Perfiles.`,
+        security: 'ANONYMIZED_VAULT_AND_AUTO_FOLDERS_LOCKED'
       });
-      const text = await resp.text();
-      if (text.trim().startsWith('{')) {
-        const data: any = JSON.parse(text);
-        if (data && data.success) {
-          return res.json({
-            connected: true,
-            user: data.user || accountEmail,
-            account: accountEmail,
-            webhookUrl,
-            originalsFolderId,
-            pieFolderId,
-            calendarId,
-            message: `Conectado exitosamente con Google Drive (${accountEmail}) — Jerarquía automática Curso/Asignatura, PIE Aparte y Perfiles Codificados activa.`,
-            security: 'ANONYMIZED_VAULT_AND_AUTO_FOLDERS_ENABLED'
-          });
-        }
-      }
-    } catch (_) {}
+    }
 
     // 2. Verificar conector institucional activo vía RPC Google Apps Script
     const rpcPing = await callGoogleEvalScriptRpc('obtenerDatosColumna', ['cursos']);
     if (rpcPing.ok) {
       return res.json({
         connected: true,
+        routesLocked: true,
+        connectorVersion: 'v2.1-LOCKED',
         user: accountEmail,
         account: accountEmail,
         webhookUrl,
         originalsFolderId,
+        originalsDriveUrl: `https://drive.google.com/drive/folders/${originalsFolderId}`,
         pieFolderId,
+        pieDriveUrl: `https://drive.google.com/drive/folders/${pieFolderId}`,
+        profilesFolderId,
+        profilesDriveUrl: `https://drive.google.com/drive/folders/${profilesFolderId}`,
+        calendarsFolderId,
+        calendarsDriveUrl: `https://drive.google.com/drive/folders/${calendarsFolderId}`,
         calendarId,
         coursesCount: Array.isArray(rpcPing.result) ? rpcPing.result.length : 14,
-        message: `Interconexión automática activa con Google Workspace (${accountEmail}) — Carpetas por Curso/Asignatura, PIE Aparte y Calendario Institucional sincronizados.`,
-        security: 'ANONYMIZED_VAULT_AND_AUTO_FOLDERS_ENABLED'
+        message: `Interconexión automática activa y rutas bloqueadas con Google Workspace (${accountEmail}).`,
+        security: 'ANONYMIZED_VAULT_AND_AUTO_FOLDERS_LOCKED'
       });
     }
 
     return res.json({
       connected: true,
+      routesLocked: true,
+      connectorVersion: 'v2.1-LOCKED',
       user: accountEmail,
       account: accountEmail,
       webhookUrl,
       originalsFolderId,
+      originalsDriveUrl: `https://drive.google.com/drive/folders/${originalsFolderId}`,
       pieFolderId,
+      pieDriveUrl: `https://drive.google.com/drive/folders/${pieFolderId}`,
+      profilesFolderId,
+      profilesDriveUrl: `https://drive.google.com/drive/folders/${profilesFolderId}`,
+      calendarsFolderId,
+      calendarsDriveUrl: `https://drive.google.com/drive/folders/${calendarsFolderId}`,
       calendarId,
-      message: `Conectado en modo híbrido con respaldo en bóveda segura (${accountEmail}).`,
+      message: `Conectado en modo híbrido con rutas bloqueadas y respaldo en bóveda segura (${accountEmail}).`,
       security: 'ANONYMIZED_VAULT_ENABLED'
     });
   } catch (err: any) {
@@ -9279,7 +9392,7 @@ async function consolidateInstitutionalFilesAndCalendars(syncRemoteDrive: boolea
   let evaluationsConsolidated = 0;
   let calendarsConsolidated = 0;
 
-  // 1. Actualizar cualquier avatar existente a la carpeta "Files / Perfiles"
+  // 1. Actualizar cualquier avatar existente a la carpeta "Files / Perfiles" y sincronizarlo con Google Drive (1N1U5hpf6Q92aZy6ajO6tSB3wMKgyEJ4f)
   await query(`
     UPDATE secure_file_vault
     SET folder_path = 'Files / Perfiles'
@@ -9292,7 +9405,7 @@ async function consolidateInstitutionalFilesAndCalendars(syncRemoteDrive: boolea
     const cleanAv = normalizeAvatarDataUri(u.avatar);
     if (cleanAv && cleanAv.startsWith('data:image/')) {
       const checkV = await query(
-        "SELECT id, storage_name, folder_path FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1 LIMIT 1",
+        "SELECT id, file_id, storage_name, folder_path FROM secure_file_vault WHERE (entity_type = 'profile_avatar' OR entity_type = 'avatar_perfil') AND entity_id = $1 LIMIT 1",
         [u.id]
       ).catch(() => ({ rows: [] as any[] }));
       if (checkV.rows.length === 0) {
@@ -9318,12 +9431,11 @@ async function consolidateInstitutionalFilesAndCalendars(syncRemoteDrive: boolea
           approxSize,
           u.name || u.run || u.id
         ]).catch(() => {});
-        if (syncRemoteDrive) {
-          uploadEncodedAvatarToDriveBg(vaultId, avatarDriveCode, cleanAv).catch(() => {});
-        }
+        uploadEncodedAvatarToDriveBg(vaultId, avatarDriveCode, cleanAv).catch(() => {});
         avatarsConsolidated++;
       } else {
-        if (syncRemoteDrive) {
+        const existingFileId = String(checkV.rows[0].file_id || '');
+        if (syncRemoteDrive || !existingFileId.startsWith('http')) {
           uploadEncodedAvatarToDriveBg(checkV.rows[0].id, checkV.rows[0].storage_name, cleanAv).catch(() => {});
         }
         avatarsConsolidated++;
@@ -9331,39 +9443,71 @@ async function consolidateInstitutionalFilesAndCalendars(syncRemoteDrive: boolea
     }
   }
 
-  // 2. Consolidar todas las evaluaciones pedagógicas bajo las carpetas de la cuenta institucional
+  // 2. Consolidar todas las evaluaciones pedagógicas bajo las carpetas de la cuenta institucional y limpiar registros mal parseados
   const evalsRes = await query('SELECT * FROM pedagogical_evaluations ORDER BY evaluation_date DESC').catch(() => ({ rows: [] as any[] }));
   const existingEvalVaultRes = await query("SELECT entity_id FROM secure_file_vault WHERE entity_type = 'evaluacion_original'").catch(() => ({ rows: [] as any[] }));
   const existingEvalVaultIds = new Set((existingEvalVaultRes.rows || []).map((r: any) => r.entity_id));
 
   for (const ev of evalsRes.rows || []) {
-    const origFolder = buildEvaluationFolderPath(ev.course_name, ev.subject_name, false);
-    const pieFolder = buildEvaluationFolderPath(ev.course_name, ev.subject_name, true);
+    let realCourse = String(ev.course_name || 'Sin Curso').trim();
+    let realSubject = String(ev.subject_name || 'General').trim();
+    let realTitle = String(ev.evaluation_title || '').trim();
+    let extractedDriveLink: string | null = null;
+
+    // Si algún registro histórico tiene descripción de Google Calendar sin parsear en subject_name o evaluation_title, limpiarlo automáticamente
+    const rawCombined = `${realSubject} ${realTitle}`;
+    if (realCourse === 'Sin Curso' || rawCombined.includes('ID de Control:')) {
+      const courseMatch = rawCombined.match(/Curso\/Nivel:\s*(.+?)(?:\s+Enlace al Archivo:|\s+ID de Control:|$)/i);
+      const subjMatch = rawCombined.match(/Asignatura:\s*(.+?)(?:\s+Curso\/Nivel:|\s+Enlace al Archivo:|$)/i);
+      const linkMatch = rawCombined.match(/(https:\/\/drive\.google\.com\/[^\s]+)/i);
+      if (courseMatch && courseMatch[1]) realCourse = courseMatch[1].trim();
+      if (subjMatch && subjMatch[1]) {
+        realSubject = subjMatch[1].trim();
+        realTitle = `Evaluación de ${realSubject}`;
+      }
+      if (linkMatch && linkMatch[1]) extractedDriveLink = linkMatch[1].trim();
+    }
+
+    const origFolder = buildEvaluationFolderPath(realCourse, realSubject, false);
+    const pieFolder = buildEvaluationFolderPath(realCourse, realSubject, true);
     const storageCode = `EV_DOC_${ev.id}`;
     const internalDocUrl = `/api/drive/file/${storageCode}`;
     const currentOrigUrl = String(ev.original_file_url || '');
     const needsUrlUpgrade = currentOrigUrl.includes('13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3');
-    const finalOrigUrl = needsUrlUpgrade ? internalDocUrl : (ev.original_file_url || null);
+    const finalOrigUrl = extractedDriveLink || (needsUrlUpgrade ? internalDocUrl : (ev.original_file_url || null));
 
     if (
+      ev.course_name !== realCourse ||
+      ev.subject_name !== realSubject ||
+      ev.evaluation_title !== realTitle ||
       ev.original_folder_path !== origFolder ||
       ev.pie_folder_path !== pieFolder ||
       needsUrlUpgrade ||
+      extractedDriveLink ||
       ev.teacher_email !== DEFAULT_DRIVE_ACCOUNT_EMAIL
     ) {
       await query(`
         UPDATE pedagogical_evaluations
-        SET original_folder_path = $1,
-            pie_folder_path = $2,
-            original_file_url = $3,
-            teacher_email = $4
-        WHERE id = $5
-      `, [origFolder, pieFolder, finalOrigUrl, DEFAULT_DRIVE_ACCOUNT_EMAIL, ev.id]).catch(() => {});
+        SET course_name = $1,
+            subject_name = $2,
+            evaluation_title = $3,
+            original_folder_path = $4,
+            pie_folder_path = $5,
+            original_file_url = $6,
+            teacher_email = $7
+        WHERE id = $8
+      `, [realCourse, realSubject, realTitle, origFolder, pieFolder, finalOrigUrl, DEFAULT_DRIVE_ACCOUNT_EMAIL, ev.id]).catch(() => {});
+      ev.course_name = realCourse;
+      ev.subject_name = realSubject;
+      ev.evaluation_title = realTitle;
+      ev.original_folder_path = origFolder;
+      ev.pie_folder_path = pieFolder;
+      ev.original_file_url = finalOrigUrl;
     }
 
     if (finalOrigUrl && !existingEvalVaultIds.has(ev.id)) {
       const vaultId = `VLT-EV-${ev.id}`;
-      const docName = ev.original_file_name || `${ev.course_name} - ${ev.subject_name} - ${ev.evaluation_title || ev.id}.pdf`;
+      const docName = ev.original_file_name || `${realCourse} - ${realSubject} - ${realTitle || ev.id}.pdf`;
       await query(`
         INSERT INTO secure_file_vault (
           id, file_id, storage_name, original_name, entity_type, entity_id,
@@ -9374,12 +9518,12 @@ async function consolidateInstitutionalFilesAndCalendars(syncRemoteDrive: boolea
           file_url = EXCLUDED.file_url
       `, [
         vaultId,
-        storageCode,
+        finalOrigUrl.startsWith('http') ? finalOrigUrl : storageCode,
         storageCode,
         docName,
         ev.id,
         origFolder,
-        internalDocUrl,
+        finalOrigUrl,
         ev.teacher_name || DEFAULT_DRIVE_ACCOUNT_EMAIL
       ]).catch(() => {});
       existingEvalVaultIds.add(ev.id);
@@ -9441,11 +9585,13 @@ async function consolidateInstitutionalFilesAndCalendars(syncRemoteDrive: boolea
   const masterBackupJson = JSON.stringify({
     accountEmail: DEFAULT_DRIVE_ACCOUNT_EMAIL,
     consolidatedAt: new Date().toISOString(),
+    routesLocked: true,
+    webhookUrl: `https://script.google.com/macros/s/${DEFAULT_EVAL_SCRIPT_ID}/exec`,
     folders: {
-      profiles: 'Files / Perfiles',
-      originals: 'Evaluaciones Originales / [Curso] / [Asignatura]',
-      pie: 'Evaluaciones PIE Aparte / [Curso] / [Asignatura]',
-      calendars: 'Calendarios y Archivos / Cuenta Institucional'
+      profiles: { name: 'Files / Perfiles', driveFolderId: DEFAULT_PROFILES_FOLDER_ID, driveUrl: `https://drive.google.com/drive/folders/${DEFAULT_PROFILES_FOLDER_ID}` },
+      originals: { name: 'Evaluaciones Originales / [Curso] / [Asignatura]', driveFolderId: '13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3', driveUrl: 'https://drive.google.com/drive/folders/13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3' },
+      pie: { name: 'Evaluaciones PIE Aparte / [Curso] / [Asignatura]', driveFolderId: '1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED', driveUrl: 'https://drive.google.com/drive/folders/1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED' },
+      calendars: { name: 'Calendarios y Archivos / Cuenta Institucional', driveFolderId: DEFAULT_CALENDARS_FOLDER_ID, driveUrl: `https://drive.google.com/drive/folders/${DEFAULT_CALENDARS_FOLDER_ID}` }
     },
     totals: {
       evaluations: (evalsRes.rows || []).length,
@@ -9502,23 +9648,6 @@ async function consolidateInstitutionalFilesAndCalendars(syncRemoteDrive: boolea
       Buffer.byteLength(sf.content, 'utf-8'),
       DEFAULT_DRIVE_ACCOUNT_EMAIL
     ]).catch(() => {});
-
-    if (syncRemoteDrive) {
-      uploadToGoogleEvalScript3Step('registrarEvaluacion', [
-        { key: 'cursoDocente', value: 'Calendarios y Archivos' },
-        { key: 'asignaturaDocente', value: 'Cuenta Institucional' },
-        { key: 'fechaEval', value: '2099-12-31' },
-        { key: 'tipo', value: sf.originalName },
-        { key: 'archivo', value: { buffer: Buffer.from(sf.content, 'utf-8'), filename: `[Calendarios]_${sf.storageName}`, mimeType: sf.mimeType } }
-      ]).then(async up => {
-        if (up.ok && up.result?.exito) {
-          const m = String(up.result.mensaje || '').match(/ID:\s*(EV-\d+)/);
-          if (m && m[1]) {
-            await callGoogleEvalScriptRpc('eliminarEvaluacion', [m[1]]).catch(() => {});
-          }
-        }
-      }).catch(() => {});
-    }
     calendarsConsolidated++;
   }
 
@@ -9620,6 +9749,7 @@ router.get('/drive/folders', authMiddleware, async (_req: Request, res: Response
         uploadedBy: v.uploaded_by,
         fileUrl: v.file_url || `/api/drive/file/${v.storage_name}`,
         driveFileId: v.file_id && String(v.file_id).startsWith('http') ? v.file_id : null,
+        driveFolderUrl: `https://drive.google.com/drive/folders/${DEFAULT_PROFILES_FOLDER_ID}`,
         folderPath: 'Files / Perfiles',
         createdAt: v.created_at
       }));
@@ -9639,27 +9769,33 @@ router.get('/drive/folders', authMiddleware, async (_req: Request, res: Response
 
     res.json({
       success: true,
+      routesLocked: true,
+      webhookUrl: `https://script.google.com/macros/s/${DEFAULT_EVAL_SCRIPT_ID}/exec`,
       account: DEFAULT_DRIVE_ACCOUNT_EMAIL,
       rootFolders: {
         originals: {
-          name: 'Evaluaciones Originales',
+          name: 'Evaluaciones Originales (Planificaciones y Pruebas)',
           driveFolderId: '13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3',
           driveUrl: 'https://drive.google.com/drive/folders/13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3',
           courses: originalsByCourse
         },
         pie: {
-          name: 'Evaluaciones PIE Aparte',
+          name: 'Evaluaciones PIE Aparte (Adecuaciones)',
           driveFolderId: '1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED',
           driveUrl: 'https://drive.google.com/drive/folders/1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED',
           courses: pieByCourse
         },
         profiles: {
           name: 'Files / Perfiles',
+          driveFolderId: DEFAULT_PROFILES_FOLDER_ID,
+          driveUrl: `https://drive.google.com/drive/folders/${DEFAULT_PROFILES_FOLDER_ID}`,
           description: 'Imágenes de perfil de los usuarios almacenadas en la carpeta Files / Perfiles con nombre aleatorio y codificación interna',
           encodedFiles: encodedAvatars
         },
         calendars: {
           name: 'Calendarios y Archivos Institucionales',
+          driveFolderId: DEFAULT_CALENDARS_FOLDER_ID,
+          driveUrl: `https://drive.google.com/drive/folders/${DEFAULT_CALENDARS_FOLDER_ID}`,
           description: `Calendarios (.ics) de Evaluaciones, Uso Sala de Computación y Respaldo Maestro traspasados a ${DEFAULT_DRIVE_ACCOUNT_EMAIL}`,
           files: calendarFiles
         }

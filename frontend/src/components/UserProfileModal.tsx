@@ -131,6 +131,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose, ini
     allowedToCustomize ? normalizeAvatarUrl(user?.avatar) : null
   );
   const [avatarDriveCode, setAvatarDriveCode] = useState<string | null>(null);
+  const [avatarDriveUrl, setAvatarDriveUrl] = useState<string | null>(null);
+  const [avatarDriveFolderUrl, setAvatarDriveFolderUrl] = useState<string>(
+    'https://drive.google.com/drive/folders/1N1U5hpf6Q92aZy6ajO6tSB3wMKgyEJ4f'
+  );
 
   // Estado de colores de la plataforma
   const [themeDraft, setThemeDraft] = useState<Required<UserThemeConfig>>(() => ({
@@ -155,6 +159,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose, ini
       .then(d => {
         if (d?.vault?.storage_name) {
           setAvatarDriveCode(d.vault.storage_name);
+        }
+        if (d?.vault?.driveFileUrl) {
+          setAvatarDriveUrl(d.vault.driveFileUrl);
+        }
+        if (d?.driveFolderUrl) {
+          setAvatarDriveFolderUrl(d.driveFolderUrl);
         }
       })
       .catch(() => {});
@@ -737,13 +747,44 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose, ini
                           <Camera size={16} color={themeDraft.primaryColor} /> Cambiar imagen de perfil
                         </div>
                         <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.2rem' }}>
-                          Sube una foto desde tu computador. Se ajustará a formato circular/cuadrado y se almacenará en la carpeta <strong>Files / Perfiles</strong> de la cuenta institucional con un nombre aleatorio codificado.
+                          Sube una foto desde tu computador. Se ajustará a formato circular/cuadrado y se almacenará de forma permanente en <strong>Google Drive Institucional (ltp.campanario@eduvallediguillin.gob.cl)</strong> y en la bóveda cifrada de Supabase con un nombre aleatorio codificado.
                         </div>
-                        {avatarDraft && (
-                          <div style={{ marginTop: '0.35rem', display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#eef2ff', color: '#3730a3', border: '1px solid #c7d2fe', padding: '0.18rem 0.55rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace' }}>
-                            <Lock size={12} /> Files / Perfiles: {avatarDriveCode || 'AVT_AUTO_HASH.jpg'}
-                          </div>
-                        )}
+                        <div style={{ marginTop: '0.45rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem' }}>
+                          {avatarDraft && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#eef2ff', color: '#3730a3', border: '1px solid #c7d2fe', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace' }}>
+                              <Lock size={12} /> Files / Perfiles: {avatarDriveCode || 'AVT_AUTO_HASH.jpg'}
+                            </span>
+                          )}
+                          <a
+                            href={avatarDriveFolderUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, textDecoration: 'none' }}
+                            title="Abrir carpeta fija Files - Perfiles en Google Drive"
+                          >
+                            📁 Carpeta Perfiles en Drive (Fija)
+                          </a>
+                          {avatarDriveUrl && (
+                            <a
+                              href={avatarDriveUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, textDecoration: 'none' }}
+                              title="Ver imagen directamente en Google Drive"
+                            >
+                              🖼️ Ver Imagen en Drive
+                            </a>
+                          )}
+                          <a
+                            href="https://drive.google.com/drive/folders/13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3"
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, textDecoration: 'none' }}
+                            title="Abrir carpeta fija de Planificaciones y Evaluaciones Originales (Curso -> Asignatura) en Google Drive"
+                          >
+                            📚 Carpeta Planificaciones/Evaluaciones Drive
+                          </a>
+                        </div>
                       </div>
                     </div>
 
