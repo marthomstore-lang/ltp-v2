@@ -16,10 +16,23 @@ export const AccessibilityAssistant: React.FC = () => {
   const elementsRef = useRef<HTMLElement[]>([]);
   const speechTimeoutRef = useRef<number | null>(null);
   const modalSpeechStartedRef = useRef<boolean>(false);
+  const welcomeAudioRef = useRef<HTMLAudioElement | null>(null);
   const yesBtnRef = useRef<HTMLButtonElement | null>(null);
   const noBtnRef = useRef<HTMLButtonElement | null>(null);
   const lastAnnouncedSwalRef = useRef<string>('');
   const prevAuthRef = useRef<boolean>(isAuthenticated);
+
+  // Detener el audio pregrabado de bienvenida cuando el usuario interactúa o cierra el modal
+  const stopWelcomeAudio = useCallback(() => {
+    if (welcomeAudioRef.current) {
+      try {
+        welcomeAudioRef.current.pause();
+        welcomeAudioRef.current.currentTime = 0;
+      } catch {
+        // Ignorar
+      }
+    }
+  }, []);
 
   // Seleccionar la mejor voz en español disponible en el sistema operativo / navegador
   const getPreferredSpanishVoice = useCallback((): SpeechSynthesisVoice | null => {
@@ -35,10 +48,18 @@ export const AccessibilityAssistant: React.FC = () => {
     return voices[0] || null;
   }, []);
 
-  // SÍNTESIS DE VOZ EN ESPAÑOL (con corrección del bug de cancel() síncrono en Chromium)
+  // SÍNTESIS DE VOZ EN ESPAÑOL
   const speakText = useCallback(
-    (text: string, onStartCallback?: () => void) => {
+    (
+      text: string,
+      options?: {
+        onStart?: () => void;
+        onError?: (e: SpeechSynthesisErrorEvent) => void;
+        skipCancelIfIdle?: boolean;
+      }
+    ) => {
       if (!text) return;
+      stopWelcomeAudio();
       setCurrentCaption(text);
 
       if (!('speechSynthesis' in window)) return;
@@ -63,9 +84,15 @@ export const AccessibilityAssistant: React.FC = () => {
           utterance.pitch = 1.0;
           utterance.volume = 1.0;
 
-          if (onStartCallback) {
+          if (options?.onStart) {
             utterance.onstart = () => {
-              onStartCallback();
+              options.onStart?.();
+            };
+          }
+
+          if (options?.onError) {
+            utterance.onerror = e => {
+              options.onError?.(e);
             };
           }
 
@@ -75,14 +102,14 @@ export const AccessibilityAssistant: React.FC = () => {
         }
       };
 
-      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      if (!options?.skipCancelIfIdle && window.speechSynthesis.speaking) {
         window.speechSynthesis.cancel();
-        speechTimeoutRef.current = window.setTimeout(executeSpeak, 65);
+        speechTimeoutRef.current = window.setTimeout(executeSpeak, 30);
       } else {
         executeSpeak();
       }
     },
-    [getPreferredSpanishVoice]
+    [getPreferredSpanishVoice, stopWelcomeAudio]
   );
 
   // Mostrar la consulta de accesibilidad al iniciar o al cerrar sesión y volver al Login
@@ -93,71 +120,74 @@ export const AccessibilityAssistant: React.FC = () => {
     }
   }, [isAuthenticated, a11yEnabled]);
 
-  // Enfocar automáticamente el botón "Sí, activar (Enter)" y leer el modal en voz alta al abrirse
+  // Reproducir automáticamente el mensaje de voz al abrirse el modal inicial
   useEffect(() => {
     if (!showModal) {
       modalSpeechStartedRef.current = false;
+      stopWelcomeAudio();
       return;
     }
 
-    setTimeout(() => {
-      yesBtnRef.current?.focus();
+    let cancelled = false;
+
+    const focusTimer = window.setTimeout(() => {
+      if (!cancelled) {
+        yesBtnRef.current?.focus();
+      }
     }, 50);
 
-    const trySpeakModal = () => {
-      if (!showModal || modalSpeechStartedRef.current) return;
-      speakText(INITIAL_MODAL_SPEECH, () => {
-        modalSpeechStartedRef.current = true;
-      });
-    };
+    const playModalAudioAutomatically = async () => {
+      if (cancelled || !showModal || modalSpeechStartedRef.current) return;
 
-    // Intentos escalonados para cubrir la carga asíncrona de voces del navegador
-    const t1 = window.setTimeout(trySpeakModal, 80);
-    const t2 = window.setTimeout(trySpeakModal, 450);
-    const t3 = window.setTimeout(trySpeakModal, 1100);
+      // 1. Intentar reproducir el archivo de audio HTML5 (/a11y-welcome.wav),
+      // ya que los navegadores Chromium permiten autoplay en <audio> al abrir o recargar la página
+      // mientras que bloquean speechSynthesis.speak() si no hay pulsación previa de tecla.
+      if (welcomeAudioRef.current) {
+        try {
+          welcomeAudioRef.current.volume = 1.0;
+          welcomeAudioRef.current.currentTime = 0;
+          await welcomeAudioRef.current.play();
+          modalSpeechStartedRef.current = true;
+          return;
+        } catch {
+          // Si el navegador aún requiere interacción, intentar con speechSynthesis o esperar primer gesto
+        }
+      }
 
-    const handleVoicesChanged = () => {
-      if (!modalSpeechStartedRef.current && showModal) {
-        trySpeakModal();
+      // 2. Respaldo con Web Speech API
+      if ('speechSynthesis' in window && !window.speechSynthesis.speaking) {
+        speakText(INITIAL_MODAL_SPEECH, {
+          skipCancelIfIdle: true,
+          onStart: () => {
+            modalSpeechStartedRef.current = true;
+          }
+        });
       }
     };
 
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.addEventListener('voiceschanged', handleVoicesChanged);
-    }
+    const startTimer = window.setTimeout(playModalAudioAutomatically, 60);
 
-    // Si el navegador bloquea el audio sin gesto previo (política Autoplay),
-    // reproducir inmediatamente al primer movimiento, foco, clic o tecla.
-    const unlockSpeechOnInteraction = () => {
-      if (showModal && !modalSpeechStartedRef.current) {
-        trySpeakModal();
+    // Si el navegador bloqueó el autoplay hasta el primer gesto, reproducir apenas el usuario haga clic o toque
+    const handleFirstGesture = () => {
+      if (!cancelled && showModal && !modalSpeechStartedRef.current) {
+        playModalAudioAutomatically();
       }
     };
 
-    window.addEventListener('pointerdown', unlockSpeechOnInteraction);
-    window.addEventListener('pointermove', unlockSpeechOnInteraction, { once: true });
-    window.addEventListener('mousemove', unlockSpeechOnInteraction, { once: true });
-    window.addEventListener('touchstart', unlockSpeechOnInteraction, { once: true });
-    window.addEventListener('focus', unlockSpeechOnInteraction);
+    window.addEventListener('pointerdown', handleFirstGesture);
+    window.addEventListener('touchstart', handleFirstGesture);
 
     return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-      window.clearTimeout(t3);
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged);
-      }
-      window.removeEventListener('pointerdown', unlockSpeechOnInteraction);
-      window.removeEventListener('pointermove', unlockSpeechOnInteraction);
-      window.removeEventListener('mousemove', unlockSpeechOnInteraction);
-      window.removeEventListener('touchstart', unlockSpeechOnInteraction);
-      window.removeEventListener('focus', unlockSpeechOnInteraction);
+      cancelled = true;
+      window.clearTimeout(focusTimer);
+      window.clearTimeout(startTimer);
+      window.removeEventListener('pointerdown', handleFirstGesture);
+      window.removeEventListener('touchstart', handleFirstGesture);
     };
-  }, [showModal, speakText]);
+  }, [showModal, speakText, stopWelcomeAudio]);
 
   // RECOLECTAR TODOS LOS ELEMENTOS NAVEGABLES E INFORMATIVOS DE LA PANTALLA ACTUAL
   const getNavigableElements = useCallback((): HTMLElement[] => {
-    // Si hay un modal activo (ej. SweetAlert2 o Selección de Perfil Multi-Rol), navegar dentro de ese modal
     const swalPopup = document.querySelector<HTMLElement>('.swal2-popup');
     const customModal = document.querySelector<HTMLElement>('.a11y-active-modal, [role="dialog"][aria-modal="true"]');
 
@@ -197,7 +227,6 @@ export const AccessibilityAssistant: React.FC = () => {
       return true;
     });
 
-    // Evitar duplicar contenedores padres e hijos que tengan exactamente el mismo texto
     return visibleList.filter((el, idx) => {
       const tag = el.tagName.toLowerCase();
       if (['h1', 'h2', 'h3'].includes(tag)) {
@@ -295,7 +324,6 @@ export const AccessibilityAssistant: React.FC = () => {
     (el: HTMLElement, prefixText?: string) => {
       if (!el) return;
 
-      // Asegurar que elementos div/tr/h2 puedan recibir foco real de teclado
       const tagName = el.tagName.toLowerCase();
       if (!['input', 'select', 'textarea', 'button', 'a'].includes(tagName) && !el.hasAttribute('tabindex')) {
         el.setAttribute('tabindex', '0');
@@ -316,6 +344,7 @@ export const AccessibilityAssistant: React.FC = () => {
 
   // ACTIVAR ASISTENTE DE VOZ Y ENFOCAR EL PRIMER ELEMENTO INTERACTIVO
   const activateA11y = useCallback(() => {
+    stopWelcomeAudio();
     setA11yEnabled(true);
     setShowModal(false);
     sessionStorage.setItem('ltp_a11y_prompt_shown', 'true');
@@ -325,7 +354,6 @@ export const AccessibilityAssistant: React.FC = () => {
       const navList = getNavigableElements();
       elementsRef.current = navList;
 
-      // Priorizar el campo RUT en el Login o el primer control interactivo
       const firstInputIdx = navList.findIndex(el => el.tagName.toLowerCase() === 'input');
       const targetIdx = firstInputIdx >= 0 ? firstInputIdx : navList.length > 0 ? 0 : -1;
       currentIndexRef.current = targetIdx;
@@ -339,9 +367,10 @@ export const AccessibilityAssistant: React.FC = () => {
         speakText(welcomePrefix);
       }
     }, 120);
-  }, [announceElement, getNavigableElements, speakText]);
+  }, [announceElement, getNavigableElements, speakText, stopWelcomeAudio]);
 
   const deactivateA11y = useCallback(() => {
+    stopWelcomeAudio();
     setA11yEnabled(false);
     setShowModal(false);
     sessionStorage.setItem('ltp_a11y_prompt_shown', 'true');
@@ -349,7 +378,7 @@ export const AccessibilityAssistant: React.FC = () => {
     document.querySelectorAll('.a11y-focused-ring').forEach(item => item.classList.remove('a11y-focused-ring'));
     setCurrentCaption('');
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-  }, []);
+  }, [stopWelcomeAudio]);
 
   // CONTROLADOR DE TECLADO CUANDO EL MODAL INICIAL ESTÁ ABIERTO
   useEffect(() => {
@@ -377,40 +406,46 @@ export const AccessibilityAssistant: React.FC = () => {
       if (['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Tab'].includes(e.key)) {
         e.preventDefault();
         e.stopPropagation();
+        stopWelcomeAudio();
         const nextBtn = modalSelectedBtn === 'yes' ? 'no' : 'yes';
         setModalSelectedBtn(nextBtn);
         if (nextBtn === 'yes') {
           yesBtnRef.current?.focus();
           speakText(
             `${!modalSpeechStartedRef.current ? INITIAL_MODAL_SPEECH + ' ' : ''}Opción seleccionada: Sí, activar asistente de voz. Presione Enter para confirmar.`,
-            () => {
-              modalSpeechStartedRef.current = true;
+            {
+              onStart: () => {
+                modalSpeechStartedRef.current = true;
+              }
             }
           );
         } else {
           noBtnRef.current?.focus();
           speakText(
             `${!modalSpeechStartedRef.current ? INITIAL_MODAL_SPEECH + ' ' : ''}Opción seleccionada: No, gracias. Presione Enter o Escape para continuar sin asistencia.`,
-            () => {
-              modalSpeechStartedRef.current = true;
+            {
+              onStart: () => {
+                modalSpeechStartedRef.current = true;
+              }
             }
           );
         }
         return;
       }
 
-      // Cualquier otra tecla (ej. Espacio) lee inmediatamente las instrucciones del modal
       if (e.key === ' ' || !modalSpeechStartedRef.current) {
         if (e.key === ' ') e.preventDefault();
-        speakText(INITIAL_MODAL_SPEECH, () => {
-          modalSpeechStartedRef.current = true;
+        speakText(INITIAL_MODAL_SPEECH, {
+          onStart: () => {
+            modalSpeechStartedRef.current = true;
+          }
         });
       }
     };
 
     window.addEventListener('keydown', handleModalKeyDown, true);
     return () => window.removeEventListener('keydown', handleModalKeyDown, true);
-  }, [showModal, modalSelectedBtn, activateA11y, deactivateA11y, speakText]);
+  }, [showModal, modalSelectedBtn, activateA11y, deactivateA11y, speakText, stopWelcomeAudio]);
 
   // CONTROLADOR GLOBAL DE NAVEGACIÓN POR TECLAS DE DIRECCIÓN, ENTER Y LECTURA DE ESCRITURA
   useEffect(() => {
@@ -439,7 +474,6 @@ export const AccessibilityAssistant: React.FC = () => {
         e.stopPropagation();
         elementsRef.current = navList;
 
-        // Sincronizar índice con el elemento actualmente enfocado si existe
         const focusedIdx = activeEl ? navList.indexOf(activeEl) : -1;
         const baseIdx = focusedIdx >= 0 ? focusedIdx : currentIndexRef.current;
 
@@ -466,7 +500,6 @@ export const AccessibilityAssistant: React.FC = () => {
 
         const tag = targetEl.tagName.toLowerCase();
 
-        // Si está en un campo input (ej. RUT o Contraseña en Login)
         if (tag === 'input') {
           const inputEl = targetEl as HTMLInputElement;
           const form = inputEl.closest('form');
@@ -474,7 +507,6 @@ export const AccessibilityAssistant: React.FC = () => {
             e.preventDefault();
             const inputs = Array.from(form.querySelectorAll<HTMLInputElement>('input:not([type="hidden"])'));
             const idx = inputs.indexOf(inputEl);
-            // Si está en el RUT y falta la contraseña, pasar automáticamente al campo contraseña
             if (idx === 0 && inputs.length > 1 && !inputs[1].value) {
               const navList = getNavigableElements();
               const nextNavIdx = navList.indexOf(inputs[1]);
@@ -482,7 +514,6 @@ export const AccessibilityAssistant: React.FC = () => {
               announceElement(inputs[1]);
               return;
             }
-            // Enviar el formulario de inicio de sesión
             speakText('Iniciando sesión, por favor espere.');
             const submitBtn = form.querySelector<HTMLButtonElement>('button[type="submit"]');
             if (submitBtn) {
@@ -494,13 +525,11 @@ export const AccessibilityAssistant: React.FC = () => {
           }
         }
 
-        // Si es un elemento de menú lateral (.nav-item), tarjeta (.stat-card), botón o fila interactiva
         if (tag !== 'button' && tag !== 'a' && tag !== 'input') {
           e.preventDefault();
           targetEl.click();
         }
 
-        // Después de activar un botón o menú, anunciar la nueva vista cargada
         setTimeout(() => {
           const updatedList = getNavigableElements();
           elementsRef.current = updatedList;
@@ -575,7 +604,6 @@ export const AccessibilityAssistant: React.FC = () => {
     if (!a11yEnabled) return;
 
     const observer = new MutationObserver(() => {
-      // 1. Detectar alertas o avisos SweetAlert2 (.swal2-popup)
       const swalPopup = document.querySelector<HTMLElement>('.swal2-popup');
       if (swalPopup && swalPopup.offsetParent !== null) {
         const title = document.querySelector('#swal2-title')?.textContent?.trim() || '';
@@ -593,7 +621,6 @@ export const AccessibilityAssistant: React.FC = () => {
         lastAnnouncedSwalRef.current = '';
       }
 
-      // 2. Detectar modal de selección de perfil multi-rol en Login
       const multiRoleModal = document.querySelector<HTMLElement>('.a11y-active-modal');
       if (multiRoleModal && multiRoleModal.dataset.a11yAnnounced !== 'true') {
         multiRoleModal.dataset.a11yAnnounced = 'true';
@@ -642,8 +669,10 @@ export const AccessibilityAssistant: React.FC = () => {
           aria-describedby="a11y-modal-desc"
           onClick={() => {
             if (!modalSpeechStartedRef.current) {
-              speakText(INITIAL_MODAL_SPEECH, () => {
-                modalSpeechStartedRef.current = true;
+              speakText(INITIAL_MODAL_SPEECH, {
+                onStart: () => {
+                  modalSpeechStartedRef.current = true;
+                }
               });
             }
           }}
@@ -661,6 +690,18 @@ export const AccessibilityAssistant: React.FC = () => {
             padding: '1rem'
           }}
         >
+          {/* AUDIO DE BIENVENIDA CON AUTOPLAY NATIVO PARA SALTAR EL BLOQUEO INICIAL DE SPEECHSYNTHESIS EN CHROMIUM */}
+          <audio
+            ref={welcomeAudioRef}
+            src="/a11y-welcome.wav"
+            autoPlay
+            preload="auto"
+            onPlay={() => {
+              modalSpeechStartedRef.current = true;
+            }}
+            style={{ display: 'none' }}
+          />
+
           <div
             style={{
               background: '#ffffff',
@@ -693,8 +734,10 @@ export const AccessibilityAssistant: React.FC = () => {
               type="button"
               onClick={e => {
                 e.stopPropagation();
-                speakText(INITIAL_MODAL_SPEECH, () => {
-                  modalSpeechStartedRef.current = true;
+                speakText(INITIAL_MODAL_SPEECH, {
+                  onStart: () => {
+                    modalSpeechStartedRef.current = true;
+                  }
                 });
               }}
               style={{
