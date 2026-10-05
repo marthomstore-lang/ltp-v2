@@ -6,13 +6,16 @@
  * Cumplimiento Ley 21.096 / 19.628, Ley 21.430 y Ley Karin
  * =========================================================================
  *
- * ESTRUCTURA AUTOMÁTICA DE CARPETAS EN "MI UNIDAD" DE ltp.campanario:
- * ├── 📁 Files - Perfiles           (fotos de perfil codificadas)
- * ├── 📁 Evaluaciones Originales    (ID: 13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3)
- * │    └── 📁 [Curso] → 📁 [Asignatura] → 📄 Instrumento
- * ├── 📁 Evaluaciones PIE Aparte    (ID: 1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED)
+ * ESTRUCTURA AUTOMÁTICA DE CARPETAS DENTRO DE LA CARPETA MAESTRA (ID: 1KfDCGyuM4oGPsr5KeUFWaW6U-1FnJlJJ):
+ * ├── 📁 Evaluaciones Originales         (ID: 1aDa7NJRpNvZpZstzjs4uVJYxCWBOolRO)
+ * │    └── 📁 [Curso] → 📁 [Asignatura] → 📄 Instrumento / Planificación
+ * ├── 📁 Evaluaciones PIE Aparte         (ID: 1jlMg2sJUUFlabfHmA19-yKS0PEjn0cTU)
  * │    └── 📁 [Curso] → 📁 [Asignatura] → 📄 Adecuación PIE
- * └── 📁 Calendarios Institucionales
+ * ├── 📁 Files - Perfiles                (ID: 1Rz6EUbKV0Y9MjHH9Z8JF8Nl6iqh9mY3M)
+ * ├── 📁 Calendarios Institucionales     (ID: 1fj8WZZzOjzpPQE98mBYFsLuAMUh_cDMO)
+ * ├── 📁 Informes de Personalidad y Hogar (ID: 1fGCRgIwvBc2QEUfhg62_Bu0V8l1omjjt)
+ * ├── 📁 Salidas Pedagogicas             (ID: 1rg593Kjly91oyHQ9YwUPIvV3YHQqouXZ)
+ * └── 📁 Expedientes y Documentos LTP    (ID: 1pNzZssbwkTC6CfK_uhwDqjBLZNqbz8VK)
  *
  * CALENDARIOS CONECTADOS:
  * - Uso Sala de Computación : c_19d0bf8733f11c48ab179877049714b6a4c2bec9ee54190075af32f2384aa4fc@group.calendar.google.com
@@ -29,11 +32,17 @@
  */
 
 // =========================================================================
-// CONFIGURACIÓN GLOBAL
+// CONFIGURACIÓN GLOBAL (CARPETA MAESTRA ÚNICA: 1KfDCGyuM4oGPsr5KeUFWaW6U-1FnJlJJ)
 // =========================================================================
-var SECURITY_AUTH_TOKEN       = "LTP_SEC_2026_LEGAL_VAULT_KEY";
-var DEFAULT_ORIGINALS_FOLDER_ID = "13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3";
-var DEFAULT_PIE_FOLDER_ID       = "1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED";
+var SECURITY_AUTH_TOKEN         = "LTP_SEC_2026_LEGAL_VAULT_KEY";
+var MASTER_ROOT_FOLDER_ID       = "1KfDCGyuM4oGPsr5KeUFWaW6U-1FnJlJJ";
+var DEFAULT_ORIGINALS_FOLDER_ID = "1aDa7NJRpNvZpZstzjs4uVJYxCWBOolRO";
+var DEFAULT_PIE_FOLDER_ID       = "1jlMg2sJUUFlabfHmA19-yKS0PEjn0cTU";
+var DEFAULT_PROFILES_FOLDER_ID  = "1Rz6EUbKV0Y9MjHH9Z8JF8Nl6iqh9mY3M";
+var DEFAULT_CALENDARS_FOLDER_ID = "1fj8WZZzOjzpPQE98mBYFsLuAMUh_cDMO";
+var DEFAULT_REPORTS_FOLDER_ID   = "1fGCRgIwvBc2QEUfhg62_Bu0V8l1omjjt";
+var DEFAULT_TRIPS_FOLDER_ID     = "1rg593Kjly91oyHQ9YwUPIvV3YHQqouXZ";
+var DEFAULT_VAULT_FOLDER_ID     = "1pNzZssbwkTC6CfK_uhwDqjBLZNqbz8VK";
 
 // Calendarios institucionales
 var CAL_SALA_COMPUTACION_ID = "c_19d0bf8733f11c48ab179877049714b6a4c2bec9ee54190075af32f2384aa4fc@group.calendar.google.com";
@@ -185,7 +194,7 @@ function doPost(e) {
     // 3. SUBIR FOTO DE PERFIL CODIFICADA (nombre aleatorio anónimo)
     // ------------------------------------------------------------------
     if (action === "upload_profile_avatar") {
-      var avatarsRoot    = getRootFolderByIdOrName(data.profilesFolderId || "", "Files - Perfiles");
+      var avatarsRoot    = getRootFolderByIdOrName(data.profilesFolderId || DEFAULT_PROFILES_FOLDER_ID, "Files - Perfiles");
       var randomFileName = data.storageFileName || ("AVT_" + Utilities.getUuid().replace(/-/g, "") + ".jpg");
       var avatarBytes    = Utilities.base64Decode(data.base64);
       var avatarBlob     = Utilities.newBlob(avatarBytes, data.mimeType || "image/jpeg", randomFileName);
@@ -206,7 +215,7 @@ function doPost(e) {
       var rootFolderName  = data.rootFolderName || "LTP_EXPEDIENTES_CIFRADOS_2026";
       var subFolderName   = data.secureFolder   || ("SEC_DIR_" + Utilities.getUuid().substring(0, 8).toUpperCase());
       var storageFileName = data.storageFileName || ("ENC_DOC_" + Utilities.getUuid().replace(/-/g, "") + ".dat");
-      var vaultRoot       = getRootFolderByIdOrName(data.rootFolderId || "", rootFolderName);
+      var vaultRoot       = getRootFolderByIdOrName(data.rootFolderId || MASTER_ROOT_FOLDER_ID, rootFolderName);
       var targetFolder    = getOrCreateSubFolder(vaultRoot, subFolderName);
       if (data.nestedSubFolder) targetFolder = getOrCreateSubFolder(targetFolder, data.nestedSubFolder);
       var bytes     = Utilities.base64Decode(data.base64);
@@ -261,30 +270,29 @@ function doPost(e) {
     }
 
     // ------------------------------------------------------------------
-    // 7. CREAR ESTRUCTURA COMPLETA DE CARPETAS INSTITUCIONALES
+    // 7. CREAR ESTRUCTURA COMPLETA DE CARPETAS INSTITUCIONALES DENTRO DE MASTER_ROOT_FOLDER_ID
     // ------------------------------------------------------------------
     if (action === "create_folders") {
-      var root        = DriveApp.getRootFolder();
-
-      // Files - Perfiles
-      var perfilesFolder = getOrCreateSubFolder(root, "Files - Perfiles");
-
-      // Evaluaciones Originales (intentar con ID primero)
-      var originalesFolder = getRootFolderByIdOrName(DEFAULT_ORIGINALS_FOLDER_ID, "Evaluaciones Originales");
-
-      // Evaluaciones PIE Aparte
-      var pieFolder = getRootFolderByIdOrName(DEFAULT_PIE_FOLDER_ID, "Evaluaciones PIE Aparte");
-
-      // Calendarios Institucionales (carpeta informativa)
-      var calsFolder = getOrCreateSubFolder(root, "Calendarios Institucionales");
+      var root             = getRootFolderByIdOrName(MASTER_ROOT_FOLDER_ID, "LTP_MASTER_ROOT_2026");
+      var originalesFolder = getOrCreateSubFolder(root, "Evaluaciones Originales");
+      var pieFolder        = getOrCreateSubFolder(root, "Evaluaciones PIE Aparte");
+      var perfilesFolder   = getOrCreateSubFolder(root, "Files - Perfiles");
+      var calsFolder       = getOrCreateSubFolder(root, "Calendarios Institucionales");
+      var informesFolder   = getOrCreateSubFolder(root, "Informes de Personalidad y Hogar");
+      var salidasFolder    = getOrCreateSubFolder(root, "Salidas Pedagogicas");
+      var expedientesFolder= getOrCreateSubFolder(root, "Expedientes y Documentos LTP");
 
       return _ok({
-        message:          "Estructura de carpetas verificada/creada correctamente",
+        message:          "Estructura de carpetas verificada/creada correctamente dentro de la carpeta maestra",
+        masterRootId:     root.getId(),
         folders: {
           perfiles:           { id: perfilesFolder.getId(),    name: perfilesFolder.getName() },
           evaluacionesOrig:   { id: originalesFolder.getId(),  name: originalesFolder.getName() },
           evaluacionesPie:    { id: pieFolder.getId(),         name: pieFolder.getName() },
-          calendarios:        { id: calsFolder.getId(),        name: calsFolder.getName() }
+          calendarios:        { id: calsFolder.getId(),        name: calsFolder.getName() },
+          informes:           { id: informesFolder.getId(),    name: informesFolder.getName() },
+          salidas:            { id: salidasFolder.getId(),     name: salidasFolder.getName() },
+          expedientes:        { id: expedientesFolder.getId(), name: expedientesFolder.getName() }
         }
       });
     }

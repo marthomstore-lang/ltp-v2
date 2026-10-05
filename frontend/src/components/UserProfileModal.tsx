@@ -133,7 +133,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose, ini
   const [avatarDriveCode, setAvatarDriveCode] = useState<string | null>(null);
   const [avatarDriveUrl, setAvatarDriveUrl] = useState<string | null>(null);
   const [avatarDriveFolderUrl, setAvatarDriveFolderUrl] = useState<string>(
-    'https://drive.google.com/drive/folders/1N1U5hpf6Q92aZy6ajO6tSB3wMKgyEJ4f'
+    'https://drive.google.com/drive/folders/1Rz6EUbKV0Y9MjHH9Z8JF8Nl6iqh9mY3M'
   );
 
   // Estado de colores de la plataforma
@@ -776,7 +776,16 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose, ini
                             </a>
                           )}
                           <a
-                            href="https://drive.google.com/drive/folders/13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3"
+                            href="https://drive.google.com/drive/folders/1KfDCGyuM4oGPsr5KeUFWaW6U-1FnJlJJ"
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800, textDecoration: 'none' }}
+                            title="Abrir Carpeta Maestra General donde se guardan todas las subcarpetas institucionales"
+                          >
+                            🗂️ Carpeta Maestra General Drive
+                          </a>
+                          <a
+                            href="https://drive.google.com/drive/folders/1aDa7NJRpNvZpZstzjs4uVJYxCWBOolRO"
                             target="_blank"
                             rel="noreferrer"
                             style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, textDecoration: 'none' }}

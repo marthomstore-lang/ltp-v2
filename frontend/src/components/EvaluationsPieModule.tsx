@@ -188,8 +188,8 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
 
   // Configuraciones de Integración Google Workspace (ltp.campanario@eduvallediguillin.gob.cl)
   const [calendarId, setCalendarId] = useState('c_9c0e390266d24cb3953c3a911df0e237820c32beed34ab89df4e336239008b06@group.calendar.google.com');
-  const [folderOriginalsId, setFolderOriginalsId] = useState('13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3');
-  const [folderPieId, setFolderPieId] = useState('1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED');
+  const [folderOriginalsId, setFolderOriginalsId] = useState('1aDa7NJRpNvZpZstzjs4uVJYxCWBOolRO');
+  const [folderPieId, setFolderPieId] = useState('1jlMg2sJUUFlabfHmA19-yKS0PEjn0cTU');
   const [driveAccountEmail, setDriveAccountEmail] = useState('ltp.campanario@eduvallediguillin.gob.cl');
   const [driveConnected, setDriveConnected] = useState(true);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -2159,12 +2159,20 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                 <RefreshCw size={13} /> {syncingGoogle ? 'Sincronizando archivos y calendarios...' : `Sincronizar Todo con ${driveAccountEmail}`}
               </button>
               <a
+                href="https://drive.google.com/drive/folders/1KfDCGyuM4oGPsr5KeUFWaW6U-1FnJlJJ"
+                target="_blank"
+                rel="noreferrer"
+                style={{ padding: '0.45rem 0.85rem', borderRadius: '8px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', fontSize: '0.78rem', fontWeight: 800, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+              >
+                🗂️ Abrir Carpeta Maestra General <ExternalLink size={13} />
+              </a>
+              <a
                 href={`https://drive.google.com/drive/folders/${folderOriginalsId}`}
                 target="_blank"
                 rel="noreferrer"
                 style={{ padding: '0.45rem 0.85rem', borderRadius: '8px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', fontSize: '0.78rem', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               >
-                📂 Abrir Planificaciones y Evaluaciones en Drive <ExternalLink size={13} />
+                📂 Abrir Planificaciones y Evaluaciones <ExternalLink size={13} />
               </a>
               <a
                 href={`https://drive.google.com/drive/folders/${folderPieId}`}
@@ -2172,15 +2180,15 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                 rel="noreferrer"
                 style={{ padding: '0.45rem 0.85rem', borderRadius: '8px', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', fontSize: '0.78rem', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               >
-                🧩 Abrir Evaluaciones PIE en Drive <ExternalLink size={13} />
+                🧩 Abrir Evaluaciones PIE <ExternalLink size={13} />
               </a>
               <a
-                href="https://drive.google.com/drive/folders/1N1U5hpf6Q92aZy6ajO6tSB3wMKgyEJ4f"
+                href="https://drive.google.com/drive/folders/1Rz6EUbKV0Y9MjHH9Z8JF8Nl6iqh9mY3M"
                 target="_blank"
                 rel="noreferrer"
                 style={{ padding: '0.45rem 0.85rem', borderRadius: '8px', background: '#eef2ff', color: '#3730a3', border: '1px solid #c7d2fe', fontSize: '0.78rem', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               >
-                🔒 Abrir Carpeta Perfiles en Drive <ExternalLink size={13} />
+                🔒 Abrir Carpeta Perfiles <ExternalLink size={13} />
               </a>
             </div>
           </div>
@@ -2188,13 +2196,17 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
           {/* Banner de Rutas y API Bloqueadas Permanentemente */}
           <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '0.85rem 1.1rem', marginBottom: '1.15rem', fontSize: '0.78rem', color: '#14532d' }}>
             <div style={{ fontWeight: 800, marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Lock size={14} color="#15803d" /> API Google Drive v2.1 Bloqueada y Registrada Permanentemente (Rutas Inmutables en Supabase + Google Workspace):
+              <Lock size={14} color="#15803d" /> Carpeta Maestra Única en Google Drive (<code>1KfDCGyuM4oGPsr5KeUFWaW6U-1FnJlJJ</code>) — Todas las subcarpetas bloqueadas e inmutables:
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.45rem', color: '#166534' }}>
-              <div>• <strong>Planificaciones / Pruebas:</strong> <code>13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3</code> (<code>[Curso] → [Asignatura]</code>)</div>
-              <div>• <strong>Evaluaciones PIE Aparte:</strong> <code>1JoE4n5kgVYoXQxqh6XlLLE78thRQlEED</code> (<code>[Curso] → [Asignatura]</code>)</div>
-              <div>• <strong>Files / Perfiles (Avatares):</strong> <code>1N1U5hpf6Q92aZy6ajO6tSB3wMKgyEJ4f</code> (<code>AVT_...jpg</code>)</div>
-              <div>• <strong>Calendarios Institucionales:</strong> <code>14WoWo0Afw064wYbuwp05pPWE2IwTIYzP</code></div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.45rem', color: '#166534' }}>
+              <div>• <strong>Carpeta Maestra Raíz:</strong> <code>1KfDCGyuM4oGPsr5KeUFWaW6U-1FnJlJJ</code></div>
+              <div>• <strong>Evaluaciones Originales:</strong> <code>1aDa7NJRpNvZpZstzjs4uVJYxCWBOolRO</code> (<code>[Curso] → [Asignatura]</code>)</div>
+              <div>• <strong>Evaluaciones PIE Aparte:</strong> <code>1jlMg2sJUUFlabfHmA19-yKS0PEjn0cTU</code> (<code>[Curso] → [Asignatura]</code>)</div>
+              <div>• <strong>Files - Perfiles (Avatares):</strong> <code>1Rz6EUbKV0Y9MjHH9Z8JF8Nl6iqh9mY3M</code> (<code>AVT_...jpg</code>)</div>
+              <div>• <strong>Calendarios Institucionales:</strong> <code>1fj8WZZzOjzpPQE98mBYFsLuAMUh_cDMO</code></div>
+              <div>• <strong>Informes Personalidad/Hogar:</strong> <code>1fGCRgIwvBc2QEUfhg62_Bu0V8l1omjjt</code></div>
+              <div>• <strong>Salidas Pedagógicas:</strong> <code>1rg593Kjly91oyHQ9YwUPIvV3YHQqouXZ</code></div>
+              <div>• <strong>Expedientes y Documentos LTP:</strong> <code>1pNzZssbwkTC6CfK_uhwDqjBLZNqbz8VK</code></div>
             </div>
           </div>
 
