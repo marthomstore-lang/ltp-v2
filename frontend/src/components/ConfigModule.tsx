@@ -1215,16 +1215,16 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
           );
         });
 
-        // Si el usuario editado es el usuario con sesión iniciada, sincronizar localStorage
+        // Si el usuario editado es el usuario con sesión iniciada, sincronizar sessionStorage
         try {
-          const savedSessionUser = localStorage.getItem('ltp_user');
+          const savedSessionUser = sessionStorage.getItem('ltp_user');
           if (savedSessionUser) {
             const parsedSession = JSON.parse(savedSessionUser);
             const cleanSessionRun = String(parsedSession.run || '').replace(/\./g, '').trim();
             const cleanTargetRun = String(targetUser.run || '').replace(/\./g, '').trim();
             if (parsedSession.id === targetUser.id || (cleanSessionRun && cleanSessionRun === cleanTargetRun)) {
               parsedSession.roles = rolesToSave;
-              localStorage.setItem('ltp_user', JSON.stringify(parsedSession));
+              sessionStorage.setItem('ltp_user', JSON.stringify(parsedSession));
             }
           }
         } catch (_) {}

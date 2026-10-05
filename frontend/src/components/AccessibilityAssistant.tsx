@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Volume2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export const AccessibilityAssistant: React.FC = () => {
-  const [showModal, setShowModal] = useState(false);
+  const { isAuthenticated } = useAuth();
+  const [showModal, setShowModal] = useState(true);
   const [a11yEnabled, setA11yEnabled] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const elementsRef = useRef<HTMLElement[]>([]);
+  const hasAnnouncedModalRef = useRef(false);
 
   // SÍNTESIS DE VOZ EN ESPAÑOL
   const speakText = (text: string) => {
@@ -17,6 +20,42 @@ export const AccessibilityAssistant: React.FC = () => {
     utterance.rate = 0.95;
     window.speechSynthesis.speak(utterance);
   };
+
+  // Mostrar la consulta de accesibilidad al iniciar o volver a la pantalla de inicio de sesión
+  useEffect(() => {
+    if (!isAuthenticated && !a11yEnabled && !sessionStorage.getItem('ltp_a11y_prompt_shown')) {
+      setShowModal(true);
+    }
+  }, [isAuthenticated, a11yEnabled]);
+
+  // Anunciar por voz la pregunta inicial cuando el modal está visible
+  useEffect(() => {
+    if (!showModal) {
+      hasAnnouncedModalRef.current = false;
+      return;
+    }
+
+    const promptMessage = 'Bienvenido a Liceo Pro. ¿Desea activar las funciones de asistencia por voz y navegación simplificada para personas con discapacidad visual? Presione la tecla Enter para activar, o la tecla Escape para continuar sin asistencia.';
+
+    const timer = setTimeout(() => {
+      speakText(promptMessage);
+      hasAnnouncedModalRef.current = true;
+    }, 350);
+
+    const handleFirstInteraction = () => {
+      if (showModal && 'speechSynthesis' in window && !window.speechSynthesis.speaking) {
+        speakText(promptMessage);
+      }
+      window.removeEventListener('pointerdown', handleFirstInteraction);
+    };
+
+    window.addEventListener('pointerdown', handleFirstInteraction, { once: true });
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('pointerdown', handleFirstInteraction);
+    };
+  }, [showModal]);
 
   // RECOLECTAR ELEMENTOS NAVEGABLES EN LA PANTALLA
   const getNavigableElements = (): HTMLElement[] => {

@@ -111,28 +111,22 @@ export const normalizeAvatarUrl = (avatar?: string | null): string | null => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Inicializar estado desde localStorage para persistir la sesión tras recargar la página (F5)
+  // Al abrir el enlace (local o en línea), iniciar siempre en la pantalla de Inicio de Sesión
+  // limpiando cualquier token o sesión residual almacenada previamente en el navegador.
   const [token, setToken] = useState<string | null>(() => {
     try {
-      return localStorage.getItem('ltp_token');
+      localStorage.removeItem('ltp_token');
+      localStorage.removeItem('ltp_user');
+      sessionStorage.removeItem('ltp_token');
+      sessionStorage.removeItem('ltp_user');
+      sessionStorage.removeItem('ltp_a11y_prompt_shown');
     } catch {
-      return null;
+      // Ignorar errores de almacenamiento
     }
+    return null;
   });
 
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem('ltp_user');
-      if (!saved) return null;
-      const parsed = JSON.parse(saved);
-      if (parsed && parsed.avatar) {
-        parsed.avatar = normalizeAvatarUrl(parsed.avatar);
-      }
-      return parsed;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState<User | null>(null);
 
   // Aplicar tema de apariencia dinámicamente según el usuario autenticado y su rol
   useEffect(() => {
@@ -143,14 +137,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     applyUserThemeToDocument(user.themeConfig || null, user.role);
   }, [user, token]);
 
-  // Sincronizar perfil (avatar y colores personalizados) desde Supabase al cargar sesión
+  // Sincronizar perfil (avatar y colores personalizados) desde Supabase al cargar sesión activa
   useEffect(() => {
     if (!token) return;
     let active = true;
     fetch('/api/auth/me', {
       headers: { Authorization: `Bearer ${token}` }
     })
-      .then(res => (res.ok ? res.json() : null))
+      .then(async res => {
+        if (!res.ok) {
+          if (active && (res.status === 401 || res.status === 403)) {
+            logout();
+          }
+          return null;
+        }
+        return res.json();
+      })
       .then(data => {
         if (!active || !data?.user) return;
         setUser(prev => {
@@ -165,7 +167,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             canCustomize: data.user.canCustomize ?? canUserCustomizeAppearance(prev.role)
           };
           try {
-            localStorage.setItem('ltp_user', JSON.stringify(merged));
+            sessionStorage.setItem('ltp_user', JSON.stringify(merged));
           } catch {}
           return merged;
         });
@@ -190,12 +192,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(userWithOriginal);
     applyUserThemeToDocument(userWithOriginal.themeConfig, userWithOriginal.role);
     try {
-      localStorage.setItem('ltp_token', newToken);
-      localStorage.setItem('ltp_user', JSON.stringify(userWithOriginal));
+      localStorage.removeItem('ltp_token');
+      localStorage.removeItem('ltp_user');
+      sessionStorage.setItem('ltp_token', newToken);
+      sessionStorage.setItem('ltp_user', JSON.stringify(userWithOriginal));
     } catch (err) {
       console.warn('Error guardando sesión:', err);
     }
-    sessionStorage.removeItem('ltp_a11y_prompt_shown');
   };
 
   const updateUser = (updatedUser: Partial<User>) => {
@@ -208,7 +211,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       applyUserThemeToDocument(merged.themeConfig || null, merged.role);
       try {
-        localStorage.setItem('ltp_user', JSON.stringify(merged));
+        sessionStorage.setItem('ltp_user', JSON.stringify(merged));
       } catch {}
       return merged;
     });
@@ -230,7 +233,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       applyUserThemeToDocument(allowed ? updated.themeConfig : null, newRole);
       try {
-        localStorage.setItem('ltp_user', JSON.stringify(updated));
+        sessionStorage.setItem('ltp_user', JSON.stringify(updated));
       } catch {}
       return updated;
     });
@@ -250,7 +253,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (data.token) {
             setToken(data.token);
             try {
-              localStorage.setItem('ltp_token', data.token);
+              sessionStorage.setItem('ltp_token', data.token);
             } catch {}
           }
           if (data.user) {
@@ -265,7 +268,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               };
               applyUserThemeToDocument(merged.themeConfig, newRole);
               try {
-                localStorage.setItem('ltp_user', JSON.stringify(merged));
+                sessionStorage.setItem('ltp_user', JSON.stringify(merged));
               } catch {}
               return merged;
             });
