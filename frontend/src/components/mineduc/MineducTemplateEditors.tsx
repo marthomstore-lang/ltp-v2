@@ -440,15 +440,42 @@ export const FamilyReportSemesterEditor: React.FC<{
       </div>
 
       <div style={{ background: '#ffffff', borderRadius: '10px', padding: '1.25rem', border: '1px solid #e2e8f0' }}>
-        <h3 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
-          III. Reporte por Áreas de Apoyo del Equipo Multidisciplinario
-        </h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+            III. Reporte por Áreas de Apoyo del Equipo Multidisciplinario
+          </h3>
+          <button
+            type="button"
+            onClick={() => setFormData((p: any) => ({
+              ...p,
+              reportePsicopedagogico: p.reportePsicopedagogico || 'El estudiante evidencia avance progresivo en habilidades lectoras y cálculo. Se aplican adaptaciones curriculares DUA en aula común y aula de recursos.',
+              reportePsicologico: p.reportePsicologico || 'Buena integración con sus pares. Mantiene motivación escolar y participa con agrado de las actividades mediadas.',
+              reporteFonoaudiologico: p.reporteFonoaudiologico || 'Desarrollo adecuado en comprensión auditiva y expresión verbal, logrando transmitir ideas con claridad.',
+              reporteKinesiologico: p.reporteKinesiologico || 'Sin observaciones motoras significativas. Participa activamente en actividades de educación física.',
+              reporteTerapiaOcupacional: p.reporteTerapiaOcupacional || 'Adecuada organización de materiales y autorregulación en tareas escolares.',
+              sugerenciasApoyo: p.sugerenciasApoyo || 'Fomentar la lectura diaria compartida en casa durante 15 minutos, felicitar sus logros cotidianos, supervisar la agenda escolar y mantener asistencia regular a clases.'
+            }))}
+            style={{
+              padding: '0.35rem 0.75rem',
+              borderRadius: '6px',
+              border: '1px solid #bae6fd',
+              background: '#f0f9ff',
+              color: '#0369a1',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            ✨ Autocompletar texto base sugerido
+          </button>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           <div>
             <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>Área Psicopedagógica / Educación Diferencial:</label>
             <textarea
               rows={3}
-              value={formData.reportePsicopedagogico || ''}
+              placeholder="Redacte los avances y apoyos del área psicopedagógica / educación diferencial..."
+              value={formData.reportePsicopedagogico ?? formData.reportes_area?.psicopedagogico ?? ''}
               onChange={e => setFormData((p: any) => ({ ...p, reportePsicopedagogico: e.target.value }))}
               style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
             />
@@ -457,7 +484,8 @@ export const FamilyReportSemesterEditor: React.FC<{
             <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>Área Psicológica:</label>
             <textarea
               rows={2}
-              value={formData.reportePsicologico || ''}
+              placeholder="Redacte los avances y observaciones del área psicológica (o indique NO APLICA)..."
+              value={formData.reportePsicologico ?? formData.reportes_area?.psicologico ?? ''}
               onChange={e => setFormData((p: any) => ({ ...p, reportePsicologico: e.target.value }))}
               style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
             />
@@ -466,7 +494,8 @@ export const FamilyReportSemesterEditor: React.FC<{
             <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>Área Fonoaudiológica:</label>
             <textarea
               rows={2}
-              value={formData.reporteFonoaudiologico || ''}
+              placeholder="Redacte los avances y observaciones del área fonoaudiológica (o indique NO APLICA)..."
+              value={formData.reporteFonoaudiologico ?? formData.reportes_area?.fonoaudiologico ?? ''}
               onChange={e => setFormData((p: any) => ({ ...p, reporteFonoaudiologico: e.target.value }))}
               style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
             />
@@ -475,7 +504,8 @@ export const FamilyReportSemesterEditor: React.FC<{
             <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>Área Kinesiológica:</label>
             <textarea
               rows={2}
-              value={formData.reporteKinesiologico || ''}
+              placeholder="Redacte los avances y observaciones del área kinesiológica (o indique NO APLICA)..."
+              value={formData.reporteKinesiologico ?? formData.reportes_area?.kinesiologico ?? ''}
               onChange={e => setFormData((p: any) => ({ ...p, reporteKinesiologico: e.target.value }))}
               style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
             />
@@ -484,7 +514,8 @@ export const FamilyReportSemesterEditor: React.FC<{
             <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>Área Terapia Ocupacional:</label>
             <textarea
               rows={2}
-              value={formData.reporteTerapiaOcupacional || ''}
+              placeholder="Redacte los avances y observaciones del área de terapia ocupacional (o indique NO APLICA)..."
+              value={formData.reporteTerapiaOcupacional ?? formData.reportes_area?.terapia_ocupacional ?? ''}
               onChange={e => setFormData((p: any) => ({ ...p, reporteTerapiaOcupacional: e.target.value }))}
               style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
             />
@@ -498,7 +529,8 @@ export const FamilyReportSemesterEditor: React.FC<{
         </h3>
         <textarea
           rows={3}
-          value={formData.sugerenciasApoyo || ''}
+          placeholder="Ingrese sugerencias para la familia y el establecimiento..."
+          value={formData.sugerenciasApoyo ?? formData.sugerencias_apoyo ?? ''}
           onChange={e => setFormData((p: any) => ({ ...p, sugerenciasApoyo: e.target.value }))}
           style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
         />

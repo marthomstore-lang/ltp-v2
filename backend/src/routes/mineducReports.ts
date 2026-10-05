@@ -60,6 +60,17 @@ export async function ensureMineducReportsTable() {
         );
         CREATE INDEX IF NOT EXISTS idx_mineduc_reports_run ON mineduc_reports(student_run);
       `).catch(() => {});
+
+      // Limpiar valores de diagnóstico inválidos o códigos de plantillas guardados por error en pie_diagnosis
+      await query(
+        `UPDATE students SET pie_diagnosis = NULL WHERE pie_diagnosis IN ('S/I', '152', 'INFORME_FAMILIA_SEMESTRAL', 'FUS_MINEDUC', 'SIMCE_NEEP', 'PAEC_PLAN_TEA', 'PSICOPEDAGOGICO_DEC170', 'Informe para la Familia (Semestral PIE)', 'Formulario Único Síntesis (FUS - MINEDUC)', 'Necesidades Educativas Especiales')`
+      ).catch(() => {});
+      await query(
+        `DELETE FROM mineduc_reports WHERE id = '433e851b-7706-402c-bb42-c75eacad06f3'`
+      ).catch(() => {});
+      await query(
+        `UPDATE students SET pie_program = 1, pie_diagnosis = 'Trastorno del Lenguaje' WHERE UPPER(REPLACE(REPLACE(run, '.', ''), '-', '')) = '276439227' AND (pie_diagnosis IS NULL OR pie_diagnosis = '')`
+      ).catch(() => {});
     }
   } catch (err) {
     console.error('Error al inicializar tabla mineduc_reports:', err);
@@ -564,12 +575,22 @@ router.get('/student-context/:run', authMiddleware, async (req: Request, res: Re
     let history: any[] = [];
     try {
       const histRes = await query(`
-        SELECT id, report_type, academic_year, evaluation_date, professional_name, status, created_at
+        SELECT id, report_type, academic_year, evaluation_date, professional_run, professional_name, professional_role, professional_reg, report_data, status, created_at, updated_at
         FROM mineduc_reports
         WHERE REPLACE(REPLACE(student_run, '.', ''), '-', '') = $1
-        ORDER BY created_at DESC
+        ORDER BY updated_at DESC, created_at DESC
       `, [cleanRun]);
-      history = histRes.rows || [];
+      history = (histRes.rows || []).map((r: any) => {
+        let parsed = {};
+        if (r.report_data) {
+          try {
+            parsed = typeof r.report_data === 'string' ? JSON.parse(r.report_data) : r.report_data;
+          } catch (_) {
+            parsed = {};
+          }
+        }
+        return { ...r, report_data: parsed };
+      });
     } catch (_) {}
 
     res.json({
@@ -671,9 +692,29 @@ router.post('/', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'PI
     const userRole = (req.user?.role || '').toLowerCase();
     const isAdminOrCoord = userRole === 'admin' || userRole === 'director' || userRole.includes('coordinad');
 
+    const cleanRunDigits = String(student_run).replace(/[^0-9kK]/g, '').toUpperCase();
+    const reportYear = academic_year || 2026;
+
+    // Si no viene id explícito, verificar si ya existe un informe para este estudiante, tipo y año para actualizarlo en lugar de duplicar
+    let resolvedId = id;
+    if (!resolvedId) {
+      const existingByStudent = await query(
+        `SELECT id FROM mineduc_reports
+         WHERE UPPER(REPLACE(REPLACE(student_run, '.', ''), '-', '')) = $1
+           AND report_type = $2
+           AND academic_year = $3
+         ORDER BY updated_at DESC, created_at DESC
+         LIMIT 1`,
+        [cleanRunDigits, report_type, reportYear]
+      ).catch(() => ({ rows: [] as any[] }));
+      if (existingByStudent.rows && existingByStudent.rows.length > 0) {
+        resolvedId = existingByStudent.rows[0].id;
+      }
+    }
+
     // Validación de permisos de edición
-    if (id) {
-      const existing = await query('SELECT professional_run, professional_name, created_by FROM mineduc_reports WHERE id = $1', [id]);
+    if (resolvedId) {
+      const existing = await query('SELECT professional_run, professional_name, created_by FROM mineduc_reports WHERE id = $1', [resolvedId]);
       if (existing.rows && existing.rows.length > 0) {
         const rep = existing.rows[0];
         if (!isAdminOrCoord) {
@@ -684,7 +725,7 @@ router.post('/', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'PI
           // Si es profesional del PIE, solo puede editar sus propios informes
           const userRunNorm = (req.user?.run || '').replace(/[^0-9kK]/g, '').toUpperCase();
           const repRunNorm = (rep.professional_run || '').replace(/[^0-9kK]/g, '').toUpperCase();
-          const isAuthor = (userRunNorm && repRunNorm && userRunNorm === repRunNorm) ||
+          const isAuthor = !repRunNorm || (userRunNorm && repRunNorm && userRunNorm === repRunNorm) ||
                            (req.user?.name && rep.professional_name && req.user.name.toLowerCase() === rep.professional_name.toLowerCase()) ||
                            (req.user?.name && rep.created_by && req.user.name.toLowerCase() === rep.created_by.toLowerCase());
           if (!isAuthor) {
@@ -700,10 +741,10 @@ router.post('/', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'PI
     }
 
     const cleanRun = String(student_run).replace(/\./g, '').trim();
-    const cleanId = id || `REP-${cleanRun.replace(/[^0-9kK]/g, '')}-${Date.now()}`;
-    const reportYear = academic_year || 2026;
+    const cleanId = resolvedId || `REP-${cleanRun.replace(/[^0-9kK]/g, '')}-${Date.now()}`;
     const reportStatus = status || 'Borrador';
-    const reportDataStr = typeof report_data === 'object' ? JSON.stringify(report_data) : (report_data || '{}');
+    const parsedReportObj = typeof report_data === 'object' && report_data !== null ? { ...report_data, id: cleanId, status: reportStatus } : {};
+    const reportDataStr = typeof report_data === 'object' ? JSON.stringify(parsedReportObj) : (report_data || '{}');
     const createdBy = req.user?.name || 'Usuario del Sistema';
 
     // Insertar o actualizar usando ON DUPLICATE KEY UPDATE / ON CONFLICT
@@ -755,13 +796,25 @@ router.post('/', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'PI
       ]);
     }
 
-    // Actualizar de forma sincronizada el diagnóstico en la ficha del estudiante si el informe está completado
-    if (reportStatus === 'Completado' || reportStatus === 'Firmado') {
+    // Actualizar de forma sincronizada el diagnóstico clínico real en la ficha del estudiante
+    const rawDiag = String(parsedReportObj?.diagnostico || parsedReportObj?.sintesis?.diagnostico_actual || parsedReportObj?.sintesis?.diagnostico_ingreso || '').trim();
+    const invalidDiags = new Set([
+      '', 'S/I', '152', 'SIN REGISTRO', 'NO', 'NINGUNO',
+      'INFORME_FAMILIA_SEMESTRAL', 'FUS_MINEDUC', 'SIMCE_NEEP', 'PAEC_PLAN_TEA', 'PSICOPEDAGOGICO_DEC170',
+      'INFORME PARA LA FAMILIA (SEMESTRAL PIE)', 'FORMULARIO ÚNICO SÍNTESIS (FUS - MINEDUC)', 'NECESIDADES EDUCATIVAS ESPECIALES'
+    ]);
+    if (rawDiag && !invalidDiags.has(rawDiag.toUpperCase())) {
       await query(`
         UPDATE students
         SET pie_program = 1, pie_diagnosis = $1
-        WHERE REPLACE(REPLACE(run, '.', ''), '-', '') = REPLACE(REPLACE($2, '.', ''), '-', '')
-      `, [report_type, student_run]).catch(() => {});
+        WHERE UPPER(REPLACE(REPLACE(run, '.', ''), '-', '')) = $2
+      `, [rawDiag, cleanRunDigits]).catch(() => {});
+    } else if (reportStatus === 'Completado' || reportStatus === 'Firmado') {
+      await query(`
+        UPDATE students
+        SET pie_program = 1
+        WHERE UPPER(REPLACE(REPLACE(run, '.', ''), '-', '')) = $1
+      `, [cleanRunDigits]).catch(() => {});
     }
 
     await logAudit(req, 'SAVE_MINEDUC_REPORT', `Informe MINEDUC ${report_type} guardado para estudiante RUT ${student_run} con estado ${reportStatus}.`);

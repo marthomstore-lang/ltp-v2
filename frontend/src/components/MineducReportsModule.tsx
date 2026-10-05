@@ -257,7 +257,66 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
     });
   }, [allStudents, courseFilter, studentSearch]);
 
-  // Cargar contexto del estudiante al seleccionarlo
+  // Limpiar valores inválidos o códigos de plantillas guardados por error en pie_diagnosis
+  const cleanPieDiagnosis = (diag?: string | null): string => {
+    const d = String(diag || '').trim();
+    if (!d) return '';
+    const invalid = new Set([
+      'S/I', '152', 'SIN REGISTRO', 'NO', 'NINGUNO', 'SIN INFORMACIÓN', 'SIN INFORMACION',
+      'INFORME_FAMILIA_SEMESTRAL', 'FUS_MINEDUC', 'SIMCE_NEEP', 'PAEC_PLAN_TEA', 'PSICOPEDAGOGICO_DEC170',
+      'INFORME PARA LA FAMILIA (SEMESTRAL PIE)', 'FORMULARIO ÚNICO SÍNTESIS (FUS - MINEDUC)', 'NECESIDADES EDUCATIVAS ESPECIALES'
+    ]);
+    return invalid.has(d.toUpperCase()) ? '' : d;
+  };
+
+  // Normalizar campos heredados (snake_case de importaciones previas -> camelCase de los editores)
+  const normalizeSavedReportData = (raw: any) => {
+    if (!raw || typeof raw !== 'object') return {};
+    let parsedPerfil: any = {};
+    if (raw.perfil_data) {
+      try {
+        parsedPerfil = typeof raw.perfil_data === 'string' ? JSON.parse(raw.perfil_data) : raw.perfil_data;
+      } catch (_) {}
+    }
+    let parsedMatriz: any = undefined;
+    if (raw.matriz_crisis) {
+      try {
+        parsedMatriz = typeof raw.matriz_crisis === 'string' ? JSON.parse(raw.matriz_crisis) : raw.matriz_crisis;
+      } catch (_) {}
+    }
+    const merged: any = { ...parsedPerfil, ...raw };
+    if (merged.reportes_area && typeof merged.reportes_area === 'object') {
+      if (merged.reportePsicopedagogico === undefined) merged.reportePsicopedagogico = merged.reportes_area.psicopedagogico || '';
+      if (merged.reportePsicologico === undefined) merged.reportePsicologico = merged.reportes_area.psicologico || '';
+      if (merged.reporteFonoaudiologico === undefined) merged.reporteFonoaudiologico = merged.reportes_area.fonoaudiologico || '';
+      if (merged.reporteKinesiologico === undefined) merged.reporteKinesiologico = merged.reportes_area.kinesiologico || '';
+      if (merged.reporteTerapiaOcupacional === undefined) merged.reporteTerapiaOcupacional = merged.reportes_area.terapia_ocupacional || '';
+    }
+    if (merged.sugerenciasApoyo === undefined && merged.sugerencias_apoyo !== undefined) {
+      merged.sugerenciasApoyo = merged.sugerencias_apoyo;
+    }
+    if (merged.profesional_data && typeof merged.profesional_data === 'object') {
+      if (!merged.profesionalNombre && merged.profesional_data.nombre) merged.profesionalNombre = merged.profesional_data.nombre;
+      if (!merged.profesionalFechaInforme && merged.profesional_data.fecha) merged.profesionalFechaInforme = merged.profesional_data.fecha;
+    }
+    if (merged.apoderado_data && typeof merged.apoderado_data === 'object') {
+      if (!merged.apoderadoNombre && merged.apoderado_data.nombre) merged.apoderadoNombre = merged.apoderado_data.nombre;
+      if (!merged.apoderadoRut && merged.apoderado_data.rut) merged.apoderadoRut = merged.apoderado_data.rut;
+      if (!merged.apoderadoRelacion && merged.apoderado_data.relacion) merged.apoderadoRelacion = merged.apoderado_data.relacion;
+    }
+    if (!merged.matrizCrisis && parsedMatriz) {
+      merged.matrizCrisis = parsedMatriz;
+    }
+    const cleanDiag = cleanPieDiagnosis(merged.diagnostico);
+    if (cleanDiag) {
+      merged.diagnostico = cleanDiag;
+    } else {
+      delete merged.diagnostico;
+    }
+    return merged;
+  };
+
+  // Cargar contexto del estudiante al seleccionarlo (y recuperar informe guardado si ya existe)
   const handleSelectStudent = async (studentRun: string, reportTypeId?: string, studentId?: string, courseName?: string) => {
     setSelectedStudentRun(studentRun);
     setLoadingContext(true);
@@ -284,6 +343,33 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
       const grades = data.gradesSummary || {};
       const repTypeObj = MINEDUC_REPORT_TYPES.find(r => r.id === targetType);
 
+      // Buscar si el estudiante ya tiene un informe guardado para este tipo de documento
+      const cleanStudentRun = String(stu.run || studentRun).replace(/[^0-9kK]/g, '').toUpperCase();
+      const historyList: any[] = Array.isArray(data.history) ? data.history : [];
+      let existingReport = historyList.find((h: any) => h.report_type === targetType);
+
+      if (!existingReport) {
+        const matchedFromList = reports.find(
+          (r: any) => r.report_type === targetType && String(r.student_run || '').replace(/[^0-9kK]/g, '').toUpperCase() === cleanStudentRun
+        );
+        if (matchedFromList) {
+          const detailRes = await fetch(`/api/mineduc-reports/${matchedFromList.id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          }).catch(() => null);
+          if (detailRes && detailRes.ok) {
+            existingReport = await detailRes.json();
+          } else {
+            existingReport = matchedFromList;
+          }
+        }
+      }
+
+      // Determinar diagnóstico real del estudiante (desde ficha o desde historial de informes)
+      const historyDiagnosis = historyList
+        .map((h: any) => cleanPieDiagnosis(h.report_data?.diagnostico))
+        .find(Boolean);
+      const resolvedDiagnosis = cleanPieDiagnosis(stu.pie_diagnosis) || historyDiagnosis || '';
+
       // Pre-poblar los campos de avances específicos con las áreas del reporte
       const specificInit: Record<string, string> = {};
       if (repTypeObj && repTypeObj.specificAreas) {
@@ -292,12 +378,10 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
         });
       }
 
-      // Pre-llenar el formulario con los datos vivos de la BD y defaults de plantillas
       const currentYear = new Date().getFullYear();
       const baseFolio = `${targetType.replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase()}-${(stu.run || '').replace(/[^0-9kK]/g, '') || '001'}-${currentYear}`;
 
-      setSelectedReportType(targetType);
-      setFormData({
+      const baseFormData: any = {
         id: undefined,
         evaluation_date: new Date().toISOString().split('T')[0],
         professional_run: user?.run || '',
@@ -314,7 +398,7 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
         estudianteNombreSocial: stu.first_name || stu.full_name || '',
         estudianteFechaNac: stu.birth_date || '',
         estudianteEdad: stu.calculatedAge?.years || stu.edad || '—',
-        diagnostico: stu.pie_diagnosis || repTypeObj?.title || 'Necesidades Educativas Especiales',
+        diagnostico: resolvedDiagnosis,
         diagnosticoAdicional: '',
         profesorJefe: stu.profesor_jefe || '',
         apoderadoNombre: stu.guardian_name || '',
@@ -350,26 +434,26 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
         presenciaDe: stu.profesor_jefe ? `${stu.profesor_jefe} (Profesor Jefe)` : 'Equipo de Gestión PIE',
         motivo: 'Evaluación Diagnóstica Integral de Ingreso / Reevaluación PIE',
         fechaEvaluacion: new Date().toISOString().split('T')[0],
-        instrumentos: 'Batería Evalúa, Pruebas de Dominio Lector, WISC-V, Pauta de Observación Directa',
-        pedagogicoFortalezas: 'Demuestra interés por aprender, buena disposición al trabajo en aula de recursos y entusiasmo en tareas con apoyo visual.',
-        pedagogicoNecesidades: 'Requiere apoyo continuo en comprensión lectora, resolución de problemas matemáticos y mediación para estructurar respuestas.',
-        socialFortalezas: 'Mantiene relaciones afectuosas con sus pares, respeta normas de convivencia y participa activamente en juegos grupales.',
-        socialNecesidades: 'Fortalecer la autorregulación ante tareas de mayor exigencia y tolerancia a la frustración.',
-        trabajoColaborativo: 'Co-docencia en aula regular 8 horas semanales entre docente de asignatura y educadora diferencial. Apoyo especializado en aula de recursos 2 horas semanales con adecuaciones curriculares DUA.',
-        apoyoHogar: 'Establecer hábitos de estudio diarios de 20 minutos, reforzar lectura compartida en el hogar, supervisar asistencia y mantener comunicación regular con el equipo PIE.',
-        acuerdos: 'Reuniones de seguimiento bimensual entre apoderado y equipo de aula para evaluar avances y reajustar metas pedagógicas.',
+        instrumentos: '',
+        pedagogicoFortalezas: '',
+        pedagogicoNecesidades: '',
+        socialFortalezas: '',
+        socialNecesidades: '',
+        trabajoColaborativo: '',
+        apoyoHogar: '',
+        acuerdos: '',
 
-        // Específico Semestral
+        // Específico Semestral (vacío por defecto cuando no existe informe previo)
         semester: 1,
         estudianteEstablecimiento: data.institution?.name || 'Liceo T.P. Campanario',
         profesionalFechaInforme: new Date().toISOString().split('T')[0],
         profesionalNombre: user?.name || '',
-        reportePsicopedagogico: 'El estudiante evidencia avance progresivo en habilidades lectoras y cálculo. Se aplican adaptaciones curriculares DUA en aula común y aula de recursos.',
-        reportePsicologico: 'Buena integración con sus pares. Mantiene motivación escolar y participa con agrado de las actividades mediadas.',
-        reporteFonoaudiologico: 'Desarrollo adecuado en comprensión auditiva y expresión verbal, logrando transmitir ideas con claridad.',
-        reporteKinesiologico: 'Sin observaciones motoras significativas. Participa activamente en actividades de educación física.',
-        reporteTerapiaOcupacional: 'Adecuada organización de materiales y autorregulación en tareas escolares.',
-        sugerenciasApoyo: 'Fomentar la lectura diaria compartida en casa durante 15 minutos, felicitar sus logros cotidianos, supervisar la agenda escolar y mantener asistencia regular a clases.',
+        reportePsicopedagogico: '',
+        reportePsicologico: '',
+        reporteFonoaudiologico: '',
+        reporteKinesiologico: '',
+        reporteTerapiaOcupacional: '',
+        sugerenciasApoyo: '',
         firmaUsuarioNombre: user?.name || 'Profesional Evaluador',
         firmaUsuarioCargo: user?.role || 'Docente Especialista PIE',
 
@@ -390,32 +474,20 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
           nombres: 'Contacto de Respaldo',
           celular: '—'
         },
-        indicacionesVulnerabilidad: 'Sensibilidad al ruido ambiente imprevisto y cambios de rutina sin anticipación previa.',
+        indicacionesVulnerabilidad: '',
         indicacionesMedicas: { posee: 'no', detalle: '' },
         medicamentos: { ingiere: 'no', detalle: '' },
-        fortalezasDesafios: 'Fortaleza en memoria fotográfica y atención al detalle. Desafío en flexibilización y contacto visual sostenido.',
-        gatilladores: 'Ruidos estridentes o imprevistos (timbre, taladro), aglomeraciones y cambios bruscos de actividad.',
-        intereses: 'Dibujo técnico, astronomía, lectura de cómics, armado de figuras legos.',
-        estimulos: 'Sensibilidad auditiva ante tonos altos; agrado por texturas lisas y música instrumental suave.',
-        objetosInteres: 'Audífonos con cancelación de ruido, pelota antiestrés, cuaderno de dibujo.',
-        palabrasClave: 'Vamos a respirar juntos; Tómate un momento; ¿Quieres ir al espacio de calma?',
+        fortalezasDesafios: '',
+        gatilladores: '',
+        intereses: '',
+        estimulos: '',
+        objetosInteres: '',
+        palabrasClave: '',
         matrizCrisis: {
-          inicio: {
-            manifestaciones: 'Inquietud motora, balanceo leve, taparse los oídos, desconexión visual.',
-            estrategias: 'Anticipación verbal en tono calmo, ofrecer audífonos protectores, validar emoción y reducir estímulos.'
-          },
-          crecimiento: {
-            manifestaciones: 'Aumento del ritmo respiratorio, verbalizaciones repetitivas o negativas, negarse a trabajar.',
-            estrategias: 'Disminuir exigencia curricular, trasladar a zona de baja estimulación, evitar preguntas excesivas.'
-          },
-          explosion: {
-            manifestaciones: 'Llanto intenso, crisis de angustia, gritos o conducta disruptiva motora.',
-            estrategias: 'Resguardar la seguridad física del estudiante y compañeros. Acompañamiento silencioso sin invadir espacio corporal.'
-          },
-          recuperacion: {
-            manifestaciones: 'Cese del llanto, respiración pausada, fatiga evidente, búsqueda de contención.',
-            estrategias: 'Ofrecer agua, permitir descanso en colchoneta o sillón de calma, reincorporación paulatina a actividades placenteras.'
-          }
+          inicio: { manifestaciones: '', estrategias: '' },
+          crecimiento: { manifestaciones: '', estrategias: '' },
+          explosion: { manifestaciones: '', estrategias: '' },
+          recuperacion: { manifestaciones: '', estrategias: '' }
         },
         responsablesPaec: {
           encargado: {
@@ -438,41 +510,41 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
 
         // Específico Psicopedagógico
         motivoEvaluacion: 'Reevaluación de procesos de aprendizaje e ingreso Decreto 170 / 2010',
-        instrumentosAplicados: 'Batería Psicopedagógica Evalúa, Pruebas de Dominio Lector, Pauta de Observación Pedagógica',
-        antecedentesEscolares: 'Estudiante ingresa al establecimiento con historial de apoyo en Programa de Integración Escolar.',
-        analisisCognitivo: 'Presenta atención selectiva adecuada en actividades de su interés. En razonamiento lógico y memoria de trabajo se beneficia significativamente de esquemas visuales y mediación guiada.',
-        analisisSocioemocional: 'Mantiene relaciones afectuosas con sus pares y equipo de aula. Manifiesta disposición positiva hacia las tareas cuando se desglosan en metas progresivas.',
-        analisisMotor: 'Adecuada coordinación motriz fina y gruesa. No presenta dificultades sensoriales ni limitaciones motoras en su desplazamiento o escritura.',
-        sintesisCognitivo: 'Habilidades cognitivas en rango esperado con apoyo en velocidad de procesamiento.',
-        sintesisSocioemocional: 'Buen ajuste socioescolar y capacidad de trabajo en equipo.',
-        sintesisMotor: 'Desarrollo psicomotor acorde a su etapa etaria.',
-        sintesisConclusion: `El estudiante cumple con los criterios de ${stu.pie_diagnosis || repTypeObj?.title || 'NEE'} según el Decreto Supremo Nº 170/2010, requiriendo continuidad de apoyos especializados.`,
-        sugerenciasEstablecimiento: 'Garantizar el acceso a recursos adaptados y monitoreo periódico de asistencia escolar.',
-        sugerenciasEquipoAula: 'Diversificar estrategias evaluativas (DUA), conceder tiempo extra y reforzar logros.',
-        sugerenciasEstudiante: 'Expresar oportunamente sus dudas y participar con entusiasmo en aula de recursos.',
-        sugerenciasFamilia: 'Acompañar y supervisar rutinas diarias de estudio, manteniendo comunicación con el equipo PIE.',
-        pautaPedagogica: { '0': '2', '1': '2', '2': '2', '3': '2', '4': '2', '5': '2', '6': '2', '7': '2', '8': '2', '9': '2' },
-        pautaSocial: { '0': '2', '1': '2', '2': '2', '3': '2', '4': '2', '5': '2', '6': '2', '7': '2', '8': '2', '9': '2' },
+        instrumentosAplicados: '',
+        antecedentesEscolares: '',
+        analisisCognitivo: '',
+        analisisSocioemocional: '',
+        analisisMotor: '',
+        sintesisCognitivo: '',
+        sintesisSocioemocional: '',
+        sintesisMotor: '',
+        sintesisConclusion: '',
+        sugerenciasEstablecimiento: '',
+        sugerenciasEquipoAula: '',
+        sugerenciasEstudiante: '',
+        sugerenciasFamilia: '',
+        pautaPedagogica: {},
+        pautaSocial: {},
         profesionalProfesion: user?.role || 'Profesora de Educación Diferencial',
-        profesionalRegistro: '123456',
+        profesionalRegistro: '',
         docenteNombre: stu.profesor_jefe || 'Docente de Aula',
         docenteProfesion: 'Profesor(a) de Educación Regular',
         docenteRut: '',
 
         // Secciones técnicas de reevaluación existentes
         sintesis: {
-          diagnostico_ingreso: stu.pie_diagnosis || repTypeObj?.title || '',
-          diagnostico_actual: repTypeObj?.title || '',
+          diagnostico_ingreso: resolvedDiagnosis,
+          diagnostico_actual: resolvedDiagnosis,
           decision_pie: 'CONTINUIDAD',
-          fundamentacion_decision: `El/la estudiante requiere continuidad en el Programa de Integración Escolar (PIE) para consolidar sus procesos de aprendizaje acordes a su nivel educativo (${stu.desc_grado || 'curso regular'}).`,
+          fundamentacion_decision: '',
           fecha_reevaluacion: new Date().toISOString().split('T')[0],
           evidencias_adjuntas: ['Informe Psicopedagógico de Reevaluación', 'Registro de Co-docencia y Aula de Recursos']
         },
         avances: {
-          contexto_escolar: `Durante el año académico, el/la estudiante evidencia progresos pedagógicos con un promedio general acumulado de ${grades.overallAverage ? grades.overallAverage.toFixed(1) : 'calificaciones en proceso'}. Presenta participación activa con mediación docente.`,
-          asignaturas_mayor_progreso: grades.topSubjects && grades.topSubjects.length > 0 ? grades.topSubjects.join(', ') : 'Lenguaje, Matemáticas y Artes',
-          asignaturas_menor_progreso: grades.needsSupportSubjects && grades.needsSupportSubjects.length > 0 ? grades.needsSupportSubjects.join(', ') : 'Requiere refuerzo continuo en comprensión lectora y razonamiento lógico.',
-          contexto_familiar_social: `La familia (Apoderado: ${stu.guardian_name || 'Apoderado Titular'}) mantiene compromiso con los requerimientos escolares y asiste a entrevistas periódicas.`,
+          contexto_escolar: '',
+          asignaturas_mayor_progreso: grades.topSubjects && grades.topSubjects.length > 0 ? grades.topSubjects.join(', ') : '',
+          asignaturas_menor_progreso: grades.needsSupportSubjects && grades.needsSupportSubjects.length > 0 ? grades.needsSupportSubjects.join(', ') : '',
+          contexto_familiar_social: '',
           avances_especificos: specificInit
         },
         apoyos: [
@@ -480,10 +552,32 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
           { tipo: 'Aula de Recursos (Educadora Diferencial)', efectividad: 'Alta', continuidad: 'SI', observaciones: 'Fortalecimiento de funciones cognitivas y lenguaje.' },
           { tipo: 'Apoyo Fonoaudiológico / Psicológico', efectividad: 'Media-Alta', continuidad: 'SI', observaciones: 'Atención según necesidad específica.' }
         ],
-        estrategias_adecuaciones: 'Aplicación de adaptaciones curriculares de acceso, tiempo extra en evaluaciones escritas, mediación oral y uso de material visual.',
-        sugerencias_familia: 'Reforzar lectura compartida 15 minutos diarios y apoyar en el cumplimiento de tareas escolares.',
+        estrategias_adecuaciones: '',
+        sugerencias_familia: '',
         observaciones_generales: ''
-      });
+      };
+
+      setSelectedReportType(targetType);
+
+      if (existingReport) {
+        const normalizedSaved = normalizeSavedReportData(existingReport.report_data);
+        setActiveReport(existingReport);
+        setFormData({
+          ...baseFormData,
+          ...normalizedSaved,
+          id: existingReport.id,
+          evaluation_date: existingReport.evaluation_date || normalizedSaved.evaluation_date || baseFormData.evaluation_date,
+          professional_run: existingReport.professional_run || normalizedSaved.professional_run || baseFormData.professional_run,
+          professional_name: existingReport.professional_name || normalizedSaved.professional_name || baseFormData.professional_name,
+          professional_role: existingReport.professional_role || normalizedSaved.professional_role || baseFormData.professional_role,
+          professional_reg: existingReport.professional_reg || normalizedSaved.professional_reg || baseFormData.professional_reg,
+          status: existingReport.status || normalizedSaved.status || 'Completado',
+          diagnostico: cleanPieDiagnosis(normalizedSaved.diagnostico) || resolvedDiagnosis
+        });
+      } else {
+        setActiveReport(null);
+        setFormData(baseFormData);
+      }
 
       setViewMode('editor');
     } catch (err: any) {
@@ -508,23 +602,28 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
       setSelectedStudentRun(data.student_run);
 
       // Cargar también el contexto del estudiante para tener los datos de la institución y notas
+      let stuDiag = '';
       const ctxRes = await fetch(`/api/mineduc-reports/student-context/${encodeURIComponent(data.student_run)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (ctxRes.ok) {
         const ctxData = await ctxRes.json();
         setStudentContext(ctxData);
+        stuDiag = cleanPieDiagnosis(ctxData?.student?.pie_diagnosis);
       }
 
+      const normalizedSaved = normalizeSavedReportData(data.report_data);
+
       setFormData({
+        ...normalizedSaved,
         id: data.id,
-        evaluation_date: data.evaluation_date || new Date().toISOString().split('T')[0],
-        professional_run: data.professional_run || '',
-        professional_name: data.professional_name || '',
-        professional_role: data.professional_role || '',
-        professional_reg: data.professional_reg || '',
+        evaluation_date: data.evaluation_date || normalizedSaved.evaluation_date || new Date().toISOString().split('T')[0],
+        professional_run: data.professional_run || normalizedSaved.professional_run || '',
+        professional_name: data.professional_name || normalizedSaved.professional_name || '',
+        professional_role: data.professional_role || normalizedSaved.professional_role || '',
+        professional_reg: data.professional_reg || normalizedSaved.professional_reg || '',
         status: data.status || 'Borrador',
-        ...data.report_data
+        diagnostico: cleanPieDiagnosis(normalizedSaved.diagnostico) || stuDiag
       });
 
       const canEdit = canEditReport(data);
@@ -576,7 +675,8 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
         professional_reg: formData.professional_reg,
         status: targetStatus,
         report_data: {
-          ...formData
+          ...formData,
+          status: targetStatus
         }
       };
 
@@ -595,12 +695,19 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
       Swal.fire({
         icon: 'success',
         title: targetStatus === 'Borrador' ? 'Borrador Guardado' : 'Informe Oficial Guardado',
-        text: `El Formulario Único MINEDUC para el RUT ${selectedStudentRun} ha sido registrado exitosamente.`,
+        text: `El informe para el RUT ${selectedStudentRun} ha sido guardado exitosamente en la base de datos.`,
         confirmButtonColor: '#0284c7'
       });
 
       setFormData((prev: any) => ({ ...prev, id: data.id, status: targetStatus }));
+      if (cleanPieDiagnosis(formData.diagnostico)) {
+        setStudentContext((prev: any) => prev ? ({
+          ...prev,
+          student: { ...(prev.student || {}), pie_diagnosis: cleanPieDiagnosis(formData.diagnostico) }
+        }) : prev);
+      }
       loadReports();
+      loadStudents();
     } catch (err: any) {
       Swal.fire('Error', err.message, 'error');
     }
@@ -1192,6 +1299,12 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
                 ) : (
                   filteredStudents.map(s => {
                     const isSelected = selectedStudentRun === s.run;
+                    const cleanRunKey = String(s.run || '').replace(/[^0-9kK]/g, '').toUpperCase();
+                    const studentReports = reports.filter(
+                      (r: any) => String(r.student_run || '').replace(/[^0-9kK]/g, '').toUpperCase() === cleanRunKey
+                    );
+                    const existingForType = studentReports.find((r: any) => r.report_type === selectedReportType);
+                    const cleanDiag = cleanPieDiagnosis(s.pie_diagnosis);
                     return (
                       <tr
                         key={s.id || `${s.run}-${s.desc_grado}`}
@@ -1221,20 +1334,27 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
                           </div>
                         </td>
                         <td style={{ padding: '0.65rem 1rem' }}>
-                          {s.pie_diagnosis ? (
-                            <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 600 }}>
-                              {s.pie_diagnosis}
-                            </span>
-                          ) : (
-                            <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>Sin registro</span>
-                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            {cleanDiag ? (
+                              <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 600 }}>
+                                {cleanDiag}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>Sin registro</span>
+                            )}
+                            {existingForType && (
+                              <span style={{ background: '#dcfce7', color: '#15803d', padding: '2px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700 }}>
+                                ✓ Informe guardado
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td style={{ padding: '0.65rem 1rem', textAlign: 'right' }}>
                           <button
                             onClick={() => handleSelectStudent(s.run, undefined, s.id, s.desc_grado)}
                             disabled={loadingContext}
                             style={{
-                              background: '#0284c7',
+                              background: existingForType ? '#0d9488' : '#0284c7',
                               color: '#ffffff',
                               border: 'none',
                               padding: '0.4rem 0.85rem',
@@ -1247,7 +1367,7 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
                               gap: '0.35rem'
                             }}
                           >
-                            <Sparkles size={14} /> Redactar Informe
+                            <Sparkles size={14} /> {existingForType ? 'Editar Informe Guardado' : 'Redactar Informe'}
                           </button>
                         </td>
                       </tr>
@@ -1311,13 +1431,22 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
             </button>
 
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 800, background: currentTypeInfo.badgeBg, color: currentTypeInfo.badgeColor, padding: '2px 8px', borderRadius: '4px' }}>
                   {currentTypeInfo.code}
                 </span>
                 <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
                   {currentTypeInfo.title}
                 </h1>
+                {formData.id ? (
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', padding: '2px 8px', borderRadius: '6px' }}>
+                    ✓ Guardado en BD ({formData.status || 'Completado'})
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '6px' }}>
+                    Nuevo Informe (Sin guardar aún)
+                  </span>
+                )}
               </div>
               <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
                 Estudiante: <strong>{student.full_name}</strong> (RUT: {student.run}) — Curso: <strong>{student.desc_grado}</strong>
@@ -1480,7 +1609,7 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
                 Promedio General: {grades.overallAverage ? grades.overallAverage.toFixed(1) : 'S/N'} ({grades.totalGradesCount || 0} calificaciones)
               </div>
               <div style={{ fontSize: '0.75rem', color: '#475569' }}>
-                Diagnóstico PIE: <strong style={{ color: student.pie_diagnosis ? '#0369a1' : '#64748b' }}>{student.pie_diagnosis || 'En Proceso de Reevaluación'}</strong>
+                Diagnóstico PIE: <strong style={{ color: (cleanPieDiagnosis(formData.diagnostico) || cleanPieDiagnosis(student.pie_diagnosis)) ? '#0369a1' : '#64748b' }}>{cleanPieDiagnosis(formData.diagnostico) || cleanPieDiagnosis(student.pie_diagnosis) || 'Sin diagnóstico registrado'}</strong>
               </div>
             </div>
           </div>
