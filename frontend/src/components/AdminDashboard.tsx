@@ -1127,6 +1127,7 @@ export const AdminDashboard: React.FC = () => {
                             <option value="Administrativo">📋 Administrativo / Matrícula</option>
                             <option value="Profesionales">🧠 Profesional PIE / Salud</option>
                             <option value="Apoderado">👨‍👩‍👧 Apoderado (Titular / Suplente)</option>
+                            <option value="Estudiante">🎓 Estudiante (Portal Estudiantil)</option>
                             <option value="Visita">👁️ Visita (Solo Lectura)</option>
                           </>
                         ) : (

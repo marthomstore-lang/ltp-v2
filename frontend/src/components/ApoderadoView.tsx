@@ -13,12 +13,20 @@ interface ApoderadoViewProps {
 interface Grade {
   label: string;
   value: number;
+  concept?: string;
+  period?: string;
+  semester?: number;
+  columnIndex?: number;
   date?: string | null;
 }
 
 interface Subject {
   name: string;
   teacher: string;
+  isConceptual?: boolean;
+  conceptAverage?: string;
+  sem1Average?: number;
+  sem2Average?: number;
   average: number;
   status: string;
   grades: Grade[];
@@ -100,6 +108,7 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
   const [loading, setLoading] = useState(true);
   const [selectedPupiloId, setSelectedPupiloId] = useState<string>('');
   const [activeSubTab, setActiveSubTab] = useState<'grades' | 'personality' | 'observations' | 'interviews' | 'lates' | 'communications'>('grades');
+  const [selectedSemester, setSelectedSemester] = useState<'all' | 1 | 2>('all');
   const [previewPass, setPreviewPass] = useState<ThermalPassData | null>(null);
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
   const [searchRut, setSearchRut] = useState('');
@@ -599,9 +608,42 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
             {/* CONTENIDO TAB 1: LIBRETA DE CALIFICACIONES DEL PUPILO */}
             {activeSubTab === 'grades' && (
               <div>
-                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', marginBottom: '1rem' }}>
-                  Detalle de Calificaciones por Asignatura — 1er Semestre 2026
-                </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                    Detalle de Calificaciones por Asignatura — {selectedSemester === 'all' ? 'Año Académico 2026 (1° y 2° Semestre)' : selectedSemester === 1 ? '1er Semestre 2026' : '2do Semestre 2026'}
+                  </h3>
+
+                  <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '0.25rem', borderRadius: '10px', gap: '0.25rem' }}>
+                    {[
+                      { id: 'all' as const, label: 'Anual (1° y 2° Sem)' },
+                      { id: 1 as const, label: '1er Semestre' },
+                      { id: 2 as const, label: '2do Semestre' }
+                    ].map(semTab => {
+                      const active = selectedSemester === semTab.id;
+                      return (
+                        <button
+                          key={String(semTab.id)}
+                          type="button"
+                          onClick={() => setSelectedSemester(semTab.id)}
+                          style={{
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '0.4rem 0.85rem',
+                            fontSize: '0.78rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            background: active ? '#4f46e5' : 'transparent',
+                            color: active ? '#ffffff' : '#475569',
+                            boxShadow: active ? '0 2px 6px rgba(79, 70, 229, 0.25)' : 'none',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {semTab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 {redGradesList.length > 0 ? (
                   <div style={{
@@ -648,12 +690,13 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                     Sin asignaturas ni calificaciones ingresadas en la base de datos.
                   </div>
                 ) : (
-                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                       <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                           <th style={{ padding: '0.75rem 1rem', textAlign: 'left' }}>ASIGNATURA</th>
                           <th style={{ padding: '0.75rem 1rem', textAlign: 'left' }}>DOCENTE RESPONSABLE</th>
+                          <th style={{ padding: '0.75rem 1rem', textAlign: 'left' }}>CALIFICACIONES PARCIALES</th>
                           <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>PROMEDIO</th>
                           <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>ESTADO</th>
                         </tr>
@@ -661,7 +704,21 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                       <tbody>
                         {currentPupilo.subjects.map((sub: Subject, idx: number) => {
                           const isExpanded = !!expandedSubjects[sub.name];
-                          const isRed = sub.status === 'REPROBADO';
+                          const visibleGrades = (sub.grades || []).filter((gr: Grade) =>
+                            selectedSemester === 'all' ? true : (gr.semester || 1) === selectedSemester
+                          );
+                          const displayAvg = selectedSemester === 1
+                            ? (sub.sem1Average ?? (visibleGrades.length > 0 ? Number((visibleGrades.reduce((s, g) => s + g.value, 0) / visibleGrades.length).toFixed(1)) : 0))
+                            : selectedSemester === 2
+                              ? (sub.sem2Average ?? (visibleGrades.length > 0 ? Number((visibleGrades.reduce((s, g) => s + g.value, 0) / visibleGrades.length).toFixed(1)) : 0))
+                              : sub.average;
+                          const displayStatus = visibleGrades.length === 0
+                            ? 'SIN NOTAS'
+                            : sub.isConceptual
+                              ? (displayAvg < 4.0 ? 'REPROBADO' : 'APROBADO')
+                              : (displayAvg >= 4.0 ? 'APROBADO' : 'REPROBADO');
+                          const isRed = displayStatus === 'REPROBADO';
+
                           return (
                             <React.Fragment key={idx}>
                               <tr
@@ -670,34 +727,78 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                               >
                                 <td style={{ padding: '0.8rem 1rem', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                                   {isExpanded ? <ChevronDown size={16} color="#4f46e5" /> : <ChevronRight size={16} color="#94a3b8" />}
-                                  {sub.name}
+                                  <span>{sub.name}</span>
+                                  {sub.isConceptual && (
+                                    <span style={{ fontSize: '0.65rem', background: '#ede9fe', color: '#5b21b6', padding: '1px 6px', borderRadius: '9999px', fontWeight: 800 }}>
+                                      Conceptual
+                                    </span>
+                                  )}
                                 </td>
-                                <td style={{ padding: '0.8rem 1rem', color: '#64748b' }}>{sub.teacher}</td>
-                                <td style={{ padding: '0.8rem 1rem', textAlign: 'center', fontWeight: 800, fontSize: '1.05rem', color: isRed ? '#dc2626' : (sub.average > 0 ? '#16a34a' : '#64748b') }}>
-                                  {sub.average > 0 ? sub.average.toFixed(1) : '-'}
+                                <td style={{ padding: '0.8rem 1rem', color: '#64748b', fontSize: '0.8rem' }}>{sub.teacher}</td>
+                                <td style={{ padding: '0.6rem 1rem' }}>
+                                  {visibleGrades.length === 0 ? (
+                                    <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontStyle: 'italic' }}>Sin notas registradas</span>
+                                  ) : (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                                      {visibleGrades.map((gr: Grade, gIdx: number) => {
+                                        const isGradeRed = gr.value < 4.0;
+                                        return (
+                                          <span
+                                            key={gIdx}
+                                            title={`${gr.period || (gr.semester === 2 ? '2do Semestre' : '1er Semestre')} • ${gr.label}: ${gr.value.toFixed(1)}${gr.concept ? ` (${gr.concept})` : ''}`}
+                                            style={{
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '0.25rem',
+                                              padding: '0.2rem 0.5rem',
+                                              borderRadius: '6px',
+                                              fontSize: '0.78rem',
+                                              fontWeight: 800,
+                                              background: isGradeRed ? '#fee2e2' : '#eff6ff',
+                                              color: isGradeRed ? '#dc2626' : '#1d4ed8',
+                                              border: `1px solid ${isGradeRed ? '#fca5a5' : '#bfdbfe'}`
+                                            }}
+                                          >
+                                            <span style={{ fontSize: '0.64rem', color: isGradeRed ? '#991b1b' : '#64748b', fontWeight: 700 }}>
+                                              {selectedSemester === 'all' ? `${gr.semester === 2 ? '2°S' : '1°S'} ` : ''}{gr.label}:
+                                            </span>
+                                            <span>{sub.isConceptual && gr.concept ? `${gr.concept} (${gr.value.toFixed(1)})` : gr.value.toFixed(1)}</span>
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </td>
+                                <td style={{ padding: '0.8rem 1rem', textAlign: 'center', fontWeight: 800, fontSize: '1.05rem', color: isRed ? '#dc2626' : (displayAvg > 0 ? '#16a34a' : '#64748b') }}>
+                                  {displayAvg > 0
+                                    ? (sub.isConceptual && sub.conceptAverage ? `${sub.conceptAverage} (${displayAvg.toFixed(1)})` : displayAvg.toFixed(1))
+                                    : '-'}
                                 </td>
                                 <td style={{ padding: '0.8rem 1rem', textAlign: 'right' }}>
-                                  <span style={{ background: isRed ? '#fee2e2' : (sub.status === 'APROBADO' ? '#dcfce7' : '#f1f5f9'), color: isRed ? '#991b1b' : (sub.status === 'APROBADO' ? '#15803d' : '#64748b'), padding: '0.2rem 0.6rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 800 }}>
-                                    {sub.status}
+                                  <span style={{ background: isRed ? '#fee2e2' : (displayStatus === 'APROBADO' ? '#dcfce7' : '#f1f5f9'), color: isRed ? '#991b1b' : (displayStatus === 'APROBADO' ? '#15803d' : '#64748b'), padding: '0.2rem 0.6rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 800 }}>
+                                    {displayStatus}
                                   </span>
                                 </td>
                               </tr>
 
                               {isExpanded && (
                                 <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                                  <td colSpan={4} style={{ padding: '0.75rem 1.25rem' }}>
+                                  <td colSpan={5} style={{ padding: '0.75rem 1.25rem' }}>
                                     <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
-                                      Calificaciones Parciales Ingresadas:
+                                      Detalle de Evaluaciones Parciales ({sub.name}):
                                     </div>
-                                    {(!sub.grades || sub.grades.length === 0) ? (
-                                      <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>Sin calificaciones parciales en esta asignatura.</div>
+                                    {visibleGrades.length === 0 ? (
+                                      <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>Sin calificaciones parciales en este período.</div>
                                     ) : (
                                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-                                        {sub.grades.map((gr: Grade, gIdx: number) => (
-                                          <div key={gIdx} style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.4rem 0.75rem', textAlign: 'center', minWidth: '80px' }}>
-                                            <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748b' }}>{gr.label}</div>
-                                            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: gr.value >= 4.0 ? '#2563eb' : '#dc2626' }}>
-                                              {gr.value.toFixed(1)}
+                                        {visibleGrades.map((gr: Grade, gIdx: number) => (
+                                          <div key={gIdx} style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.45rem 0.8rem', textAlign: 'center', minWidth: '95px' }}>
+                                            <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#4f46e5', textTransform: 'uppercase' }}>
+                                              {gr.period || (gr.semester === 2 ? '2do Semestre' : '1er Semestre')}
+                                            </div>
+                                            <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748b', marginTop: '1px' }}>{gr.label}</div>
+                                            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: gr.value >= 4.0 ? '#2563eb' : '#dc2626', marginTop: '2px' }}>
+                                              {sub.isConceptual && gr.concept ? `${gr.concept} (${gr.value.toFixed(1)})` : gr.value.toFixed(1)}
                                             </div>
                                           </div>
                                         ))}

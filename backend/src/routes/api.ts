@@ -5384,8 +5384,10 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
     ] = await Promise.all([
       query('SELECT * FROM students ORDER BY list_number ASC, full_name ASC').catch(() => ({ rows: [] })),
       query('SELECT * FROM grades').catch(() => ({ rows: [] })),
-      query('SELECT * FROM grade_columns ORDER BY semester ASC, column_index ASC').catch(() => ({ rows: [] })),
-      query('SELECT * FROM subjects').catch(() => ({ rows: [] })),
+      query('SELECT * FROM grade_columns ORDER BY period ASC, position ASC, id ASC').catch(async () => {
+        return await query('SELECT * FROM grade_columns').catch(() => ({ rows: [] }));
+      }),
+      query('SELECT * FROM subjects ORDER BY id ASC').catch(() => ({ rows: [] })),
       query('SELECT * FROM levels').catch(() => ({ rows: [] })),
       query('SELECT * FROM teacher_assignments').catch(() => ({ rows: [] })),
       query('SELECT * FROM student_observations ORDER BY created_at DESC').catch(async () => {
@@ -5434,12 +5436,34 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
 
     let allGrades = gradesRes.rows || [];
     let allCols = gradeColsRes.rows || [];
-    let allSubjects = subjectsRes.rows || [];
+    let allSubjects = [...(subjectsRes.rows || [])];
     let allLevels = levelsRes.rows || [];
     let allTeacherAssign = teacherAssignRes.rows || [];
     let allObs = obsRes.rows || [];
     let allInts = intRes.rows || [];
     let allComms = commsRes.rows || [];
+
+    const colsById = new Map<string, any>();
+    allCols.forEach((c: any) => {
+      if (c && c.id !== undefined && c.id !== null) {
+        colsById.set(String(c.id), c);
+      }
+    });
+
+    // Asegurar que asignaturas referenciadas en teacher_assignments o grade_columns estén en allSubjects
+    const existingSubIds = new Set(allSubjects.map((s: any) => String(s.id)));
+    const existingSubNames = new Set(allSubjects.map((s: any) => normalizeSubjectOrCourseKey(s.name || s.nombre)));
+    allTeacherAssign.forEach((ta: any) => {
+      if (ta.subject_name) {
+        const nk = normalizeSubjectOrCourseKey(ta.subject_name);
+        const sid = ta.subject_id !== undefined && ta.subject_id !== null ? String(ta.subject_id) : nk;
+        if (!existingSubIds.has(sid) && !existingSubNames.has(nk)) {
+          allSubjects.push({ id: ta.subject_id || sid, name: ta.subject_name });
+          existingSubIds.add(sid);
+          if (nk) existingSubNames.add(nk);
+        }
+      }
+    });
 
     const passMap = new Map<string, any>();
     (passesRes.rows || []).forEach((p: any) => {
@@ -5464,9 +5488,14 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
       });
 
       const cleanStRun = String(st.run || '').replace(/\./g, '').trim().toLowerCase();
+      const cleanStDigits = cleanStRun.split('-')[0].replace(/[^0-9]/g, '');
       const studentGrades = allGrades.filter((g: any) => {
+        const gStId = String(g.student_id || '').trim();
+        if (gStId === String(st.id)) return true;
         const gRun = String(g.student_run || '').replace(/\./g, '').trim().toLowerCase();
-        return String(g.student_id) === String(st.id) || (cleanStRun && gRun === cleanStRun);
+        if (cleanStRun && (gRun === cleanStRun || gStId.replace(/\./g, '').toLowerCase() === cleanStRun)) return true;
+        if (cleanStDigits && cleanStDigits.length >= 6 && gStId === `STU-${cleanStDigits}`) return true;
+        return false;
       });
 
       const subjectMap = new Map<string, any>();
@@ -5475,7 +5504,7 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
         if (!sName) return;
 
         const eqKeys = getEquivalentSubjectKeys(sub.id, sName, allSubjects);
-        const matchesSub = (idVal: any, nameVal: any) => {
+        const matchesSub = (idVal: any, nameVal?: any) => {
           const idStr = idVal !== undefined && idVal !== null ? String(idVal).trim() : '';
           const idKey = normalizeSubjectOrCourseKey(idVal);
           const nameKey = normalizeSubjectOrCourseKey(nameVal);
@@ -5506,9 +5535,17 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
           matchesCourse(ta.level_name || ta.level_id)
         );
 
+        const matchedGradesForSub = studentGrades.filter((g: any) => {
+          if (colIds.has(String(g.grade_column_id))) return true;
+          const colObj = colsById.get(String(g.grade_column_id));
+          const effSubId = colObj?.subject_id || g.subject_id;
+          const effSubName = colObj?.subject_name || g.subject_name;
+          return matchesSub(effSubId, effSubName);
+        });
+
         const isAssignedToCourse = Boolean(assign && assign.teacher_name && String(assign.teacher_name).trim().toLowerCase() !== 'sin asignar');
         const hasColumnsInCourse = subColsForCourse.length > 0;
-        const hasGrades = studentGrades.some((g: any) => colIds.has(String(g.grade_column_id)));
+        const hasGrades = matchedGradesForSub.length > 0;
 
         // Si la asignatura no ha sido asignada a este curso ni tiene evaluaciones/notas creadas para este curso, no mostrar
         if (!isAssignedToCourse && !hasColumnsInCourse && !hasGrades) {
@@ -5519,59 +5556,104 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
         const canonSubj = getCanonicalSubjectForCourseHelper(assign?.subject_id || sub.id, rawDisplayName, studentCourse);
         const displaySubjectName = canonSubj ? canonSubj.name : rawDisplayName;
         const normDisplayKey = normalizeSubjectOrCourseKey(displaySubjectName);
-        const teacherName = (assign && assign.teacher_name && String(assign.teacher_name).trim().toLowerCase() !== 'sin asignar')
-          ? assign.teacher_name
+        const isConceptual = isConceptualSubjectHelper(displaySubjectName);
+        const rawTeacher = (assign && assign.teacher_name && String(assign.teacher_name).trim().toLowerCase() !== 'sin asignar')
+          ? (assign.teacher_name_2 ? `${assign.teacher_name} / ${assign.teacher_name_2}` : assign.teacher_name)
           : (st.profesor_jefe || 'Sin Asignar');
 
+        const seenGradeIds = new Set<string>();
         const subGradesList: any[] = [];
         let sum = 0;
         let count = 0;
 
-        studentGrades.forEach((g: any) => {
-          if (colIds.has(String(g.grade_column_id))) {
-            const val = parseFloat(g.grade_value);
-            if (!isNaN(val) && val > 0) {
-              const colObj = subColsAll.find((c: any) => String(c.id) === String(g.grade_column_id));
-              const normVal = val > 7.0 ? val / 10.0 : val;
-              subGradesList.push({
-                label: colObj ? colObj.title : `NOTA ${subGradesList.length + 1}`,
-                value: normVal,
-                semester: colObj ? Number(colObj.semester) || 1 : 1,
-                columnIndex: colObj ? Number(colObj.column_index) || 0 : 0,
-                date: colObj?.created_at || colObj?.date || g.created_at || null
-              });
-              sum += normVal;
-              count++;
-            }
+        matchedGradesForSub.forEach((g: any) => {
+          const dedupKey = String(g.id || g.grade_column_id || `${g.subject_id}_${subGradesList.length}`);
+          if (seenGradeIds.has(dedupKey)) return;
+          seenGradeIds.add(dedupKey);
+
+          const val = parseFloat(g.grade_value);
+          if (!isNaN(val) && val > 0) {
+            const colObj = colsById.get(String(g.grade_column_id)) || subColsAll.find((c: any) => String(c.id) === String(g.grade_column_id));
+            const normVal = val > 7.0 ? Math.round((val / 10.0) * 10) / 10 : val;
+            const periodStr = String(colObj?.period || g.period || (String(g.grade_column_id || '').includes('-S2-') ? '2do Semestre' : '1er Semestre'));
+            const semNum = colObj?.semester ? Number(colObj.semester) : (periodStr.includes('2') ? 2 : 1);
+            const posMatch = String(g.grade_column_id || '').match(/[-_](?:P|N)(\d+)$/i);
+            const posNum = Number(colObj?.position ?? colObj?.column_index ?? (posMatch ? posMatch[1] : 0)) || (subGradesList.length + 1);
+            const labelStr = colObj?.title || g.evaluation_name || `Nota ${posNum}`;
+
+            subGradesList.push({
+              id: g.id,
+              gradeColumnId: g.grade_column_id,
+              label: labelStr,
+              value: normVal,
+              concept: isConceptual ? numberToConceptHelper(normVal) : undefined,
+              period: periodStr,
+              semester: semNum,
+              columnIndex: posNum,
+              date: colObj?.created_at || colObj?.date || g.created_at || null
+            });
+            sum += normVal;
+            count++;
           }
         });
 
         subGradesList.sort((a, b) => (a.semester - b.semester) || (a.columnIndex - b.columnIndex));
 
+        const sem1Grades = subGradesList.filter(g => g.semester === 1);
+        const sem2Grades = subGradesList.filter(g => g.semester === 2);
+        const sem1Average = sem1Grades.length > 0 ? Number((sem1Grades.reduce((acc, x) => acc + x.value, 0) / sem1Grades.length).toFixed(1)) : 0;
+        const sem2Average = sem2Grades.length > 0 ? Number((sem2Grades.reduce((acc, x) => acc + x.value, 0) / sem2Grades.length).toFixed(1)) : 0;
         const average = count > 0 ? Number((sum / count).toFixed(1)) : 0;
-        const status = count === 0 ? 'SIN NOTAS' : (average >= 4.0 ? 'APROBADO' : 'REPROBADO');
+        const conceptAverage = isConceptual && count > 0 ? numberToConceptHelper(average) : undefined;
+        const status = count === 0
+          ? 'SIN NOTAS'
+          : isConceptual
+            ? (conceptAverage === 'I' ? 'REPROBADO' : 'APROBADO')
+            : (average >= 4.0 ? 'APROBADO' : 'REPROBADO');
 
         const existingEntry = subjectMap.get(normDisplayKey);
         if (!existingEntry || (existingEntry.grades.length === 0 && subGradesList.length > 0) || (subGradesList.length > existingEntry.grades.length)) {
           subjectMap.set(normDisplayKey, {
             name: displaySubjectName,
-            teacher: teacherName,
-            average: average,
-            status: status,
+            teacher: rawTeacher !== 'Sin Asignar' ? rawTeacher : (existingEntry?.teacher || rawTeacher),
+            isConceptual,
+            conceptAverage,
+            sem1Average,
+            sem2Average,
+            average,
+            status,
             grades: subGradesList
           });
+        } else if (existingEntry && existingEntry.teacher === 'Sin Asignar' && rawTeacher !== 'Sin Asignar') {
+          existingEntry.teacher = rawTeacher;
         }
       });
 
       let overallSum = 0;
       let overallCount = 0;
+      let sem1Sum = 0;
+      let sem1Count = 0;
+      let sem2Sum = 0;
+      let sem2Count = 0;
       subjectMap.forEach(subObj => {
-        if (subObj.average > 0) {
-          overallSum += subObj.average;
-          overallCount++;
+        if (!subObj.isConceptual) {
+          if (subObj.average > 0) {
+            overallSum += subObj.average;
+            overallCount++;
+          }
+          if (subObj.sem1Average > 0) {
+            sem1Sum += subObj.sem1Average;
+            sem1Count++;
+          }
+          if (subObj.sem2Average > 0) {
+            sem2Sum += subObj.sem2Average;
+            sem2Count++;
+          }
         }
       });
-      const overallAvg = overallCount > 0 ? overallSum / overallCount : 0;
+      const overallAvg = overallCount > 0 ? Number((overallSum / overallCount).toFixed(1)) : 0;
+      const sem1OverallAvg = sem1Count > 0 ? Number((sem1Sum / sem1Count).toFixed(1)) : 0;
+      const sem2OverallAvg = sem2Count > 0 ? Number((sem2Sum / sem2Count).toFixed(1)) : 0;
 
       const studentObs = allObs
         .filter((o: any) => String(o.student_id) === String(st.id) || String(o.student_run) === String(st.run))
@@ -5635,6 +5717,8 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
         relacion: isSelfStudent ? 'Estudiante Titular' : 'Apoderado Titular',
         profesorJefe: st.profesor_jefe || 'Sin Asignar',
         promedioGeneral: overallAvg,
+        sem1PromedioGeneral: sem1OverallAvg,
+        sem2PromedioGeneral: sem2OverallAvg,
         asistencia: typeof st.asistencia === 'number' && st.asistencia > 0 ? st.asistencia : (typeof st.attendance_percentage === 'number' && st.attendance_percentage > 0 ? st.attendance_percentage : null),
         subjects: Array.from(subjectMap.values()),
         observations: studentObs,
