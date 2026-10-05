@@ -59,6 +59,9 @@ const ModuleLoader: React.FC = () => (
 export const AdminDashboard: React.FC = () => {
   const { user, token, logout, switchRole, restoreOriginalRole, isSuperAdmin, isImpersonating, canCustomizeProfile } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminTabId>(() => {
+    if (user?.role === 'Apoderado' || user?.role === 'Estudiante') {
+      return 'home';
+    }
     const urlTab = getAdminTabFromUrl();
     if (urlTab) return urlTab;
     try {
@@ -154,6 +157,11 @@ export const AdminDashboard: React.FC = () => {
   const currentRole = user?.role || 'Admin';
 
   const getAccessLevel = (tab: string): AccessLevel => {
+    // Protección vital: Todo usuario autenticado siempre tiene acceso a 'home' (Dashboard / Portal Apoderado / Portal Estudiante)
+    if (tab === 'home') {
+      return (currentRole === 'Apoderado' || currentRole === 'Estudiante' || currentRole === 'Visita') ? 'view' : 'edit';
+    }
+
     // Protección vital: El Administrador siempre tiene Edición en la Matriz de Permisos
     if (tab === 'permissions' && (currentRole === 'Admin' || isSuperAdmin)) {
       return 'edit';
@@ -1292,9 +1300,9 @@ export const AdminDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* VISTA SEGÚN EL ROL SELECCIONADO (SI ES APODERADO SE MUESTRA EL PORTAL APODERADO) */}
+        {/* VISTA SEGÚN EL ROL SELECCIONADO (SI ES APODERADO O ESTUDIANTE SE MUESTRA EL PORTAL FAMILIAR/ESTUDIANTIL) */}
         <Suspense fallback={<ModuleLoader />}>
-        {user?.role === 'Apoderado' && activeTab === 'home' ? (
+        {(user?.role === 'Apoderado' || user?.role === 'Estudiante') && activeTab === 'home' ? (
           <ApoderadoView token={token || ''} />
         ) : !canAccess(activeTab) ? (
           /* ACCESO DENEGADO POR MATRIZ DE PERMISOS */

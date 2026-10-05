@@ -174,6 +174,11 @@ export const Login: React.FC = () => {
     sessionStorage.removeItem('ltp_teacher_active_tab');
     localStorage.removeItem('ltp_active_tab');
     sessionStorage.removeItem('ltp_active_tab');
+    localStorage.removeItem('ltp_admin_tab');
+    sessionStorage.removeItem('ltp_admin_tab');
+    try {
+      window.history.replaceState(null, '', '/');
+    } catch (_) {}
     const finalUser = {
       ...userObj,
       role: activeRole,
@@ -460,7 +465,7 @@ export const Login: React.FC = () => {
           
           <div style={{ marginBottom: '1.25rem', textAlign: 'center' }}>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem', textAlign: 'center' }}>
-              RUT Funcionario / Apoderado
+              RUT Funcionario / Apoderado / Estudiante
             </label>
             <div style={{ position: 'relative', width: '100%' }}>
               <input
@@ -614,7 +619,7 @@ export const Login: React.FC = () => {
           {/* GUÍA RÁPIDA DE ACCESO PARA APODERADOS Y ESTUDIANTES */}
           <div
             className="a11y-readable"
-            aria-label="Información para Apoderados y Estudiantes: Ingresa con tu RUT registrado en matrícula. Si es tu primer ingreso, tu contraseña inicial son los primeros 6 dígitos de tu RUT sin puntos."
+            aria-label="Información para Apoderados y Estudiantes: Ingresa con tu RUT registrado en matrícula. Tu contraseña son los primeros 6 dígitos del RUT del estudiante o los primeros 6 dígitos de tu propio RUT sin puntos."
             style={{
               marginTop: '1.25rem',
               padding: '0.75rem 0.9rem',
@@ -631,7 +636,7 @@ export const Login: React.FC = () => {
               👨‍👩‍👧 ¿Eres Apoderado o Estudiante del Liceo?
             </div>
             <div>
-              Ingresa con tu <strong>RUT</strong> (registrado en matrícula). Si es tu primer ingreso, tu contraseña inicial son los <strong>primeros 6 dígitos de tu RUT</strong> (sin puntos).
+              Ingresa con tu <strong>RUT</strong> (registrado en matrícula). Tu contraseña son los <strong>primeros 6 dígitos del RUT del estudiante</strong> o los <strong>6 dígitos de tu propio RUT</strong> (sin puntos).
             </div>
           </div>
         </form>

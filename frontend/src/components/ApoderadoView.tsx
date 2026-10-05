@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { UserCheck, Award, BookOpen, MessageSquare, ChevronRight, ChevronDown, User, Search, Clock, PenTool, AlertTriangle, AlertCircle, ShieldAlert, FileText, Printer, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { UserProfileModal } from './UserProfileModal';
 import { SubmitStatementModal, PendingStatementItem } from './SubmitStatementModal';
 import { ThermalReceiptPreviewModal, ThermalPassData } from './ThermalPassReceipt';
+import { PERSONALITY_REPORT_TEMPLATES, detectReportTemplateKey, getQualifierStyle } from '../utils/personalityIndicators';
 
 interface ApoderadoViewProps {
   token: string;
@@ -89,13 +91,15 @@ interface Interview {
 }
 
 export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
+  const { user } = useAuth();
+  const isStudentRole = user?.role === 'Estudiante';
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [pendingStatements, setPendingStatements] = useState<PendingStatementItem[]>([]);
   const [selectedStatementItem, setSelectedStatementItem] = useState<PendingStatementItem | null>(null);
   const [pupilos, setPupilos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPupiloId, setSelectedPupiloId] = useState<string>('');
-  const [activeSubTab, setActiveSubTab] = useState<'grades' | 'observations' | 'interviews' | 'lates' | 'communications'>('grades');
+  const [activeSubTab, setActiveSubTab] = useState<'grades' | 'personality' | 'observations' | 'interviews' | 'lates' | 'communications'>('grades');
   const [previewPass, setPreviewPass] = useState<ThermalPassData | null>(null);
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
   const [searchRut, setSearchRut] = useState('');
@@ -279,21 +283,23 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
         </div>
       )}
 
-      {/* HEADER DE BIENVENIDA APODERADO */}
+      {/* HEADER DE BIENVENIDA APODERADO / ESTUDIANTE */}
       <div style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)', padding: '1.5rem', borderRadius: '16px', color: '#ffffff', marginBottom: '1.5rem', boxShadow: '0 4px 12px rgba(49, 46, 129, 0.15)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.4rem' }}>
               <img src="/logo.png" alt="LTP Logo" style={{ height: '40px', width: 'auto', borderRadius: '6px', background: '#ffffff', padding: '3px' }} />
               <span style={{ background: 'rgba(255,255,255,0.15)', padding: '0.35rem 0.75rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                LICEO PRO — Portal Oficial de Apoderados
+                {isStudentRole ? 'LICEO PRO — Portal Oficial de Estudiantes' : 'LICEO PRO — Portal Oficial de Apoderados'}
               </span>
             </div>
             <h1 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0.4rem 0 0.2rem 0' }}>
-              Portal de Consulta Familiar y Notas
+              {isStudentRole ? 'Portal de Consulta Estudiantil y Notas' : 'Portal de Consulta Familiar y Notas'}
             </h1>
             <p style={{ fontSize: '0.875rem', opacity: 0.85, margin: '0 0 0.5rem 0' }}>
-              Acceso a calificaciones, hoja de vida, citaciones y actas de tus pupilos asignados.
+              {isStudentRole
+                ? 'Acceso a tus calificaciones, informe al hogar / personalidad, hoja de vida, atrasos y comunicados oficiales.'
+                : 'Acceso a calificaciones, informe al hogar / personalidad, hoja de vida, citaciones y actas de tus pupilos asignados.'}
             </p>
             <button
               onClick={() => setShowProfileModal(true)}
@@ -319,7 +325,7 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
           {pupilos.length > 0 && (
             <div style={{ background: 'rgba(255,255,255,0.1)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.2)', minWidth: '290px' }}>
               <label style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Seleccionar Pupil@ (Hijo/a):
+                {isStudentRole ? 'Ficha Estudiantil Activa:' : 'Seleccionar Pupil@ (Hijo/a):'}
               </label>
               <select
                 value={selectedPupiloId}
@@ -512,7 +518,7 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
             </div>
           </div>
 
-          {/* PESTAÑAS DE NAVEGACIÓN DEL APODERADO */}
+          {/* PESTAÑAS DE NAVEGACIÓN DEL APODERADO / ESTUDIANTE */}
           <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '1.25rem' }}>
             <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
               <button
@@ -520,6 +526,12 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1.1rem', borderRadius: '8px', border: 'none', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', background: activeSubTab === 'grades' ? '#4f46e5' : '#f1f5f9', color: activeSubTab === 'grades' ? '#ffffff' : '#64748b' }}
               >
                 <BookOpen size={16} /> Libreta de Calificaciones
+              </button>
+              <button
+                onClick={() => setActiveSubTab('personality')}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1.1rem', borderRadius: '8px', border: 'none', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', background: activeSubTab === 'personality' ? '#4f46e5' : '#f1f5f9', color: activeSubTab === 'personality' ? '#ffffff' : '#64748b' }}
+              >
+                <FileText size={16} /> Informe Hogar y Personalidad
               </button>
               <button
                 onClick={() => setActiveSubTab('observations')}
@@ -703,6 +715,141 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                 )}
               </div>
             )}
+
+            {/* CONTENIDO TAB PERSONALIDAD / INFORME AL HOGAR */}
+            {activeSubTab === 'personality' && (() => {
+              const levelKey = detectReportTemplateKey(currentPupilo.levelName || '');
+              const tpl = PERSONALITY_REPORT_TEMPLATES[levelKey];
+              const savedReport = currentPupilo.personalityReport || { sem1: {}, sem2: {}, observations: '' };
+              const sem1 = savedReport.sem1 || {};
+              const sem2 = savedReport.sem2 || {};
+              return (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.2rem 0' }}>
+                        {tpl.reportTitle} — {tpl.levelLabel}
+                      </h3>
+                      <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
+                        Pauta oficial de evaluación formativa para <strong>{currentPupilo.fullName}</strong> ({currentPupilo.levelName}).
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      style={{
+                        background: '#4f46e5',
+                        color: '#ffffff',
+                        border: 'none',
+                        padding: '0.5rem 1rem',
+                        borderRadius: '8px',
+                        fontWeight: 700,
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem'
+                      }}
+                    >
+                      <Printer size={15} /> Imprimir Informe
+                    </button>
+                  </div>
+
+                  {/* Escala de Evaluación */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem', background: '#f8fafc', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', marginRight: '0.5rem', alignSelf: 'center' }}>
+                      Escala de Calificadores:
+                    </span>
+                    {tpl.scale.map(sc => (
+                      <span
+                        key={sc.code}
+                        style={{
+                          background: sc.bgColor,
+                          color: sc.color,
+                          padding: '0.25rem 0.65rem',
+                          borderRadius: '999px',
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          border: `1px solid ${sc.color}33`
+                        }}
+                      >
+                        {sc.code}: {sc.label}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Ámbitos y Núcleos / Áreas */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    {tpl.ambitos.map(amb => (
+                      <div key={amb.id} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
+                        {amb.ambitoTitle && (
+                          <div style={{ background: '#1e1b4b', color: '#ffffff', padding: '0.65rem 1rem', fontWeight: 800, fontSize: '0.85rem', letterSpacing: '0.4px' }}>
+                            {amb.ambitoTitle}
+                          </div>
+                        )}
+                        {amb.sections.map(sec => (
+                          <div key={sec.id}>
+                            <div style={{ background: '#eef2ff', color: '#312e81', padding: '0.55rem 1rem', fontWeight: 800, fontSize: '0.82rem', borderBottom: '1px solid #e0e7ff' }}>
+                              {sec.title}
+                            </div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                              <thead>
+                                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase' }}>
+                                  <th style={{ padding: '0.5rem 0.85rem', textAlign: 'left' }}>Indicador de Evaluación</th>
+                                  <th style={{ padding: '0.5rem 0.65rem', textAlign: 'center', width: '90px' }}>1° Sem</th>
+                                  <th style={{ padding: '0.5rem 0.65rem', textAlign: 'center', width: '90px' }}>2° Sem</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {sec.indicators.map((ind, idx) => {
+                                  const v1 = sem1[ind.id] || '-';
+                                  const v2 = sem2[ind.id] || '-';
+                                  const st1 = v1 !== '-' ? getQualifierStyle(v1, tpl.category) : { color: '#94a3b8', bgColor: '#f1f5f9' };
+                                  const st2 = v2 !== '-' ? getQualifierStyle(v2, tpl.category) : { color: '#94a3b8', bgColor: '#f1f5f9' };
+                                  return (
+                                    <tr key={ind.id} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? '#ffffff' : '#fafafa' }}>
+                                      <td style={{ padding: '0.6rem 0.85rem', color: '#1e293b', lineHeight: 1.4 }}>
+                                        {ind.oa && (
+                                          <span style={{ fontWeight: 800, color: '#4f46e5', marginRight: '0.35rem' }}>
+                                            ({ind.oa})
+                                          </span>
+                                        )}
+                                        {ind.text}
+                                      </td>
+                                      <td style={{ padding: '0.5rem 0.65rem', textAlign: 'center' }}>
+                                        <span style={{ display: 'inline-block', minWidth: '42px', padding: '2px 8px', borderRadius: '6px', fontWeight: 800, fontSize: '0.76rem', background: st1.bgColor, color: st1.color }}>
+                                          {v1}
+                                        </span>
+                                      </td>
+                                      <td style={{ padding: '0.5rem 0.65rem', textAlign: 'center' }}>
+                                        <span style={{ display: 'inline-block', minWidth: '42px', padding: '2px 8px', borderRadius: '6px', fontWeight: 800, fontSize: '0.76rem', background: st2.bgColor, color: st2.color }}>
+                                          {v2}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+
+                  {savedReport.observations && (
+                    <div style={{ marginTop: '1.25rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '1rem' }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
+                        Observaciones Generales del Profesor(a) Jefe / Educador(a):
+                      </div>
+                      <div style={{ fontSize: '0.88rem', color: '#334155', whiteSpace: 'pre-line', lineHeight: 1.5 }}>
+                        {savedReport.observations}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* CONTENIDO TAB 2: HOJA DE VIDA Y ANOTACIONES */}
             {activeSubTab === 'observations' && (

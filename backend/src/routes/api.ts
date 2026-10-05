@@ -377,103 +377,149 @@ const loginHandler = async (req: Request, res: Response) => {
       }
     }
 
-    if (userRows.length === 0) {
+    // Consultar vínculo en nómina de estudiantes (tanto para auto-provisión como para validar clave por RUT de pupilo/apoderado)
+    const cleanAlnumRun = cleanRun.replace(/[^0-9kK]/g, '').toLowerCase();
+    let studentLookupRows: any[] = [];
+    try {
+      const studentLookup = await query(
+        `SELECT id, run, full_name, email,
+                guardian_run, guardian_name, guardian_email,
+                guardian_sec_run, guardian_sec_name, guardian_sec_email,
+                father_run, father_name, mother_run, mother_name
+         FROM students
+         WHERE REPLACE(LOWER(TRIM(COALESCE(run, ''))), '.', '') = LOWER($1)
+            OR REPLACE(LOWER(TRIM(COALESCE(guardian_run, ''))), '.', '') = LOWER($1)
+            OR REPLACE(LOWER(TRIM(COALESCE(guardian_sec_run, ''))), '.', '') = LOWER($1)
+            OR REPLACE(LOWER(TRIM(COALESCE(father_run, ''))), '.', '') = LOWER($1)
+            OR REPLACE(LOWER(TRIM(COALESCE(mother_run, ''))), '.', '') = LOWER($1)
+            OR REPLACE(REPLACE(LOWER(TRIM(COALESCE(run, ''))), '.', ''), '-', '') = $2
+            OR REPLACE(REPLACE(LOWER(TRIM(COALESCE(guardian_run, ''))), '.', ''), '-', '') = $2
+            OR REPLACE(REPLACE(LOWER(TRIM(COALESCE(guardian_sec_run, ''))), '.', ''), '-', '') = $2
+            OR REPLACE(REPLACE(LOWER(TRIM(COALESCE(father_run, ''))), '.', ''), '-', '') = $2
+            OR REPLACE(REPLACE(LOWER(TRIM(COALESCE(mother_run, ''))), '.', ''), '-', '') = $2`,
+        [cleanRun, cleanAlnumRun]
+      ).catch(() => ({ rows: [] }));
+      studentLookupRows = studentLookup.rows || [];
+    } catch (_) {}
+
+    // Construir conjunto de claves válidas de 6 dígitos / RUT (tanto del propio RUT como del RUT de sus pupilos/apoderados)
+    const validFamilyPasswords = new Set<string>(['ltp2026!']);
+    const addRunVariantsToValidPasswords = (rVal: any) => {
+      const rawR = String(rVal || '').replace(/\./g, '').trim().toLowerCase();
+      if (!rawR) return;
+      const bodyOnly = rawR.split('-')[0].replace(/[^0-9]/g, '');
+      const fullAlnum = rawR.replace(/[^0-9k]/g, '');
+      const first6 = bodyOnly.slice(0, 6);
+      if (first6.length >= 5) validFamilyPasswords.add(first6);
+      if (bodyOnly.length >= 6) validFamilyPasswords.add(bodyOnly);
+      if (rawR.length >= 6) validFamilyPasswords.add(rawR);
+      if (fullAlnum.length >= 6) validFamilyPasswords.add(fullAlnum);
+    };
+
+    if (studentLookupRows.length > 0) {
+      addRunVariantsToValidPasswords(cleanRun);
+      studentLookupRows.forEach((sr: any) => {
+        addRunVariantsToValidPasswords(sr.run);
+        addRunVariantsToValidPasswords(sr.guardian_run);
+        addRunVariantsToValidPasswords(sr.guardian_sec_run);
+        addRunVariantsToValidPasswords(sr.mother_run);
+        addRunVariantsToValidPasswords(sr.father_run);
+      });
+    }
+
+    const passNoDots = passStr.replace(/\./g, '').trim().toLowerCase();
+    const passAlnum = passNoDots.replace(/[^0-9k]/g, '');
+    const passFirst6 = passNoDots.replace(/[^0-9]/g, '').slice(0, 6);
+    const isValidFamilyOrStudentPass =
+      studentLookupRows.length > 0 &&
+      (validFamilyPasswords.has(passStr.toLowerCase()) ||
+        validFamilyPasswords.has(passNoDots) ||
+        validFamilyPasswords.has(passAlnum) ||
+        (passFirst6.length === 6 && validFamilyPasswords.has(passFirst6)));
+
+    if (userRows.length === 0 && studentLookupRows.length > 0) {
       // Auto-provisión para Apoderados y Estudiantes registrados en la nómina de matrículas (students)
       try {
-        const studentLookup = await query(
-          `SELECT id, run, full_name, email,
-                  guardian_run, guardian_name, guardian_email,
-                  guardian_sec_run, guardian_sec_name, guardian_sec_email,
-                  father_run, father_name, mother_run, mother_name
-           FROM students
-           WHERE REPLACE(LOWER(TRIM(COALESCE(run, ''))), '.', '') = LOWER($1)
-              OR REPLACE(LOWER(TRIM(COALESCE(guardian_run, ''))), '.', '') = LOWER($1)
-              OR REPLACE(LOWER(TRIM(COALESCE(guardian_sec_run, ''))), '.', '') = LOWER($1)
-              OR REPLACE(LOWER(TRIM(COALESCE(father_run, ''))), '.', '') = LOWER($1)
-              OR REPLACE(LOWER(TRIM(COALESCE(mother_run, ''))), '.', '') = LOWER($1)`,
-          [cleanRun]
-        ).catch(() => ({ rows: [] }));
-
-        if (studentLookup.rows.length > 0) {
-          const cleanDigits = cleanRun.replace(/[^0-9]/g, '');
-          const first6 = cleanDigits.slice(0, 6);
-          const rutBody = cleanRun.split('-')[0].trim();
-
-          const isValidInitialPass = Boolean(
-            (first6 && passStr === first6) ||
-            (rutBody && passStr === rutBody) ||
-            passStr.toLowerCase() === 'ltp2026!'
-          );
-
-          if (!isValidInitialPass) {
-            return res.status(401).json({
-              error: 'Contraseña incorrecta. Si ingresa como Apoderado o Estudiante por primera vez, su clave inicial son los primeros 6 dígitos de su RUT (sin puntos).'
-            });
-          }
-
-          const stRow = studentLookup.rows[0];
-          const cleanLower = cleanRun.toLowerCase();
-          const isStudentSelf = String(stRow.run || '').replace(/\./g, '').trim().toLowerCase() === cleanLower;
-
-          let resolvedName = '';
-          let resolvedEmail = '';
-          let resolvedRole = isStudentSelf ? 'Estudiante' : 'Apoderado';
-          let resolvedRun = rawIdentifier;
-
-          if (isStudentSelf) {
-            resolvedName = stRow.full_name || 'Estudiante LTP';
-            resolvedEmail = stRow.email || '';
-            resolvedRun = stRow.run || rawIdentifier;
-          } else if (String(stRow.guardian_run || '').replace(/\./g, '').trim().toLowerCase() === cleanLower) {
-            resolvedName = stRow.guardian_name || 'Apoderado Titular';
-            resolvedEmail = stRow.guardian_email || '';
-            resolvedRun = stRow.guardian_run || rawIdentifier;
-          } else if (String(stRow.guardian_sec_run || '').replace(/\./g, '').trim().toLowerCase() === cleanLower) {
-            resolvedName = stRow.guardian_sec_name || 'Apoderado Suplente';
-            resolvedEmail = stRow.guardian_sec_email || '';
-            resolvedRun = stRow.guardian_sec_run || rawIdentifier;
-          } else if (String(stRow.mother_run || '').replace(/\./g, '').trim().toLowerCase() === cleanLower) {
-            resolvedName = stRow.mother_name || stRow.guardian_name || 'Madre / Apoderada';
-            resolvedEmail = stRow.guardian_email || '';
-            resolvedRun = stRow.mother_run || rawIdentifier;
-          } else {
-            resolvedName = stRow.father_name || stRow.guardian_name || 'Padre / Apoderado';
-            resolvedEmail = stRow.guardian_email || '';
-            resolvedRun = stRow.father_run || rawIdentifier;
-          }
-
-          const newUserId = `USR-${resolvedRole.slice(0, 3).toUpperCase()}-${cleanDigits || Date.now()}`;
-          const hashedPass = bcrypt.hashSync(passStr, 10);
-
-          try {
-            await query(
-              `INSERT INTO users (id, run, name, email, role, roles, password_hash, password_plain)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-               ON CONFLICT (id) DO NOTHING`,
-              [
-                newUserId,
-                resolvedRun,
-                resolvedName,
-                resolvedEmail || null,
-                resolvedRole,
-                JSON.stringify([resolvedRole]),
-                hashedPass,
-                passStr
-              ]
-            );
-          } catch (_) {}
-
-          userRows = [{
-            id: newUserId,
-            run: resolvedRun,
-            name: resolvedName,
-            email: resolvedEmail || null,
-            role: resolvedRole,
-            roles: [resolvedRole],
-            password_hash: hashedPass,
-            password_plain: passStr
-          }];
+        if (!isValidFamilyOrStudentPass) {
+          return res.status(401).json({
+            error: 'Contraseña incorrecta. Para Apoderados y Estudiantes, ingrese los primeros 6 dígitos del RUT del estudiante o de su propio RUT (sin puntos).'
+          });
         }
+
+        const stRow = studentLookupRows[0];
+        const cleanLower = cleanRun.toLowerCase();
+        const isStudentSelf =
+          String(stRow.run || '').replace(/\./g, '').trim().toLowerCase() === cleanLower ||
+          String(stRow.run || '').replace(/[^0-9kK]/g, '').toLowerCase() === cleanAlnumRun;
+
+        let resolvedName = '';
+        let resolvedEmail = '';
+        const resolvedRole = isStudentSelf ? 'Estudiante' : 'Apoderado';
+        let resolvedRun = rawIdentifier;
+
+        if (isStudentSelf) {
+          resolvedName = stRow.full_name || 'Estudiante LTP';
+          resolvedEmail = stRow.email || '';
+          resolvedRun = stRow.run || rawIdentifier;
+        } else if (
+          String(stRow.guardian_run || '').replace(/\./g, '').trim().toLowerCase() === cleanLower ||
+          String(stRow.guardian_run || '').replace(/[^0-9kK]/g, '').toLowerCase() === cleanAlnumRun
+        ) {
+          resolvedName = stRow.guardian_name || 'Apoderado Titular';
+          resolvedEmail = stRow.guardian_email || '';
+          resolvedRun = stRow.guardian_run || rawIdentifier;
+        } else if (
+          String(stRow.guardian_sec_run || '').replace(/\./g, '').trim().toLowerCase() === cleanLower ||
+          String(stRow.guardian_sec_run || '').replace(/[^0-9kK]/g, '').toLowerCase() === cleanAlnumRun
+        ) {
+          resolvedName = stRow.guardian_sec_name || 'Apoderado Suplente';
+          resolvedEmail = stRow.guardian_sec_email || '';
+          resolvedRun = stRow.guardian_sec_run || rawIdentifier;
+        } else if (
+          String(stRow.mother_run || '').replace(/\./g, '').trim().toLowerCase() === cleanLower ||
+          String(stRow.mother_run || '').replace(/[^0-9kK]/g, '').toLowerCase() === cleanAlnumRun
+        ) {
+          resolvedName = stRow.mother_name || stRow.guardian_name || 'Madre / Apoderada';
+          resolvedEmail = stRow.guardian_email || '';
+          resolvedRun = stRow.mother_run || rawIdentifier;
+        } else {
+          resolvedName = stRow.father_name || stRow.guardian_name || 'Padre / Apoderado';
+          resolvedEmail = stRow.guardian_email || '';
+          resolvedRun = stRow.father_run || rawIdentifier;
+        }
+
+        const cleanDigits = cleanRun.replace(/[^0-9]/g, '');
+        const newUserId = `USR-${resolvedRole.slice(0, 3).toUpperCase()}-${cleanDigits || Date.now()}`;
+        const hashedPass = bcrypt.hashSync(passStr, 10);
+
+        try {
+          await query(
+            `INSERT INTO users (id, run, name, email, role, roles, password_hash, password_plain)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (id) DO NOTHING`,
+            [
+              newUserId,
+              resolvedRun,
+              resolvedName,
+              resolvedEmail || null,
+              resolvedRole,
+              JSON.stringify([resolvedRole]),
+              hashedPass,
+              passStr
+            ]
+          );
+        } catch (_) {}
+
+        userRows = [{
+          id: newUserId,
+          run: resolvedRun,
+          name: resolvedName,
+          email: resolvedEmail || null,
+          role: resolvedRole,
+          roles: [resolvedRole],
+          password_hash: hashedPass,
+          password_plain: passStr
+        }];
       } catch (autoErr) {
         console.error('Error en auto-provisión de apoderado/estudiante:', autoErr);
       }
@@ -496,7 +542,7 @@ const loginHandler = async (req: Request, res: Response) => {
       const isPlainMatch = Boolean(plain && (passStr === plain ||
         passStr.toLowerCase() === `admin${plain}`.toLowerCase() ||
         `admin${passStr}`.toLowerCase() === plain.toLowerCase()));
-      return isHashMatch || isPlainMatch;
+      return isHashMatch || isPlainMatch || isValidFamilyOrStudentPass;
     });
 
     if (!matchedUser) {
@@ -683,10 +729,17 @@ router.get('/auth/me', authMiddleware, async (req: Request, res: Response) => {
       'SELECT * FROM users WHERE id = $1 OR REPLACE(run, \'.\', \'\') = $2 OR run = $3 LIMIT 1',
       [userId, cleanRun, userRun]
     );
-    if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuario no encontrado.' });
-    }
-    const dbUser = userRes.rows[0];
+    const dbUser = userRes.rows[0] || {
+      id: userId,
+      run: userRun || '',
+      name: (req.user as any)?.name || 'Usuario LTP',
+      email: '',
+      phone: '',
+      role: activeRole,
+      roles: (req.user as any)?.roles || [activeRole],
+      theme_config: null,
+      avatar: null
+    };
     const allowedCustomize = canCustomizeProfileRole(activeRole);
     const parsedTheme = allowedCustomize ? parseUserThemeConfig(dbUser.theme_config) : null;
     const safeAvatar = allowedCustomize ? normalizeAvatarDataUri(dbUser.avatar) : null;
@@ -736,13 +789,22 @@ router.post('/auth/switch-role', authMiddleware, async (req: Request, res: Respo
       [userId, cleanRun, userRun]
     );
 
-    if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuario no encontrado.' });
-    }
-
-    const dbUser = userRes.rows[0];
+    const dbUser = userRes.rows[0] || {
+      id: userId,
+      run: userRun || '',
+      name: (req.user as any)?.name || 'Usuario LTP',
+      email: '',
+      phone: '',
+      role: req.user?.role || newRole,
+      roles: (req.user as any)?.roles || [newRole],
+      theme_config: null,
+      avatar: null
+    };
     const userRolesSet = new Set<string>();
     if (dbUser.role) userRolesSet.add(dbUser.role);
+    if (Array.isArray((req.user as any)?.roles)) {
+      (req.user as any).roles.forEach((r: any) => userRolesSet.add(String(r).trim()));
+    }
 
     if (dbUser.roles) {
       try {
@@ -754,7 +816,7 @@ router.post('/auth/switch-role', authMiddleware, async (req: Request, res: Respo
     }
 
     if (isSuperAdmin || dbUser.role === 'Admin') {
-      ['Admin', 'Director', 'Docente', 'Entrevistador', 'Asistente', 'Administrativo', 'Profesionales', 'Apoderado', 'Visita'].forEach(r => userRolesSet.add(r));
+      ['Admin', 'Director', 'Docente', 'Entrevistador', 'Asistente', 'Administrativo', 'Profesionales', 'Apoderado', 'Estudiante', 'Visita'].forEach(r => userRolesSet.add(r));
     }
 
     if (!userRolesSet.has(newRole) && !isSuperAdmin) {
@@ -5305,6 +5367,7 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
     const userRun = (req.user as any)?.run || '';
     const queryRun = String(req.query.run || req.query.guardianRun || userRun || '').trim();
     const cleanUserRun = queryRun.replace(/\./g, '').trim().toLowerCase();
+    const cleanAlnumUserRun = cleanUserRun.replace(/[^0-9k]/g, '');
 
     const [
       studentsRes,
@@ -5316,7 +5379,8 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
       obsRes,
       intRes,
       passesRes,
-      commsRes
+      commsRes,
+      persRes
     ] = await Promise.all([
       query('SELECT * FROM students ORDER BY list_number ASC, full_name ASC').catch(() => ({ rows: [] })),
       query('SELECT * FROM grades').catch(() => ({ rows: [] })),
@@ -5333,19 +5397,35 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
              FROM system_notifications
              WHERE type = 'COURSE_MESSAGE'
              ORDER BY created_at DESC
-             LIMIT 300`).catch(() => ({ rows: [] }))
+             LIMIT 300`).catch(() => ({ rows: [] })),
+      query("SELECT config_value FROM system_settings WHERE id = 'SET-PERSONALITY-REPORTS' OR config_key = 'personality_reports_v2' ORDER BY updated_at DESC LIMIT 1").catch(() => ({ rows: [] }))
     ]);
+
+    let personalityReportsMap: Record<string, any> = {};
+    try {
+      if (persRes.rows && persRes.rows[0]?.config_value) {
+        const rawP = persRes.rows[0].config_value;
+        personalityReportsMap = typeof rawP === 'string' ? JSON.parse(rawP) : rawP;
+      }
+    } catch (_) {}
 
     let allStudents = studentsRes.rows || [];
     let matchedStudents = allStudents;
     if (cleanUserRun) {
+      const matchRunHelper = (candidate: any) => {
+        const cClean = String(candidate || '').replace(/\./g, '').trim().toLowerCase();
+        if (!cClean) return false;
+        const cAlnum = cClean.replace(/[^0-9k]/g, '');
+        return cClean === cleanUserRun || (cleanAlnumUserRun && cAlnum === cleanAlnumUserRun);
+      };
       const filtered = allStudents.filter((s: any) => {
-        const gRun = String(s.guardian_run || s.run_apoderado || '').replace(/\./g, '').trim().toLowerCase();
-        const g2Run = String(s.guardian_sec_run || s.run_apoderado_2 || '').replace(/\./g, '').trim().toLowerCase();
-        const mRun = String(s.mother_run || '').replace(/\./g, '').trim().toLowerCase();
-        const fRun = String(s.father_run || '').replace(/\./g, '').trim().toLowerCase();
-        const sRun = String(s.run || '').replace(/\./g, '').trim().toLowerCase();
-        return gRun === cleanUserRun || g2Run === cleanUserRun || mRun === cleanUserRun || fRun === cleanUserRun || sRun === cleanUserRun;
+        return (
+          matchRunHelper(s.guardian_run || s.run_apoderado) ||
+          matchRunHelper(s.guardian_sec_run || s.run_apoderado_2) ||
+          matchRunHelper(s.mother_run) ||
+          matchRunHelper(s.father_run) ||
+          matchRunHelper(s.run)
+        );
       });
       if (filtered.length > 0) {
         matchedStudents = filtered;
@@ -5540,7 +5620,12 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
         }
       });
 
-      const isSelfStudent = Boolean(cleanUserRun && cleanStRun === cleanUserRun);
+      const isSelfStudent = Boolean(cleanUserRun && (cleanStRun === cleanUserRun || cleanStRun.replace(/[^0-9k]/g, '') === cleanAlnumUserRun));
+      const studentPersonalityReport =
+        personalityReportsMap[String(st.id)] ||
+        personalityReportsMap[String(st.run || '').trim()] ||
+        personalityReportsMap[cleanStRun] ||
+        null;
 
       return {
         id: st.id,
@@ -5556,6 +5641,7 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
         interviews: studentInts,
         passes: studentPasses,
         communications: Array.from(commMap.values()),
+        personalityReport: studentPersonalityReport,
         totalLates,
         unjustifiedLates,
         justifiedLates

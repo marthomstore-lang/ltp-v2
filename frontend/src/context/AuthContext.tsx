@@ -215,8 +215,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       localStorage.removeItem('ltp_token');
       localStorage.removeItem('ltp_user');
+      localStorage.removeItem('ltp_admin_tab');
+      sessionStorage.removeItem('ltp_admin_tab');
       sessionStorage.setItem('ltp_token', newToken);
       sessionStorage.setItem('ltp_user', JSON.stringify(userWithOriginal));
+      if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+        window.history.replaceState(null, '', '/');
+      }
     } catch (err) {
       console.warn('Error guardando sesión:', err);
     }
@@ -320,6 +325,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionStorage.removeItem('ltp_admin_tab');
       sessionStorage.removeItem('ltp_teacher_active_tab');
       sessionStorage.removeItem('ltp_a11y_prompt_shown');
+      if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+        window.history.replaceState(null, '', '/');
+      }
     } catch (err) {
       // Ignorar
     }
