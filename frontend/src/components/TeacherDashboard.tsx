@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Home, BookOpen, Award, Link, LogOut, CheckSquare, User, ArrowRight, Clock, PenTool, Bell, MessageSquare, Palette } from 'lucide-react';
+import { Home, BookOpen, Award, Link, LogOut, CheckSquare, User, ArrowRight, ArrowLeft, Clock, PenTool, Bell, MessageSquare, Palette } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { InstitutionalPlatformsSection } from './InstitutionalPlatformsSection';
 import { SubmitStatementModal, PendingStatementItem } from './SubmitStatementModal';
@@ -63,6 +63,31 @@ export const TeacherDashboard: React.FC = () => {
     } catch {}
     return 'home';
   });
+  const [tabHistory, setTabHistory] = useState<TeacherTabId[]>([]);
+
+  const navigateTeacherTab = (nextTab: TeacherTabId) => {
+    setActiveTab(prev => {
+      if (prev !== nextTab) {
+        setTabHistory(hist => [...hist.slice(-15), prev]);
+      }
+      return nextTab;
+    });
+  };
+
+  const handleTeacherGoBack = () => {
+    if (activeTab === 'my_courses' && selectedCourseSubject) {
+      setSelectedCourseSubject(null);
+      return;
+    }
+    if (tabHistory.length > 0) {
+      const nextHistory = [...tabHistory];
+      const prevTab = nextHistory.pop() || 'home';
+      setTabHistory(nextHistory);
+      setActiveTab(prevTab);
+      return;
+    }
+    setActiveTab('home');
+  };
 
   React.useEffect(() => {
     try {
@@ -142,7 +167,7 @@ export const TeacherDashboard: React.FC = () => {
           <div
             className={`nav-item ${activeTab === 'home' ? 'active' : ''}`}
             onClick={() => {
-              setActiveTab('home');
+              navigateTeacherTab('home');
               setSelectedCourseSubject(null);
             }}
           >
@@ -151,19 +176,19 @@ export const TeacherDashboard: React.FC = () => {
           <div
             className={`nav-item ${activeTab === 'my_courses' ? 'active' : ''}`}
             onClick={() => {
-              setActiveTab('my_courses');
+              navigateTeacherTab('my_courses');
               setSelectedCourseSubject(null);
             }}
           >
             <BookOpen size={20} /> Mis Cursos Asignados
           </div>
-          <div className={`nav-item ${activeTab === 'homeroom' ? 'active' : ''}`} onClick={() => setActiveTab('homeroom')}>
+          <div className={`nav-item ${activeTab === 'homeroom' ? 'active' : ''}`} onClick={() => navigateTeacherTab('homeroom')}>
             <CheckSquare size={20} /> Informe Jefatura
           </div>
-          <div className={`nav-item ${activeTab === 'observations' ? 'active' : ''}`} onClick={() => setActiveTab('observations')}>
+          <div className={`nav-item ${activeTab === 'observations' ? 'active' : ''}`} onClick={() => navigateTeacherTab('observations')}>
             <Award size={20} /> Anotaciones
           </div>
-          <div className={`nav-item ${activeTab === 'links' ? 'active' : ''}`} onClick={() => setActiveTab('links')}>
+          <div className={`nav-item ${activeTab === 'links' ? 'active' : ''}`} onClick={() => navigateTeacherTab('links')}>
             <Link size={20} /> Enlaces Institucionales
           </div>
         </nav>
@@ -195,7 +220,29 @@ export const TeacherDashboard: React.FC = () => {
       {/* Contenido Principal */}
       <div className="main-content">
         <div className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
+            {activeTab !== 'home' && (
+              <button
+                type="button"
+                onClick={handleTeacherGoBack}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.5rem 0.95rem',
+                  borderRadius: '10px',
+                  border: '1.5px solid #4f46e5',
+                  background: '#eef2ff',
+                  color: '#312e81',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer'
+                }}
+                title="Volver a la pantalla anterior"
+              >
+                <ArrowLeft size={16} /> Volver Atrás
+              </button>
+            )}
             <div
               onClick={() => {
                 setProfileModalTab('info');
@@ -640,7 +687,7 @@ export const TeacherDashboard: React.FC = () => {
                 {/* ACCESO A MIS CURSOS */}
                 <div
                   onClick={() => {
-                    setActiveTab('my_courses');
+                    navigateTeacherTab('my_courses');
                     setSelectedCourseSubject(null);
                   }}
                   style={{
@@ -678,7 +725,7 @@ export const TeacherDashboard: React.FC = () => {
 
                 {/* ACCESO A INFORME JEFATURA */}
                 <div
-                  onClick={() => setActiveTab('homeroom')}
+                  onClick={() => navigateTeacherTab('homeroom')}
                   style={{
                     background: '#ffffff',
                     border: '1px solid #e2e8f0',
@@ -714,7 +761,7 @@ export const TeacherDashboard: React.FC = () => {
 
                 {/* ACCESO A ANOTACIONES */}
                 <div
-                  onClick={() => setActiveTab('observations')}
+                  onClick={() => navigateTeacherTab('observations')}
                   style={{
                     background: '#ffffff',
                     border: '1px solid #e2e8f0',
@@ -749,6 +796,85 @@ export const TeacherDashboard: React.FC = () => {
                 </div>
 
               </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab !== 'home' && (
+          <div
+            className="no-print"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '0.6rem 1.1rem',
+              marginBottom: '1rem',
+              boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={handleTeacherGoBack}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.45rem 0.95rem',
+                  borderRadius: '8px',
+                  border: '1.5px solid #4f46e5',
+                  background: '#eef2ff',
+                  color: '#312e81',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <ArrowLeft size={16} /> Volver Atrás
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  navigateTeacherTab('home');
+                  setSelectedCourseSubject(null);
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.45rem 0.9rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#f8fafc',
+                  color: '#334155',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <Home size={15} color="#4f46e5" /> Ir al Inicio
+              </button>
+            </div>
+
+            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span style={{ color: '#94a3b8' }}>Ventana actual:</span>
+              <strong style={{ color: '#1e1b4b', background: '#f1f5f9', padding: '0.22rem 0.65rem', borderRadius: '6px' }}>
+                {activeTab === 'my_courses'
+                  ? selectedCourseSubject
+                    ? `${selectedCourseSubject.courseName} — ${selectedCourseSubject.subjectName}`
+                    : 'Mis Cursos Asignados'
+                  : activeTab === 'homeroom'
+                    ? 'Informe Jefatura'
+                    : activeTab === 'observations'
+                      ? 'Hoja de Vida y Anotaciones'
+                      : 'Enlaces Institucionales'}
+              </strong>
             </div>
           </div>
         )}

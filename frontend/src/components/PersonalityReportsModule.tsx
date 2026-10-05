@@ -11,7 +11,9 @@ import {
   Trash2,
   RotateCcw,
   Layers,
-  CheckCircle2
+  CheckCircle2,
+  ArrowLeft,
+  Home
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import {
@@ -26,6 +28,7 @@ import { getStudentCourse, isStudentRetired, sortCoursesList, getStudentYear } f
 interface PersonalityReportsModuleProps {
   token: string;
   selectedYear?: number;
+  onBack?: () => void;
 }
 
 type LevelFilterType = 'all' | ReportLevelKey;
@@ -36,7 +39,8 @@ const cloneTemplates = (
 
 export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> = ({
   token,
-  selectedYear = 2026
+  selectedYear = 2026,
+  onBack
 }) => {
   const [students, setStudents] = useState<any[]>([]);
   const [staffList, setStaffList] = useState<any[]>([]);
@@ -502,16 +506,49 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
         gap: '1rem',
         boxShadow: '0 10px 25px -5px rgba(30, 27, 75, 0.25)'
       }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <Award size={26} color="#facc15" />
-            <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 900 }}>
-              Informes al Hogar e Informes de Personalidad (Pre-Kínder a 4° Medio)
-            </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => {
+              if (activeMode === 'edit_template') {
+                setActiveMode('evaluate');
+              } else if (onBack) {
+                onBack();
+              } else {
+                window.dispatchEvent(new CustomEvent('ltp_navigate_tab', { detail: 'home' }));
+              }
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.5rem 0.95rem',
+              borderRadius: '10px',
+              border: '1.5px solid rgba(255,255,255,0.35)',
+              background: 'rgba(255,255,255,0.14)',
+              color: '#ffffff',
+              fontWeight: 800,
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+            title={activeMode === 'edit_template' ? 'Volver a la vista de Evaluar e Imprimir' : 'Volver a la pantalla anterior'}
+          >
+            <ArrowLeft size={16} />
+            {activeMode === 'edit_template' ? 'Volver a Evaluar' : 'Volver Atrás'}
+          </button>
+
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <Award size={26} color="#facc15" />
+              <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 900 }}>
+                Informes al Hogar e Informes de Personalidad (Pre-Kínder a 4° Medio)
+              </h2>
+            </div>
+            <p style={{ margin: '0.3rem 0 0 0', fontSize: '0.84rem', color: '#c7d2fe' }}>
+              Filtra por nivel o curso, evalúa a cada estudiante, imprime informes o edita los indicadores si requieres modificaciones.
+            </p>
           </div>
-          <p style={{ margin: '0.3rem 0 0 0', fontSize: '0.84rem', color: '#c7d2fe' }}>
-            Filtra por nivel o curso, evalúa a cada estudiante, imprime informes o edita los indicadores si requieres modificaciones.
-          </p>
         </div>
 
         {/* CONMUTADOR DE MODO: EVALUAR/IMPRIMIR VS EDITAR PAUTA E INDICADORES */}
@@ -957,6 +994,26 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
             </div>
 
             <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setActiveMode('evaluate')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.55rem 1rem',
+                  borderRadius: '8px',
+                  border: '1.5px solid #4f46e5',
+                  background: '#eef2ff',
+                  color: '#312e81',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <ArrowLeft size={15} /> Volver a Evaluar e Imprimir
+              </button>
+
               <button
                 type="button"
                 onClick={handleRestoreDefaultTemplate}

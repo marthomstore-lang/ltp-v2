@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette } from 'lucide-react';
+import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { InstitutionalPlatformsSection } from './InstitutionalPlatformsSection';
 import { SubmitStatementModal, PendingStatementItem } from './SubmitStatementModal';
@@ -70,6 +70,7 @@ export const AdminDashboard: React.FC = () => {
     } catch {}
     return 'home';
   });
+  const [tabHistory, setTabHistory] = useState<AdminTabId[]>([]);
 
   const [gradesSubTab, setGradesSubTab] = useState<'courses' | 'sheet' | 'overview'>(() =>
     getAdminTabFromUrl() === 'overview' ? 'overview' : 'sheet'
@@ -95,7 +96,12 @@ export const AdminDashboard: React.FC = () => {
   useEffect(() => {
     const handleNav = (e: any) => {
       if (e.detail && ['home', 'students', 'apoderados', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips'].includes(e.detail)) {
-        setActiveTab(e.detail);
+        setActiveTab(prev => {
+          if (prev !== e.detail) {
+            setTabHistory(hist => [...hist.slice(-15), prev]);
+          }
+          return e.detail;
+        });
       }
     };
     window.addEventListener('ltp_navigate_tab', handleNav);
@@ -188,6 +194,7 @@ export const AdminDashboard: React.FC = () => {
   const canEdit = (tab: string) => getAccessLevel(tab) === 'edit';
 
   const getFunctionName = (tab: string): string => {
+    if (tab === 'personality_reports') return 'Informes al Hogar e Informes de Personalidad';
     const funcId = TAB_TO_FUNCTION[tab] || tab;
     const row = dynamicMatrix.find(r => r.functionId === funcId);
     if (row && row.functionName) return row.functionName;
@@ -197,6 +204,7 @@ export const AdminDashboard: React.FC = () => {
       apoderados: 'Nómina & Registro Institucional de Apoderados',
       grades: 'Libro de Calificaciones Ponderadas',
       overview: 'Panorama de Notas & Reporte de Jefatura',
+      personality_reports: 'Informes al Hogar e Informes de Personalidad',
       computer_lab: 'Reserva Sala de Computación & Horarios',
       evaluations_pie: 'Portal de Evaluaciones & Integración PIE',
       mineduc_reports: 'Informes PIE & Formularios Oficiales MINEDUC (Dec. 170)',
@@ -243,7 +251,38 @@ export const AdminDashboard: React.FC = () => {
       });
       return;
     }
-    setActiveTab(targetTab as AdminTabId);
+    setActiveTab(prev => {
+      if (prev !== (targetTab as AdminTabId)) {
+        setTabHistory(hist => [...hist.slice(-15), prev]);
+      }
+      return targetTab as AdminTabId;
+    });
+  };
+
+  const handleGoBack = () => {
+    if (selectedStudent) {
+      setSelectedStudent(null);
+      return;
+    }
+    if (printStudent) {
+      setPrintStudent(null);
+      return;
+    }
+    if (activeTab === 'grades' && gradesSubTab === 'sheet' && selectedCourseSubject) {
+      setSelectedCourseSubject(null);
+      setGradesSubTab('courses');
+      return;
+    }
+    if (tabHistory.length > 0) {
+      const nextHistory = [...tabHistory];
+      const previousTab = nextHistory.pop() || 'home';
+      setTabHistory(nextHistory);
+      if (canAccess(previousTab)) {
+        setActiveTab(previousTab);
+        return;
+      }
+    }
+    setActiveTab('home');
   };
 
   useEffect(() => {
@@ -702,15 +741,42 @@ export const AdminDashboard: React.FC = () => {
         }}
       >
         <div className="top-bar">
-          <div className="search-bar">
-            <Search size={18} color="#94a3b8" />
-            <input
-              type="text"
-              placeholder="Buscar por RUT, Alumno o Funcionario..."
-              className="search-input"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flex: 1 }}>
+            {(activeTab !== 'home' || selectedStudent || printStudent) && (
+              <button
+                type="button"
+                onClick={handleGoBack}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.48rem 0.95rem',
+                  borderRadius: '10px',
+                  border: '1.5px solid #c7d2fe',
+                  background: '#eef2ff',
+                  color: '#312e81',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 5px rgba(79, 70, 229, 0.12)',
+                  transition: 'all 0.2s ease'
+                }}
+                title="Volver a la ventana o pantalla anterior"
+              >
+                <ArrowLeft size={16} /> Volver Atrás
+              </button>
+            )}
+            <div className="search-bar" style={{ flex: 1 }}>
+              <Search size={18} color="#94a3b8" />
+              <input
+                type="text"
+                placeholder="Buscar por RUT, Alumno o Funcionario..."
+                className="search-input"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+            </div>
           </div>
 
           <div ref={headerDropdownRef} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -1283,6 +1349,74 @@ export const AdminDashboard: React.FC = () => {
           </div>
         ) : (
           <>
+            {activeTab !== 'home' && (
+              <div
+                className="no-print"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem',
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  padding: '0.6rem 1.1rem',
+                  marginBottom: '1rem',
+                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={handleGoBack}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      padding: '0.45rem 0.95rem',
+                      borderRadius: '8px',
+                      border: '1.5px solid #4f46e5',
+                      background: '#eef2ff',
+                      color: '#312e81',
+                      fontWeight: 800,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <ArrowLeft size={16} /> Volver Atrás
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => navigateToTab('home')}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      padding: '0.45rem 0.9rem',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      background: '#f8fafc',
+                      color: '#334155',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Home size={15} color="#4f46e5" /> Ir al Inicio
+                  </button>
+                </div>
+
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ color: '#94a3b8' }}>Ventana actual:</span>
+                  <strong style={{ color: '#1e1b4b', background: '#f1f5f9', padding: '0.22rem 0.65rem', borderRadius: '6px' }}>
+                    {getFunctionName(activeTab)}
+                  </strong>
+                </div>
+              </div>
+            )}
+
             {activeTab !== 'home' && activeTab !== 'audit' && !canEdit(activeTab) && (
               <div style={{
                 background: 'linear-gradient(90deg, #eff6ff 0%, #dbeafe 100%)',
@@ -2108,6 +2242,7 @@ export const AdminDashboard: React.FC = () => {
           <PersonalityReportsModule
             token={token || ''}
             selectedYear={selectedYear}
+            onBack={handleGoBack}
           />
         )}
 
