@@ -8365,7 +8365,9 @@ async function getGoogleEvalScriptId(): Promise<string> {
   return DEFAULT_EVAL_SCRIPT_ID;
 }
 
-async function callGoogleDriveConnectorJson(action: string, extraPayload: Record<string, any> = {}): Promise<any> {
+async function callGoogleDriveConnectorJson(actionOrPayload: string | Record<string, any>, extraPayload: Record<string, any> = {}): Promise<any> {
+  const action = typeof actionOrPayload === 'string' ? actionOrPayload : String(actionOrPayload?.action || 'upload');
+  const mergedExtra = typeof actionOrPayload === 'object' && actionOrPayload !== null ? { ...actionOrPayload, ...extraPayload } : extraPayload;
   try {
     const scriptId = await getGoogleEvalScriptId();
     const url = `https://script.google.com/macros/s/${scriptId}/exec`;
@@ -8376,7 +8378,7 @@ async function callGoogleDriveConnectorJson(action: string, extraPayload: Record
       originalsFolderId: DEFAULT_ORIGINALS_FOLDER_ID,
       pieFolderId: DEFAULT_PIE_FOLDER_ID,
       profilesFolderId: DEFAULT_PROFILES_FOLDER_ID,
-      ...extraPayload
+      ...mergedExtra
     };
     if (normalizedPayload.fileDataBase64 && !normalizedPayload.base64) {
       normalizedPayload.base64 = normalizedPayload.fileDataBase64;

@@ -248,17 +248,17 @@ export const FusMineducReport: React.FC<{ data: any; student: any; institution: 
 
   const motivo = data.motivo || 'Evaluación Diagnóstica Integral de Ingreso / Reevaluación PIE';
   const fechaEvaluacion = data.fechaEvaluacion || data.evaluation_date || '—';
-  const instrumentos = data.instrumentos || 'Batería Evalúa, Pruebas de Dominio Lector, WISC-V, Pauta de Observación Directa';
-  const diagnostico = data.diagnostico || student?.pie_diagnosis || 'Trastorno Específico del Aprendizaje';
+  const instrumentos = data.instrumentos || '';
+  const diagnostico = data.diagnostico || student?.pie_diagnosis || '';
 
-  const pedagogicoFortalezas = data.pedagogicoFortalezas || 'Demuestra interés por aprender, buena disposición al trabajo en aula de recursos y entusiasmo en tareas con apoyo visual.';
-  const pedagogicoNecesidades = data.pedagogicoNecesidades || 'Requiere apoyo continuo en comprensión lectora, resolución de problemas matemáticos y mediación para estructurar respuestas.';
-  const socialFortalezas = data.socialFortalezas || 'Mantiene relaciones afectuosas con sus pares, respeta normas de convivencia y participa activamente en juegos grupales.';
-  const socialNecesidades = data.socialNecesidades || 'Fortalecer la autorregulación ante tareas de mayor exigencia y tolerancia a la frustración.';
+  const pedagogicoFortalezas = data.pedagogicoFortalezas || '';
+  const pedagogicoNecesidades = data.pedagogicoNecesidades || '';
+  const socialFortalezas = data.socialFortalezas || '';
+  const socialNecesidades = data.socialNecesidades || '';
 
-  const trabajoColaborativo = data.trabajoColaborativo || 'Co-docencia en aula regular 8 horas semanales entre docente de asignatura y educadora diferencial. Apoyo especializado en aula de recursos 2 horas semanales con adecuaciones curriculares DUA.';
-  const apoyoHogar = data.apoyoHogar || 'Establecer hábitos de estudio diarios de 20 minutos, reforzar lectura compartida en el hogar, supervisar asistencia y mantener comunicación regular con el equipo PIE.';
-  const acuerdos = data.acuerdos || 'Reuniones de seguimiento bimensual entre apoderado y equipo de aula para evaluar avances y reajustar metas pedagógicas.';
+  const trabajoColaborativo = data.trabajoColaborativo || '';
+  const apoyoHogar = data.apoyoHogar || '';
+  const acuerdos = data.acuerdos || '';
 
   return (
     <div className="print-root print-container" style={{ maxWidth: '850px', margin: '0 auto', fontSize: '9pt' }}>
@@ -411,13 +411,13 @@ export const FamilyReportSemester: React.FC<{ data: any; student: any; instituti
   const profesorJefe = data.profesorJefe || data.profesor_jefe || student?.profesor_jefe || 'Profesor(a) Jefe';
   const profesionalNombre = data.profesionalNombre || data.profesional_data?.nombre || data.professional_name || 'Educadora Diferencial';
 
-  const reportePsicopedagogico = data.reportePsicopedagogico || data.reportes_area?.psicopedagogico || 'El estudiante evidencia avance progresivo en habilidades lectoras y cálculo. Se aplican adaptaciones curriculares DUA en aula común y aula de recursos.';
-  const reportePsicologico = data.reportePsicologico || data.reportes_area?.psicologico || 'Buena integración con sus pares. Mantiene motivación escolar y participa con agrado de las actividades mediadas.';
-  const reporteFonoaudiologico = data.reporteFonoaudiologico || data.reportes_area?.fonoaudiologico || 'Desarrollo adecuado en comprensión auditiva y expresión verbal, logrando transmitir ideas con claridad.';
-  const reporteKinesiologico = data.reporteKinesiologico || data.reportes_area?.kinesiologico || 'Sin observaciones motoras significativas. Participa activamente en actividades de educación física.';
-  const reporteTerapiaOcupacional = data.reporteTerapiaOcupacional || data.reportes_area?.terapia_ocupacional || 'Adecuada organización de materiales y autorregulación en tareas escolares.';
+  const reportePsicopedagogico = data.reportePsicopedagogico || data.reportes_area?.psicopedagogico || '';
+  const reportePsicologico = data.reportePsicologico || data.reportes_area?.psicologico || '';
+  const reporteFonoaudiologico = data.reporteFonoaudiologico || data.reportes_area?.fonoaudiologico || '';
+  const reporteKinesiologico = data.reporteKinesiologico || data.reportes_area?.kinesiologico || '';
+  const reporteTerapiaOcupacional = data.reporteTerapiaOcupacional || data.reportes_area?.terapia_ocupacional || '';
 
-  const sugerenciasApoyo = data.sugerenciasApoyo || data.sugerencias_apoyo || 'Fomentar la lectura diaria compartida en casa durante 15 minutos, felicitar sus logros cotidianos, supervisar la agenda escolar y mantener asistencia regular a clases.';
+  const sugerenciasApoyo = data.sugerenciasApoyo || data.sugerencias_apoyo || '';
 
   const firmaUsuarioNombre = data.firmaUsuarioNombre || data.firma_usuario_nombre || data.professional_name || 'Profesional Evaluador';
   const firmaUsuarioCargo = data.firmaUsuarioCargo || data.firma_usuario_cargo || data.professional_role || 'Docente Especialista PIE';

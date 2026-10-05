@@ -272,6 +272,26 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
   // Normalizar campos heredados (snake_case de importaciones previas -> camelCase de los editores)
   const normalizeSavedReportData = (raw: any) => {
     if (!raw || typeof raw !== 'object') return {};
+    const boilerplateStrings = new Set([
+      'El estudiante evidencia avance progresivo en habilidades lectoras y cálculo. Se aplican adaptaciones curriculares DUA en aula común y aula de recursos.',
+      'Buena integración con sus pares. Mantiene motivación escolar y participa con agrado de las actividades mediadas.',
+      'Desarrollo adecuado en comprensión auditiva y expresión verbal, logrando transmitir ideas con claridad.',
+      'Sin observaciones motoras significativas. Participa activamente en actividades de educación física.',
+      'Adecuada organización de materiales y autorregulación en tareas escolares.',
+      'Fomentar la lectura diaria compartida en casa durante 15 minutos, felicitar sus logros cotidianos, supervisar la agenda escolar y mantener asistencia regular a clases.',
+      'Sensibilidad al ruido ambiente imprevisto y cambios de rutina sin anticipación previa.',
+      'Fortaleza en memoria fotográfica y atención al detalle. Desafío en flexibilización y contacto visual sostenido.',
+      'Ruidos estridentes o imprevistos (timbre, taladro), aglomeraciones y cambios bruscos de actividad.',
+      'Dibujo técnico, astronomía, lectura de cómics, armado de figuras legos.',
+      'Sensibilidad auditiva ante tonos altos; agrado por texturas lisas y música instrumental suave.',
+      'Audífonos con cancelación de ruido, pelota antiestrés, cuaderno de dibujo.',
+      'Vamos a respirar juntos; Tómate un momento; ¿Quieres ir al espacio de calma?'
+    ]);
+    const cleanText = (val: any) => {
+      if (typeof val !== 'string') return val;
+      return boilerplateStrings.has(val.trim()) ? '' : val;
+    };
+
     let parsedPerfil: any = {};
     if (raw.perfil_data) {
       try {
@@ -295,6 +315,13 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
     if (merged.sugerenciasApoyo === undefined && merged.sugerencias_apoyo !== undefined) {
       merged.sugerenciasApoyo = merged.sugerencias_apoyo;
     }
+    merged.reportePsicopedagogico = cleanText(merged.reportePsicopedagogico);
+    merged.reportePsicologico = cleanText(merged.reportePsicologico);
+    merged.reporteFonoaudiologico = cleanText(merged.reporteFonoaudiologico);
+    merged.reporteKinesiologico = cleanText(merged.reporteKinesiologico);
+    merged.reporteTerapiaOcupacional = cleanText(merged.reporteTerapiaOcupacional);
+    merged.sugerenciasApoyo = cleanText(merged.sugerenciasApoyo);
+
     if (merged.profesional_data && typeof merged.profesional_data === 'object') {
       if (!merged.profesionalNombre && merged.profesional_data.nombre) merged.profesionalNombre = merged.profesional_data.nombre;
       if (!merged.profesionalFechaInforme && merged.profesional_data.fecha) merged.profesionalFechaInforme = merged.profesional_data.fecha;
