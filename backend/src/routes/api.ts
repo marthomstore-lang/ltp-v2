@@ -2750,6 +2750,57 @@ router.post('/personality-reports', authMiddleware, async (req: Request, res: Re
   }
 });
 
+// PLANTILLAS PERSONALIZABLES DE INDICADORES (PRE-KÍNDER A 4° MEDIO) — PERSISTENCIA EN SUPABASE
+router.get('/personality-templates', async (_req: Request, res: Response) => {
+  try {
+    let customTemplates: Record<string, any> | null = null;
+    try {
+      const dbRes = await query(
+        "SELECT config_value FROM system_settings WHERE id = 'SET-PERSONALITY-TEMPLATES' OR config_key = 'personality_templates_v2' ORDER BY updated_at DESC LIMIT 1"
+      );
+      if (dbRes && dbRes.rows && dbRes.rows.length > 0 && dbRes.rows[0].config_value) {
+        const raw = dbRes.rows[0].config_value;
+        customTemplates = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      }
+    } catch (_) {}
+
+    return res.json({ success: true, templates: customTemplates });
+  } catch (err) {
+    return res.status(500).json({ error: 'Error al consultar plantillas de indicadores.' });
+  }
+});
+
+router.post('/personality-templates', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { templates } = req.body;
+    if (!templates || typeof templates !== 'object') {
+      return res.status(400).json({ error: 'Formato de plantillas inválido.' });
+    }
+
+    const serialized = JSON.stringify(templates);
+    const existing = await query(
+      "SELECT id FROM system_settings WHERE id = 'SET-PERSONALITY-TEMPLATES' OR config_key = 'personality_templates_v2' LIMIT 1"
+    );
+    if (existing.rows && existing.rows.length > 0) {
+      await query(
+        "UPDATE system_settings SET config_value = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 OR config_key = 'personality_templates_v2'",
+        [serialized, existing.rows[0].id]
+      );
+    } else {
+      await query(
+        "INSERT INTO system_settings (id, config_key, config_value, updated_at) VALUES ('SET-PERSONALITY-TEMPLATES', 'personality_templates_v2', $1, CURRENT_TIMESTAMP)",
+        [serialized]
+      );
+    }
+
+    await logAudit(req, 'UPDATE_PERSONALITY_TEMPLATES', 'Plantillas e indicadores de Informes al Hogar / Personalidad actualizados');
+    return res.json({ success: true, templates });
+  } catch (err) {
+    console.error('Error guardando personality_templates_v2:', err);
+    return res.status(500).json({ error: 'Error al guardar plantillas de indicadores.' });
+  }
+});
+
 // CONFIGURACIÓN INSTITUCIONAL (DIRECTIVA, DIRECTOR, ESTABLECIMIENTO)
 // Helper para obtener configuración institucional centralizada
 export async function getInstitutionalSettingsHelper() {
