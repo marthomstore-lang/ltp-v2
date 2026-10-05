@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Printer, X, FileText, CheckCircle2, Award, ShieldCheck } from 'lucide-react';
+import { Printer, X, FileText, CheckCircle2, Award, ShieldCheck, Save } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import Swal from 'sweetalert2';
+import {
+  PERSONALITY_REPORT_TEMPLATES,
+  ReportLevelKey,
+  detectReportTemplateKey,
+  getQualifierStyle
+} from '../utils/personalityIndicators';
 
 interface OfficialFormProps {
   student: any;
@@ -8,11 +15,19 @@ interface OfficialFormProps {
 }
 
 export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, onClose }) => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [docType, setDocType] = useState<'fide_ficha' | 'alumno_regular' | 'informe_hogar' | 'rice_compromiso' | 'checklist'>('fide_ficha');
   const [checklistType, setChecklistType] = useState<'nuevo' | 'antiguo' | 'retiro'>('nuevo');
 
-  const schoolYear = student.anno || student.academic_year || student.entry_year || 2027;
+  const studentCourse = student.level_name || student.course || '1° Medio A';
+  const studentKey = String(student.id || student.run || student.RUT || student.full_name || 'student').trim();
+  const [reportLevelKey, setReportLevelKey] = useState<ReportLevelKey>(() => detectReportTemplateKey(studentCourse));
+  const [sem1Values, setSem1Values] = useState<Record<string, string>>({});
+  const [sem2Values, setSem2Values] = useState<Record<string, string>>({});
+  const [reportObservations, setReportObservations] = useState<string>('');
+  const [savingReport, setSavingReport] = useState<boolean>(false);
+
+  const schoolYear = student.anno || student.academic_year || student.entry_year || 2026;
   const officerName = student.enrolled_by_name || user?.name || 'Funcionario Responsable de Matrícula';
   const officerRun = student.enrolled_by_run || user?.run || '';
   const officerRole = student.enrolled_by_role || user?.role || 'Encargado de Matrícula';
@@ -35,7 +50,90 @@ export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, o
         }
       })
       .catch(() => {});
-  }, []);
+
+    // Cargar evaluación guardada del estudiante desde Supabase
+    fetch(`/api/personality-reports?studentKey=${encodeURIComponent(studentKey)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data?.report) {
+          if (data.report.levelKey && PERSONALITY_REPORT_TEMPLATES[data.report.levelKey as ReportLevelKey]) {
+            setReportLevelKey(data.report.levelKey as ReportLevelKey);
+          }
+          if (data.report.sem1) setSem1Values(data.report.sem1);
+          if (data.report.sem2) setSem2Values(data.report.sem2);
+          if (data.report.observations !== undefined) setReportObservations(data.report.observations);
+        } else {
+          // Inicializar 1er semestre con el calificador por defecto del nivel
+          const tpl = PERSONALITY_REPORT_TEMPLATES[detectReportTemplateKey(studentCourse)];
+          const initialSem1: Record<string, string> = {};
+          tpl.ambitos.forEach(amb =>
+            amb.sections.forEach(sec =>
+              sec.indicators.forEach(ind => {
+                initialSem1[ind.id] = tpl.defaultQualifier;
+              })
+            )
+          );
+          setSem1Values(initialSem1);
+        }
+      })
+      .catch(() => {});
+  }, [studentKey, studentCourse]);
+
+  const handleQuickFillSemester = (semester: 'sem1' | 'sem2', qualifier: string) => {
+    const tpl = PERSONALITY_REPORT_TEMPLATES[reportLevelKey];
+    const nextMap: Record<string, string> = {};
+    tpl.ambitos.forEach(amb =>
+      amb.sections.forEach(sec =>
+        sec.indicators.forEach(ind => {
+          nextMap[ind.id] = qualifier;
+        })
+      )
+    );
+    if (semester === 'sem1') {
+      setSem1Values(prev => ({ ...prev, ...nextMap }));
+    } else {
+      setSem2Values(prev => ({ ...prev, ...nextMap }));
+    }
+  };
+
+  const handleSavePersonalityReport = async () => {
+    setSavingReport(true);
+    try {
+      const authToken = token || sessionStorage.getItem('ltp_token') || '';
+      const res = await fetch('/api/personality-reports', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+        },
+        body: JSON.stringify({
+          studentKey,
+          reportData: {
+            studentName: student.full_name || student.Nombres || '',
+            studentRun: student.run || student.RUT || '',
+            course: studentCourse,
+            levelKey: reportLevelKey,
+            sem1: sem1Values,
+            sem2: sem2Values,
+            observations: reportObservations
+          }
+        })
+      });
+      if (!res.ok) throw new Error('Error al guardar en el servidor');
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: 'Informe guardado en la nube',
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      Swal.fire('Error', err.message || 'No se pudo guardar el informe', 'error');
+    } finally {
+      setSavingReport(false);
+    }
+  };
 
   const handlePrint = () => {
     window.print();
@@ -418,86 +516,354 @@ export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, o
         )}
 
         {/* ------------------------------------------------------------------- */}
-        {/* DOCUMENTO 3: INFORME AL HOGAR (DESARROLLO PERSONAL Y SOCIAL) */}
+        {/* DOCUMENTO 3: INFORME AL HOGAR / INFORME DE PERSONALIDAD (PK A 4°M) */}
         {/* ------------------------------------------------------------------- */}
-        {docType === 'informe_hogar' && (
-          <div id="official-document" style={{ border: '2px solid #0f172a', padding: '2rem', fontFamily: 'sans-serif', background: '#ffffff' }}>
-            {/* Encabezado con Logos */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', gap: '1rem' }}>
-              <div style={{ width: '120px' }}>
-                <img
-                  src="/images/logo_mineduc.jpg"
-                  alt="MINEDUC"
-                  style={{ maxHeight: '48px', maxWidth: '120px', objectFit: 'contain' }}
-                />
+        {docType === 'informe_hogar' && (() => {
+          const currentTemplate = PERSONALITY_REPORT_TEMPLATES[reportLevelKey];
+          return (
+            <div>
+              {/* Barra de herramientas interactiva (no se imprime) */}
+              <div className="no-print" style={{
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                borderRadius: '10px',
+                padding: '0.9rem 1.1rem',
+                marginBottom: '1rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1e293b' }}>
+                      📚 Pauta Oficial por Nivel:
+                    </label>
+                    <select
+                      value={reportLevelKey}
+                      onChange={e => setReportLevelKey(e.target.value as ReportLevelKey)}
+                      style={{
+                        padding: '0.4rem 0.75rem',
+                        borderRadius: '8px',
+                        border: '1px solid #94a3b8',
+                        fontWeight: 700,
+                        fontSize: '0.82rem',
+                        background: '#ffffff',
+                        color: '#0f172a',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {Object.values(PERSONALITY_REPORT_TEMPLATES).map(tpl => (
+                        <option key={tpl.key} value={tpl.key}>
+                          {tpl.levelLabel} — {tpl.reportTitle}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={handleSavePersonalityReport}
+                    disabled={savingReport}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      padding: '0.45rem 1rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: '#16a34a',
+                      color: '#ffffff',
+                      fontWeight: 800,
+                      fontSize: '0.8rem',
+                      cursor: savingReport ? 'wait' : 'pointer',
+                      boxShadow: '0 2px 5px rgba(22, 163, 74, 0.25)'
+                    }}
+                  >
+                    <Save size={15} /> {savingReport ? 'Guardando...' : 'Guardar Evaluación'}
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', fontSize: '0.76rem', borderTop: '1px dashed #cbd5e1', paddingTop: '0.6rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    <strong style={{ color: '#334155' }}>Autocompletar 1er Sem:</strong>
+                    {currentTemplate.scale.map(sc => (
+                      <button
+                        key={`s1-${sc.code}`}
+                        type="button"
+                        onClick={() => handleQuickFillSemester('sem1', sc.code)}
+                        style={{
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: '6px',
+                          border: `1px solid ${sc.color}`,
+                          background: sc.bgColor,
+                          color: sc.color,
+                          fontWeight: 800,
+                          fontSize: '0.72rem',
+                          cursor: 'pointer'
+                        }}
+                        title={`Marcar todo el 1er Semestre como ${sc.label}`}
+                      >
+                        {sc.code}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    <strong style={{ color: '#334155' }}>Autocompletar 2do Sem:</strong>
+                    {currentTemplate.scale.map(sc => (
+                      <button
+                        key={`s2-${sc.code}`}
+                        type="button"
+                        onClick={() => handleQuickFillSemester('sem2', sc.code)}
+                        style={{
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: '6px',
+                          border: `1px solid ${sc.color}`,
+                          background: sc.bgColor,
+                          color: sc.color,
+                          fontWeight: 800,
+                          fontSize: '0.72rem',
+                          cursor: 'pointer'
+                        }}
+                        title={`Marcar todo el 2do Semestre como ${sc.label}`}
+                      >
+                        {sc.code}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => handleQuickFillSemester('sem2', '-')}
+                      style={{
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '6px',
+                        border: '1px solid #94a3b8',
+                        background: '#ffffff',
+                        color: '#475569',
+                        fontWeight: 700,
+                        fontSize: '0.72rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Limpiar 2° Sem
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div style={{ flex: 1, textAlign: 'center' }}>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#1e1b4b', margin: 0 }}>
-                  INFORME DE DESARROLLO PERSONAL Y SOCIAL {schoolYear}
-                </h3>
-                <p style={{ fontSize: '0.8rem', color: '#004b87', margin: '2px 0 0 0', fontWeight: 700 }}>
-                  Liceo Técnico Profesional Campanario Marcos Delucchi Fonck (RBD: 3941-1)
-                </p>
+
+              <div id="official-document" style={{ border: '2px solid #0f172a', padding: '1.5rem 1.75rem', fontFamily: 'Arial, sans-serif', background: '#ffffff', color: '#0f172a' }}>
+                {/* Encabezado con Logos */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem', gap: '1rem' }}>
+                  <div style={{ width: '110px' }}>
+                    <img
+                      src="/images/logo_mineduc.jpg"
+                      alt="MINEDUC"
+                      style={{ maxHeight: '46px', maxWidth: '110px', objectFit: 'contain' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#004b87', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      REPÚBLICA DE CHILE • MINISTERIO DE EDUCACIÓN
+                    </div>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 900, color: '#1e1b4b', margin: '2px 0' }}>
+                      {currentTemplate.reportTitle} — AÑO ESCOLAR {schoolYear}
+                    </h3>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155' }}>
+                      {currentTemplate.levelLabel}
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: '#004b87', margin: '2px 0 0 0', fontWeight: 700 }}>
+                      Liceo Técnico Profesional Campanario Marcos Delucchi Fonck (RBD: 3941-1)
+                    </p>
+                  </div>
+                  <div style={{ width: '110px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <img
+                      src="/images/logo_liceo.png"
+                      alt="Insignia"
+                      style={{ maxHeight: '50px', maxWidth: '72px', objectFit: 'contain' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Franja Bicolor */}
+                <div style={{ display: 'flex', height: '3px', width: '100%', marginBottom: '0.9rem' }}>
+                  <div style={{ flex: '0 0 65%', background: '#004b87' }}></div>
+                  <div style={{ flex: '0 0 35%', background: '#e2211c' }}></div>
+                </div>
+
+                {/* Datos del Estudiante */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem 1rem', marginBottom: '0.9rem', background: '#f8fafc', padding: '0.7rem 1rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}>
+                  <div><strong>Estudiante:</strong> {student.full_name || student.Nombres}</div>
+                  <div><strong>RUN / RUT:</strong> {student.run || student.RUT}</div>
+                  <div><strong>Curso / Nivel:</strong> {studentCourse}</div>
+                  <div><strong>Educador(a) / Profesor(a) Jefe:</strong> {student.profesor_jefe || student.homeroomTeacher || 'Docente Jefe'}</div>
+                </div>
+
+                {/* Escala de Evaluación (Calificadores) */}
+                <div style={{ marginBottom: '0.9rem', padding: '0.5rem 0.85rem', background: '#f1f5f9', borderRadius: '6px', border: '1px solid #cbd5e1', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.74rem' }}>
+                  <strong style={{ color: '#0f172a', textTransform: 'uppercase' }}>Escala de Evaluación (Calificadores):</strong>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
+                    {currentTemplate.scale.map(sc => (
+                      <span key={sc.code} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <strong style={{ background: sc.bgColor, color: sc.color, padding: '1px 6px', borderRadius: '4px', border: `1px solid ${sc.color}` }}>
+                          {sc.code}
+                        </strong>
+                        <span style={{ color: '#334155', fontWeight: 600 }}>{sc.label}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tablas de Ámbitos / Núcleos / Áreas e Indicadores */}
+                {currentTemplate.ambitos.map((ambito, ambIdx) => (
+                  <div key={ambIdx} style={{ marginBottom: '1rem' }}>
+                    {ambito.ambitoTitle && (
+                      <div style={{
+                        background: '#1e1b4b',
+                        color: '#ffffff',
+                        padding: '0.4rem 0.75rem',
+                        fontSize: '0.78rem',
+                        fontWeight: 900,
+                        letterSpacing: '0.4px',
+                        textTransform: 'uppercase',
+                        borderRadius: '4px 4px 0 0'
+                      }}>
+                        {ambito.ambitoTitle}
+                      </div>
+                    )}
+
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                      <thead>
+                        <tr style={{ background: '#004b87', color: '#ffffff' }}>
+                          <th style={{ padding: '0.4rem 0.6rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>
+                            {ambito.ambitoTitle ? 'Núcleo / Indicadores de Evaluación' : 'Área / Indicadores de Evaluación'}
+                          </th>
+                          <th style={{ padding: '0.4rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '78px' }}>1er Sem</th>
+                          <th style={{ padding: '0.4rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '78px' }}>2do Sem</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ambito.sections.map((section, secIdx) => (
+                          <React.Fragment key={secIdx}>
+                            <tr style={{ background: '#e2e8f0' }}>
+                              <td colSpan={3} style={{ padding: '0.38rem 0.6rem', fontWeight: 800, color: '#0f172a', border: '1px solid #cbd5e1', fontSize: '0.76rem' }}>
+                                {section.title}
+                              </td>
+                            </tr>
+                            {section.indicators.map((ind, indIdx) => {
+                              const val1 = sem1Values[ind.id] || currentTemplate.defaultQualifier;
+                              const val2 = sem2Values[ind.id] || '-';
+                              const style1 = getQualifierStyle(val1, currentTemplate.category);
+                              const style2 = getQualifierStyle(val2, currentTemplate.category);
+
+                              return (
+                                <tr key={ind.id} style={{ background: indIdx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                                  <td style={{ padding: '0.35rem 0.6rem', border: '1px solid #cbd5e1', lineHeight: 1.35, color: '#1e293b' }}>
+                                    {ind.oa && (
+                                      <strong style={{ color: '#004b87', marginRight: '0.35rem', fontSize: '0.72rem' }}>
+                                        ({ind.oa})
+                                      </strong>
+                                    )}
+                                    {ind.text}
+                                  </td>
+                                  <td style={{ padding: '0.25rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>
+                                    <select
+                                      value={val1}
+                                      onChange={e => setSem1Values(prev => ({ ...prev, [ind.id]: e.target.value }))}
+                                      style={{
+                                        width: '100%',
+                                        textAlign: 'center',
+                                        fontWeight: 800,
+                                        fontSize: '0.74rem',
+                                        padding: '2px 4px',
+                                        borderRadius: '4px',
+                                        border: '1px solid #cbd5e1',
+                                        background: style1.bgColor,
+                                        color: style1.color,
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      {currentTemplate.scale.map(sc => (
+                                        <option key={sc.code} value={sc.code}>{sc.code}</option>
+                                      ))}
+                                      <option value="-">-</option>
+                                    </select>
+                                  </td>
+                                  <td style={{ padding: '0.25rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>
+                                    <select
+                                      value={val2}
+                                      onChange={e => setSem2Values(prev => ({ ...prev, [ind.id]: e.target.value }))}
+                                      style={{
+                                        width: '100%',
+                                        textAlign: 'center',
+                                        fontWeight: 800,
+                                        fontSize: '0.74rem',
+                                        padding: '2px 4px',
+                                        borderRadius: '4px',
+                                        border: '1px solid #cbd5e1',
+                                        background: style2.bgColor,
+                                        color: style2.color,
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      <option value="-">-</option>
+                                      {currentTemplate.scale.map(sc => (
+                                        <option key={sc.code} value={sc.code}>{sc.code}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </React.Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+
+                {/* Observaciones Generales */}
+                <div style={{ marginTop: '0.75rem', marginBottom: '1.5rem' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                    Observaciones y Sugerencias al Hogar:
+                  </div>
+                  <textarea
+                    value={reportObservations}
+                    onChange={e => setReportObservations(e.target.value)}
+                    placeholder="Escriba aquí observaciones cualitativas, fortalezas o compromisos pedagógicos del estudiante..."
+                    rows={2}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.78rem',
+                      fontFamily: 'inherit',
+                      resize: 'vertical',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                {/* Firmas Oficiales */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem', marginTop: '2.2rem', textAlign: 'center', fontSize: '0.76rem' }}>
+                  <div>
+                    <div style={{ borderTop: '1px solid #0f172a', paddingTop: '0.35rem', fontWeight: 700 }}>
+                      Educador(a) / Profesor(a) Jefe
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ borderTop: '1px solid #0f172a', paddingTop: '0.35rem', fontWeight: 700 }}>
+                      Dirección / UTP
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ borderTop: '1px solid #0f172a', paddingTop: '0.35rem', fontWeight: 700 }}>
+                      Firma Apoderado(a)
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div style={{ width: '120px', display: 'flex', justifyContent: 'flex-end' }}>
-                <img
-                  src="/images/logo_liceo.png"
-                  alt="Insignia"
-                  style={{ maxHeight: '52px', maxWidth: '75px', objectFit: 'contain' }}
-                />
-              </div>
             </div>
-
-            {/* Franja Bicolor */}
-            <div style={{ display: 'flex', height: '3px', width: '100%', marginBottom: '1.25rem' }}>
-              <div style={{ flex: '0 0 65%', background: '#004b87' }}></div>
-              <div style={{ flex: '0 0 35%', background: '#e2211c' }}></div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem', marginBottom: '1.25rem', background: '#f8fafc', padding: '1rem', borderRadius: '8px', fontSize: '0.85rem' }}>
-              <div><strong>Alumno:</strong> {student.full_name || student.Nombres}</div>
-              <div><strong>RUT:</strong> {student.run || student.RUT}</div>
-              <div><strong>Curso:</strong> {student.level_name || '1° Medio A'}</div>
-              <div><strong>Profesor Jefe:</strong> {student.profesor_jefe || 'Docente Responsable'}</div>
-            </div>
-
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', marginBottom: '1.5rem' }}>
-              <thead>
-                <tr style={{ background: '#004b87', color: '#ffffff' }}>
-                  <th style={{ padding: '0.5rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Criterio / Ámbito de Evaluación</th>
-                  <th style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '80px' }}>1er Sem</th>
-                  <th style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '80px' }}>2do Sem</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style={{ padding: '0.4rem', border: '1px solid #cbd5e1' }}>Demuestra responsabilidad con sus deberes escolares</td>
-                  <td style={{ padding: '0.4rem', textAlign: 'center', border: '1px solid #cbd5e1', fontWeight: 700, color: '#16a34a' }}>A</td>
-                  <td style={{ padding: '0.4rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>-</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '0.4rem', border: '1px solid #cbd5e1' }}>Mantiene relaciones de respeto con pares y profesores</td>
-                  <td style={{ padding: '0.4rem', textAlign: 'center', border: '1px solid #cbd5e1', fontWeight: 700, color: '#16a34a' }}>A</td>
-                  <td style={{ padding: '0.4rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>-</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '0.4rem', border: '1px solid #cbd5e1' }}>Demuestra autoconfianza y perseverancia en el aprendizaje</td>
-                  <td style={{ padding: '0.4rem', textAlign: 'center', border: '1px solid #cbd5e1', fontWeight: 700, color: '#d97706' }}>EP</td>
-                  <td style={{ padding: '0.4rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>-</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '0.4rem', border: '1px solid #cbd5e1' }}>Asiste regularmente y cumple con la puntualidad</td>
-                  <td style={{ padding: '0.4rem', textAlign: 'center', border: '1px solid #cbd5e1', fontWeight: 700, color: '#16a34a' }}>A</td>
-                  <td style={{ padding: '0.4rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>-</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div style={{ fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic', textAlign: 'center' }}>
-              Conceptos: A (Adquirido) | EP (En Proceso) | PA (Por Adquirir) | NE (No Evaluado)
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ------------------------------------------------------------------- */}
         {/* DOCUMENTO 4: COMPROMISO RICE */}

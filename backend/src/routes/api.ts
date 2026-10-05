@@ -2675,6 +2675,81 @@ router.post('/config/checklist-templates', authMiddleware, checkRoles(['Admin', 
   }
 });
 
+// INFORMES AL HOGAR (PARVULARIA) E INFORMES DE PERSONALIDAD (BÁSICA Y MEDIA) — PERSISTENCIA EN SUPABASE
+router.get('/personality-reports', async (req: Request, res: Response) => {
+  try {
+    const studentKey = String(req.query.studentKey || '').trim();
+    let allReports: Record<string, any> = {};
+
+    try {
+      const dbRes = await query(
+        "SELECT config_value FROM system_settings WHERE id = 'SET-PERSONALITY-REPORTS' OR config_key = 'personality_reports_v2' ORDER BY updated_at DESC LIMIT 1"
+      );
+      if (dbRes && dbRes.rows && dbRes.rows.length > 0 && dbRes.rows[0].config_value) {
+        const raw = dbRes.rows[0].config_value;
+        allReports = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      }
+    } catch (_) {}
+
+    if (studentKey) {
+      return res.json({ success: true, report: allReports[studentKey] || null });
+    }
+    return res.json({ success: true, reports: allReports });
+  } catch (err) {
+    return res.status(500).json({ error: 'Error al consultar informes de personalidad / hogar.' });
+  }
+});
+
+router.post('/personality-reports', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { studentKey, reportData, bulkReports } = req.body;
+    let allReports: Record<string, any> = {};
+
+    try {
+      const dbRes = await query(
+        "SELECT config_value FROM system_settings WHERE id = 'SET-PERSONALITY-REPORTS' OR config_key = 'personality_reports_v2' ORDER BY updated_at DESC LIMIT 1"
+      );
+      if (dbRes && dbRes.rows && dbRes.rows.length > 0 && dbRes.rows[0].config_value) {
+        const raw = dbRes.rows[0].config_value;
+        allReports = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      }
+    } catch (_) {}
+
+    if (bulkReports && typeof bulkReports === 'object') {
+      allReports = { ...allReports, ...bulkReports };
+    } else if (studentKey && reportData) {
+      allReports[String(studentKey).trim()] = {
+        ...reportData,
+        updatedAt: new Date().toISOString()
+      };
+    } else {
+      return res.status(400).json({ error: 'Datos de informe incompletos.' });
+    }
+
+    const serialized = JSON.stringify(allReports);
+    const existing = await query(
+      "SELECT id FROM system_settings WHERE id = 'SET-PERSONALITY-REPORTS' OR config_key = 'personality_reports_v2' LIMIT 1"
+    );
+    if (existing.rows && existing.rows.length > 0) {
+      await query(
+        "UPDATE system_settings SET config_value = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 OR config_key = 'personality_reports_v2'",
+        [serialized, existing.rows[0].id]
+      );
+    } else {
+      await query(
+        "INSERT INTO system_settings (id, config_key, config_value, updated_at) VALUES ('SET-PERSONALITY-REPORTS', 'personality_reports_v2', $1, CURRENT_TIMESTAMP)",
+        [serialized]
+      );
+    }
+
+    await logAudit(req, 'SAVE_PERSONALITY_REPORT', `Informe al Hogar / Personalidad guardado (${studentKey || 'Curso'})`);
+    return res.json({ success: true, report: studentKey ? allReports[String(studentKey).trim()] : null, reports: allReports });
+  } catch (err) {
+    console.error('Error guardando personality_reports_v2:', err);
+    return res.status(500).json({ error: 'Error al guardar informe de personalidad / hogar.' });
+  }
+});
+
 // CONFIGURACIÓN INSTITUCIONAL (DIRECTIVA, DIRECTOR, ESTABLECIMIENTO)
 // Helper para obtener configuración institucional centralizada
 export async function getInstitutionalSettingsHelper() {
