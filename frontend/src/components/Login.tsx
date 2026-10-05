@@ -248,14 +248,20 @@ export const Login: React.FC = () => {
 
       {/* MODAL DE SELECCIÓN DE MODO DE ACCESO PARA USUARIOS MULTI-PERFIL */}
       {multiRoleUser && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(15, 23, 42, 0.85)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          display: 'flex', justifyContent: 'center', alignItems: 'center',
-          zIndex: 3000, padding: '1.25rem'
-        }}>
+        <div
+          className="a11y-active-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Selección de perfil de acceso"
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(15, 23, 42, 0.85)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            display: 'flex', justifyContent: 'center', alignItems: 'center',
+            zIndex: 3000, padding: '1.25rem'
+          }}
+        >
           <div style={{
             background: '#ffffff',
             borderRadius: '24px',
@@ -274,7 +280,7 @@ export const Login: React.FC = () => {
             <button
               type="button"
               onClick={() => setMultiRoleUser(null)}
-              aria-label="Cerrar modal"
+              aria-label="Cerrar selección de perfil y volver al inicio de sesión"
               style={{
                 position: 'absolute', top: '1.25rem', right: '1.25rem',
                 background: '#f1f5f9', border: 'none', borderRadius: '9999px',
@@ -289,7 +295,11 @@ export const Login: React.FC = () => {
             </button>
 
             {/* ENCABEZADO CON BADGE Y SALUDO */}
-            <div style={{ textAlign: 'center', marginBottom: '1.5rem', flexShrink: 0 }}>
+            <div
+              className="a11y-readable"
+              aria-label={`Selección de Perfil. ¿Cómo deseas ingresar hoy? Hola ${multiRoleUser.user.name}, dispones de varios perfiles activos. Selecciona el modo para esta sesión con las flechas de dirección y presiona Enter.`}
+              style={{ textAlign: 'center', marginBottom: '1.5rem', flexShrink: 0 }}
+            >
               <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
                 background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
@@ -334,6 +344,7 @@ export const Login: React.FC = () => {
                   <button
                     key={rKey}
                     type="button"
+                    aria-label={`Ingresar como ${cfg.title}. ${cfg.subtitle}. Presione Enter para seleccionar este perfil.`}
                     onClick={() => executeLoginWithRole(multiRoleUser.token, multiRoleUser.user, rKey)}
                     style={{
                       width: '100%',
@@ -410,6 +421,7 @@ export const Login: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setMultiRoleUser(null)}
+                aria-label="Cancelar y volver al inicio de sesión"
                 style={{
                   background: 'transparent', border: 'none', color: '#64748b',
                   fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
@@ -434,7 +446,10 @@ export const Login: React.FC = () => {
           style={{ height: '70px', margin: '0 auto 1rem auto', display: 'block', objectFit: 'contain' }}
         />
         
-        <h2 style={{ fontFamily: 'Outfit, sans-serif', color: '#4f46e5', textAlign: 'center', marginBottom: '0.25rem', fontWeight: 800, fontSize: '1.6rem' }}>
+        <h2
+          aria-label="Liceo Pro, Plataforma Escolar y Académica. Pantalla de Inicio de Sesión."
+          style={{ fontFamily: 'Outfit, sans-serif', color: '#4f46e5', textAlign: 'center', marginBottom: '0.25rem', fontWeight: 800, fontSize: '1.6rem' }}
+        >
           LICEO PRO
         </h2>
         <p style={{ textAlign: 'center', color: '#64748b', marginBottom: '2rem', fontSize: '0.875rem', fontWeight: 500 }}>
@@ -453,7 +468,7 @@ export const Login: React.FC = () => {
                 inputMode="numeric"
                 pattern="[0-9kK\.\-]*"
                 autoComplete="username"
-                aria-label="Ingrese su RUT"
+                aria-label="Campo RUT Funcionario, Apoderado o Estudiante. Escriba su RUT y presione flecha abajo para ir a la contraseña."
                 value={run}
                 onChange={handleRunChange}
                 placeholder="12.345.678-9"
@@ -471,6 +486,7 @@ export const Login: React.FC = () => {
               />
               <button
                 type="button"
+                aria-label="Botón para añadir dígito verificador K al RUT"
                 onClick={() => {
                   const clean = run.replace(/[^0-9kK]/g, '');
                   if (clean.length >= 7) {
@@ -513,7 +529,7 @@ export const Login: React.FC = () => {
                 type={showPassword ? 'text' : 'password'}
                 inputMode="text"
                 autoComplete="current-password"
-                aria-label="Ingrese su contraseña"
+                aria-label="Campo Contraseña Secreta. Escriba su contraseña y presione Enter para iniciar sesión, o flecha abajo para continuar."
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -531,7 +547,7 @@ export const Login: React.FC = () => {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
-                aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                aria-label={showPassword ? 'Botón Ocultar contraseña' : 'Botón Ver contraseña'}
                 style={{
                   position: 'absolute',
                   right: '12px',
@@ -556,6 +572,7 @@ export const Login: React.FC = () => {
           <div style={{ textAlign: 'right', marginBottom: '1.75rem' }}>
             <button
               type="button"
+              aria-label="Botón ¿Olvidaste tu contraseña? Recuperar acceso"
               onClick={() => setShowForgotPasswordModal(true)}
               style={{
                 background: 'none',
@@ -577,6 +594,7 @@ export const Login: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
+            aria-label="Botón Iniciar Sesión. Presione Enter para ingresar a la plataforma."
             className="btn btn-primary"
             style={{
               width: '100%',
@@ -594,17 +612,21 @@ export const Login: React.FC = () => {
           </button>
 
           {/* GUÍA RÁPIDA DE ACCESO PARA APODERADOS Y ESTUDIANTES */}
-          <div style={{
-            marginTop: '1.25rem',
-            padding: '0.75rem 0.9rem',
-            background: '#f0fdf4',
-            border: '1px solid #bbf7d0',
-            borderRadius: '10px',
-            fontSize: '0.76rem',
-            color: '#166534',
-            lineHeight: 1.45,
-            textAlign: 'left'
-          }}>
+          <div
+            className="a11y-readable"
+            aria-label="Información para Apoderados y Estudiantes: Ingresa con tu RUT registrado en matrícula. Si es tu primer ingreso, tu contraseña inicial son los primeros 6 dígitos de tu RUT sin puntos."
+            style={{
+              marginTop: '1.25rem',
+              padding: '0.75rem 0.9rem',
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: '10px',
+              fontSize: '0.76rem',
+              color: '#166534',
+              lineHeight: 1.45,
+              textAlign: 'left'
+            }}
+          >
             <div style={{ fontWeight: 800, marginBottom: '2px', color: '#14532d' }}>
               👨‍👩‍👧 ¿Eres Apoderado o Estudiante del Liceo?
             </div>
