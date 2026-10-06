@@ -248,7 +248,9 @@ export async function sendTeacherWelcomeEmail(
 
 export interface CourseBroadcastEmailOptions {
   toEmail: string;
+  bccEmails?: string[];
   recipientName: string;
+  audienceLabel?: string;
   senderName: string;
   senderRole: string;
   senderEmail?: string;
@@ -265,7 +267,9 @@ export async function sendCourseBroadcastEmail(
 ): Promise<SendMailResult> {
   const {
     toEmail,
+    bccEmails,
     recipientName,
+    audienceLabel = 'Comunidad Escolar',
     senderName,
     senderRole,
     senderEmail,
@@ -297,7 +301,7 @@ export async function sendCourseBroadcastEmail(
     <html lang="es">
     <head>
       <meta charset="UTF-8">
-      <title>${subject} - Comunicación de Curso LTP</title>
+      <title>${subject} - Comunicación Oficial LTP</title>
       <style>
         body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
         .container { max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 14px; padding: 32px; box-shadow: 0 10px 25px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
@@ -325,17 +329,17 @@ export async function sendCourseBroadcastEmail(
       <div class="container">
         <div class="header">
           <h1>Liceo Técnico Profesional</h1>
-          <p>Comunicación Oficial Docente Focalizada (LTP v2.0)</p>
+          <p>Comunicación Oficial Escolar (LTP v2.0)</p>
           <div class="badge-row">
-            <span class="badge course-badge">🏫 Curso: ${courseName}</span>
+            <span class="badge course-badge">🏫 Alcance: ${courseName}</span>
             <span class="badge priority-badge">${pConfig.label}</span>
             ${category ? `<span class="badge" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">📁 ${category}</span>` : ''}
           </div>
         </div>
 
-        <p style="font-size: 1rem; margin-bottom: 14px;">Estimado(a) colega <strong>${recipientName}</strong>,</p>
+        <p style="font-size: 1rem; margin-bottom: 14px;">Estimado(a) <strong>${recipientName}</strong>,</p>
         <p style="color: #475569; line-height: 1.5; margin-top: 0;">
-          Ha recibido un mensaje oficial dirigido específicamente al <strong>equipo docente asignado al curso ${courseName}</strong>:
+          Ha recibido un comunicado oficial dirigido a <strong>${audienceLabel} (${courseName})</strong>:
         </p>
 
         <div class="meta-card">
@@ -349,7 +353,7 @@ export async function sendCourseBroadcastEmail(
             <span class="meta-value">${senderEmail}</span>
           </div>` : ''}
           <div class="meta-row">
-            <span class="meta-label">🎯 Curso Destinatario:</span>
+            <span class="meta-label">🎯 Alcance Destinatario:</span>
             <span class="meta-value" style="color: #4f46e5;">${courseName}</span>
           </div>
           <div class="meta-row">
@@ -369,7 +373,7 @@ export async function sendCourseBroadcastEmail(
 
         <div class="footer">
           Este es un comunicado institucional del <strong>Liceo Técnico Profesional</strong> enviado a través del Sistema Integral LTP v2.0.<br/>
-          Recibe este correo porque usted se encuentra formalmente asignado como docente del curso <strong>${courseName}</strong>.<br/>
+          Recibe este correo como miembro de la comunidad educativa de <strong>${courseName}</strong>.<br/>
           &copy; ${new Date().getFullYear()} Liceo Técnico Profesional — Todos los derechos reservados.
         </div>
       </div>
@@ -380,7 +384,8 @@ export async function sendCourseBroadcastEmail(
   // Simulación en consola si no hay credenciales SMTP válidas
   const isTemplate = !user || !pass || user.includes('tu_correo') || pass.includes('tu_clave');
   if (!host || isTemplate) {
-    console.log(`\n📧 [SIMULACIÓN CORREO DOCENTES] Para: ${recipientName} <${toEmail}> | Curso: ${courseName} | Asunto: ${subject}`);
+    const bccCount = Array.isArray(bccEmails) ? bccEmails.length : 0;
+    console.log(`\n📧 [SIMULACIÓN CORREO COMUNICADO] Para: ${recipientName} <${toEmail}>${bccCount > 0 ? ` (+${bccCount} BCC)` : ''} | Alcance: ${courseName} | Asunto: ${subject}`);
     return {
       success: true,
       simulated: true,
@@ -395,29 +400,34 @@ export async function sendCourseBroadcastEmail(
       port,
       secure: isSecure,
       auth: { user, pass },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
+      connectionTimeout: 7000,
+      greetingTimeout: 7000,
+      socketTimeout: 9000,
       tls: {
         rejectUnauthorized: false
       }
     });
 
-    const info = await transporter.sendMail({
+    const mailOptions: any = {
       from,
-      to: toEmail,
+      to: toEmail || user || from,
       subject: `[${courseName}] [${priority.toUpperCase()}] ${subject} — LTP Liceo Pro`,
       html: htmlContent
-    });
+    };
+    if (Array.isArray(bccEmails) && bccEmails.length > 0) {
+      mailOptions.bcc = bccEmails;
+    }
 
-    console.log(`✅ Correo de curso enviado a ${recipientName} <${toEmail}> (ID: ${info.messageId})`);
+    const info = await transporter.sendMail(mailOptions);
+
+    console.log(`✅ Correo de comunicado enviado (${Array.isArray(bccEmails) && bccEmails.length > 0 ? `${bccEmails.length} destinatarios BCC` : toEmail}) ID: ${info.messageId}`);
     return {
       success: true,
       simulated: false,
       messageId: info.messageId
     };
   } catch (err: any) {
-    console.error(`❌ Error al enviar correo de curso a ${toEmail}:`, err.message || err);
+    console.error(`❌ Error al enviar correo de comunicado a ${toEmail}:`, err.message || err);
     return {
       success: false,
       simulated: false,

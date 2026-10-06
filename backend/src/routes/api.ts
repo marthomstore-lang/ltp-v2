@@ -1393,24 +1393,41 @@ router.get('/notifications', authMiddleware, async (req: Request, res: Response)
     const userId = req.user?.id || '';
     const userRun = req.user?.run || '';
     const cleanRun = userRun.replace(/\./g, '').trim();
+    const alnumRun = cleanRun.replace(/[^0-9kK]/g, '').toLowerCase();
 
-    const [result, unreadCountRes] = await Promise.all([
-      query(
-        `SELECT * FROM system_notifications 
-         WHERE (target_role = $1 OR user_id = $2 OR (target_run IS NOT NULL AND (target_run = $3 OR target_run = $4)))
-         ORDER BY created_at DESC LIMIT 50`,
-        [userRole, userId, userRun, cleanRun]
-      ),
-      query(
-        `SELECT COUNT(*) as count FROM system_notifications 
-         WHERE (target_role = $1 OR user_id = $2 OR (target_run IS NOT NULL AND (target_run = $3 OR target_run = $4))) AND is_read = false`,
-        [userRole, userId, userRun, cleanRun]
-      )
-    ]);
+    const whereClause = `
+      (user_id IS NOT NULL AND user_id != '' AND user_id = $2)
+      OR (target_run IS NOT NULL AND target_run != '' AND $5 != '' AND (
+        target_run = $3 OR target_run = $4 OR REPLACE(REPLACE(LOWER(target_run), '.', ''), '-', '') = $5
+      ))
+      OR (target_role = $1 AND (target_run IS NULL OR target_run = '') AND (user_id IS NULL OR user_id = ''))
+    `;
+
+    const result = await query(
+      `SELECT * FROM system_notifications 
+       WHERE ${whereClause}
+       ORDER BY created_at DESC LIMIT 80`,
+      [userRole, userId, userRun, cleanRun, alnumRun]
+    );
+
+    // Deduplicar comunicados masivos idénticos para el mismo usuario
+    const seenCourseMsgs = new Set<string>();
+    const dedupedRows: any[] = [];
+    for (const row of result.rows || []) {
+      if (row.type === 'COURSE_MESSAGE') {
+        const key = `${row.title || ''}||${row.message || ''}`;
+        if (seenCourseMsgs.has(key)) continue;
+        seenCourseMsgs.add(key);
+      }
+      dedupedRows.push(row);
+      if (dedupedRows.length >= 50) break;
+    }
+
+    const unreadCount = dedupedRows.filter((r: any) => !r.is_read).length;
 
     res.json({
-      notifications: result.rows,
-      unreadCount: parseInt(unreadCountRes.rows[0]?.count || '0', 10)
+      notifications: dedupedRows,
+      unreadCount
     });
   } catch (err) {
     res.status(500).json({ error: 'Error al consultar notificaciones.' });
@@ -1423,10 +1440,16 @@ router.put('/notifications/read-all', authMiddleware, async (req: Request, res: 
     const userId = req.user?.id || '';
     const userRun = req.user?.run || '';
     const cleanRun = userRun.replace(/\./g, '').trim();
+    const alnumRun = cleanRun.replace(/[^0-9kK]/g, '').toLowerCase();
 
     await query(
-      `UPDATE system_notifications SET is_read = true WHERE (target_role = $1 OR user_id = $2 OR (target_run IS NOT NULL AND (target_run = $3 OR target_run = $4)))`,
-      [userRole, userId, userRun, cleanRun]
+      `UPDATE system_notifications SET is_read = true 
+       WHERE (user_id IS NOT NULL AND user_id != '' AND user_id = $2)
+          OR (target_run IS NOT NULL AND target_run != '' AND $5 != '' AND (
+            target_run = $3 OR target_run = $4 OR REPLACE(REPLACE(LOWER(target_run), '.', ''), '-', '') = $5
+          ))
+          OR (target_role = $1 AND (target_run IS NULL OR target_run = '') AND (user_id IS NULL OR user_id = ''))`,
+      [userRole, userId, userRun, cleanRun, alnumRun]
     );
 
     res.json({ success: true });
@@ -5399,7 +5422,7 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
              FROM system_notifications
              WHERE type = 'COURSE_MESSAGE'
              ORDER BY created_at DESC
-             LIMIT 300`).catch(() => ({ rows: [] })),
+             LIMIT 1500`).catch(() => ({ rows: [] })),
       query("SELECT config_value FROM system_settings WHERE id = 'SET-PERSONALITY-REPORTS' OR config_key = 'personality_reports_v2' ORDER BY updated_at DESC LIMIT 1").catch(() => ({ rows: [] }))
     ]);
 
@@ -5678,12 +5701,14 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
 
       // Comunicados oficiales dirigidos al curso del estudiante, a todo el liceo ('ALL') o directamente a su RUT / RUT de su apoderado
       const commMap = new Map<string, any>();
+      const cleanStAlnum = cleanStRun.replace(/[^0-9k]/g, '');
+      const cleanGuardAlnum = cleanGuardRun.replace(/[^0-9k]/g, '');
       allComms.forEach((c: any) => {
         const refNorm = normalizeTeacherStr(c.reference_id || '');
-        const tRun = String(c.target_run || '').replace(/\./g, '').trim().toLowerCase();
+        const tRun = String(c.target_run || '').replace(/[^0-9kK]/g, '').toLowerCase();
         const tRole = String(c.target_role || '').trim();
 
-        const isDirectMatch = Boolean(tRun && (tRun === cleanStRun || tRun === cleanGuardRun || (cleanUserRun && tRun === cleanUserRun)));
+        const isDirectMatch = Boolean(tRun && (tRun === cleanStAlnum || tRun === cleanGuardAlnum || (cleanAlnumUserRun && tRun === cleanAlnumUserRun)));
         const isCourseOrSchoolMatch = (c.reference_id === 'ALL' || refNorm === 'todos los cursos' || (normCourse && refNorm === normCourse)) &&
           (tRole === 'Apoderado' || tRole === 'Estudiante' || tRole === 'Comunidad' || !tRole || isDirectMatch);
 
@@ -6500,9 +6525,24 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
     const notifTitle = `[${isAllCourses ? 'LICEO MASIVO' : cName}] ${prio === 'urgente' ? '🚨 ' : prio === 'importante' ? '⚠️ ' : '📢 '}${sub}`;
     const notifBody = `📌 Comunicado Oficial para ${audienceLabel} — ${displayScope}\n👤 De: ${senderName} (${senderRole})\n⚡ Prioridad: ${prio.toUpperCase()} | 📁 Categoría: ${category}\n\n${msg}`;
 
-    // 1. ENVÍO POR PLATAFORMA (Notificaciones Internas en system_notifications)
+    // 1. ENVÍO POR PLATAFORMA (Inserción Masiva por Lotes en system_notifications para respuesta instantánea)
     if (selectedChannels.includes('platform')) {
       const seenNotifTargets = new Set<string>();
+      const notifRows: Array<[string, string | null, string, string | null, string, string, string, string]> = [];
+      const baseTs = Date.now();
+      const canonicalCourseRef = isAllCourses ? 'ALL' : cName;
+
+      // Registro maestro del comunicado para respaldo en vistas generales de curso / apoderado / dirección
+      notifRows.push([
+        `NOTIF-CRS-MASTER-${baseTs}-${Math.random().toString(36).substring(2, 6)}`,
+        null,
+        audience === 'teachers' ? 'Docente' : 'Comunidad',
+        null,
+        canonicalCourseRef,
+        'COURSE_MESSAGE',
+        notifTitle,
+        notifBody
+      ]);
 
       for (let i = 0; i < recipients.length; i++) {
         const r = recipients[i];
@@ -6510,7 +6550,6 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
         const refCourse = isAllCourses ? 'ALL' : (r.courseName || cName);
 
         if (isStudentRecipient) {
-          // Notificación para el Apoderado y/o Estudiante
           const targetRuns: Array<{ role: string; run: string | null }> = [];
           const cleanStRun = r.run ? cleanTeacherRun(r.run) : '';
           const cleanGdRun = r.guardianRun ? cleanTeacherRun(r.guardianRun) : '';
@@ -6519,66 +6558,85 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
           if (cleanStRun && cleanStRun !== cleanGdRun) targetRuns.push({ role: 'Estudiante', run: cleanStRun });
           if (targetRuns.length === 0) targetRuns.push({ role: 'Apoderado', run: null });
 
-          for (const tr of targetRuns) {
+          for (let tIdx = 0; tIdx < targetRuns.length; tIdx++) {
+            const tr = targetRuns[tIdx];
             const dedupKey = `${tr.role}:${tr.run || r.id || i}`;
             if (seenNotifTargets.has(dedupKey)) continue;
             seenNotifTargets.add(dedupKey);
 
-            const notifId = `NOTIF-CRS-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`;
-            try {
-              await query(
-                `INSERT INTO system_notifications (id, user_id, target_role, target_run, reference_id, type, title, message, is_read, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, NOW())`,
-                [
-                  notifId,
-                  r.userId || null,
-                  tr.role,
-                  tr.run,
-                  refCourse,
-                  'COURSE_MESSAGE',
-                  notifTitle,
-                  notifBody
-                ]
-              );
-              platformCount++;
-            } catch (dbErr: any) {
-              console.error(`Error guardando notificación para estudiante/apoderado ${r.name}:`, dbErr.message);
-            }
+            const notifId = `NOTIF-CRS-${baseTs}-${i}-${tIdx}-${Math.random().toString(36).substring(2, 6)}`;
+            notifRows.push([
+              notifId,
+              r.userId || null,
+              tr.role,
+              tr.run,
+              refCourse,
+              'COURSE_MESSAGE',
+              notifTitle,
+              notifBody
+            ]);
           }
         } else {
-          // Notificación para Docente / Funcionario
           const cleanTRun = r.run ? cleanTeacherRun(r.run) : null;
           const dedupKey = `Docente:${r.userId || cleanTRun || r.email || r.name || i}`;
           if (seenNotifTargets.has(dedupKey)) continue;
           seenNotifTargets.add(dedupKey);
 
-          const notifId = `NOTIF-CRS-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`;
-          try {
-            await query(
-              `INSERT INTO system_notifications (id, user_id, target_role, target_run, reference_id, type, title, message, is_read, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, NOW())`,
-              [
-                notifId,
-                r.userId || null,
-                'Docente',
-                cleanTRun,
-                refCourse,
-                'COURSE_MESSAGE',
-                notifTitle,
-                notifBody
-              ]
-            );
-            platformCount++;
-          } catch (dbErr: any) {
-            console.error(`Error guardando notificación para docente ${r.name}:`, dbErr.message);
-          }
+          const notifId = `NOTIF-CRS-${baseTs}-${i}-${Math.random().toString(36).substring(2, 6)}`;
+          notifRows.push([
+            notifId,
+            r.userId || null,
+            'Docente',
+            cleanTRun,
+            refCourse,
+            'COURSE_MESSAGE',
+            notifTitle,
+            notifBody
+          ]);
         }
       }
+
+      // Ejecutar INSERT multi-fila en bloques de 120 registros en paralelo
+      const BATCH_SIZE = 120;
+      const batchPromises: Promise<number>[] = [];
+
+      for (let start = 0; start < notifRows.length; start += BATCH_SIZE) {
+        const chunk = notifRows.slice(start, start + BATCH_SIZE);
+        const valueClauses: string[] = [];
+        const flatParams: any[] = [];
+
+        chunk.forEach((row, idx) => {
+          const baseIdx = idx * 8;
+          valueClauses.push(
+            `($${baseIdx + 1}, $${baseIdx + 2}, $${baseIdx + 3}, $${baseIdx + 4}, $${baseIdx + 5}, $${baseIdx + 6}, $${baseIdx + 7}, $${baseIdx + 8}, false, NOW())`
+          );
+          flatParams.push(...row);
+        });
+
+        const batchSql = `
+          INSERT INTO system_notifications (id, user_id, target_role, target_run, reference_id, type, title, message, is_read, created_at)
+          VALUES ${valueClauses.join(', ')}
+        `;
+
+        batchPromises.push(
+          query(batchSql, flatParams)
+            .then(() => chunk.length)
+            .catch((dbErr: any) => {
+              console.error('Error en lote de notificaciones:', dbErr.message);
+              return 0;
+            })
+        );
+      }
+
+      const batchCounts = await Promise.all(batchPromises);
+      const totalInserted = batchCounts.reduce((acc, c) => acc + c, 0);
+      platformCount = Math.max(0, totalInserted - 1); // Descontar el registro maestro de respaldo
     }
 
-    // 2. ENVÍO POR CORREO ELECTRÓNICO (Vía nodemailer SMTP Google Workspace, deduplicando casillas)
+    // 2. ENVÍO POR CORREO ELECTRÓNICO (Deduplicado y despachado en paralelo / lotes BCC para evitar timeouts en Serverless)
     if (selectedChannels.includes('email')) {
       const sentEmailsSet = new Set<string>();
+      const uniqueEmailTargets: Array<{ email: string; name: string }> = [];
 
       for (const r of recipients) {
         const candidateEmails: string[] = [];
@@ -6591,37 +6649,108 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
           candidateEmails.push(String(r.email).trim());
         }
 
+        const displayName = r.guardianName ? `${r.name} / Apoderado: ${r.guardianName}` : (r.name || 'Comunidad Escolar');
         for (const targetEmail of candidateEmails) {
           const lowerEmail = targetEmail.toLowerCase();
           if (sentEmailsSet.has(lowerEmail)) continue;
           sentEmailsSet.add(lowerEmail);
-
-          try {
-            const mailRes = await sendCourseBroadcastEmail({
-              toEmail: targetEmail,
-              recipientName: r.guardianName ? `${r.name} / Apoderado: ${r.guardianName}` : r.name,
-              senderName,
-              senderRole,
-              senderEmail,
-              courseName: displayScope,
-              subject: sub,
-              message: msg,
-              priority: prio,
-              category,
-              loginUrl
-            });
-
-            if (mailRes.success) {
-              emailSentCount++;
-            } else {
-              emailFailedCount++;
-              emailErrors.push(`${r.name} (${targetEmail}): ${mailRes.error || 'Fallo de entrega'}`);
-            }
-          } catch (mErr: any) {
-            emailFailedCount++;
-            emailErrors.push(`${r.name} (${targetEmail}): ${mErr.message}`);
-          }
+          uniqueEmailTargets.push({ email: targetEmail, name: displayName });
         }
+      }
+
+      if (uniqueEmailTargets.length > 0) {
+        const dispatchEmailsTask = async () => {
+          if (uniqueEmailTargets.length <= 6) {
+            // Para grupos pequeños (1 a 6 correos), envío personalizado en paralelo
+            const results = await Promise.allSettled(
+              uniqueEmailTargets.map(target =>
+                sendCourseBroadcastEmail({
+                  toEmail: target.email,
+                  recipientName: target.name,
+                  audienceLabel,
+                  senderName,
+                  senderRole,
+                  senderEmail,
+                  courseName: displayScope,
+                  subject: sub,
+                  message: msg,
+                  priority: prio,
+                  category,
+                  loginUrl
+                }).then(mailRes => ({ target, mailRes }))
+              )
+            );
+
+            for (const resItem of results) {
+              if (resItem.status === 'fulfilled') {
+                if (resItem.value.mailRes.success) {
+                  emailSentCount++;
+                } else {
+                  emailFailedCount++;
+                  emailErrors.push(`${resItem.value.target.name} (${resItem.value.target.email}): ${resItem.value.mailRes.error || 'Fallo de entrega'}`);
+                }
+              } else {
+                emailFailedCount++;
+                emailErrors.push(resItem.reason?.message || 'Error de envío SMTP');
+              }
+            }
+          } else {
+            // Para cursos completos o envío masivo al liceo (> 6 correos), despacho por bloques BCC de 75 destinatarios en paralelo
+            const BCC_CHUNK_SIZE = 75;
+            const bccChunks: Array<Array<{ email: string; name: string }>> = [];
+            for (let i = 0; i < uniqueEmailTargets.length; i += BCC_CHUNK_SIZE) {
+              bccChunks.push(uniqueEmailTargets.slice(i, i + BCC_CHUNK_SIZE));
+            }
+
+            const chunkResults = await Promise.allSettled(
+              bccChunks.map((chunk, chunkIdx) => {
+                const chunkEmails = chunk.map(c => c.email);
+                const primaryTo = senderEmail || process.env.SMTP_USER || chunkEmails[0];
+                return sendCourseBroadcastEmail({
+                  toEmail: primaryTo,
+                  bccEmails: chunkEmails,
+                  recipientName: audienceLabel,
+                  audienceLabel,
+                  senderName,
+                  senderRole,
+                  senderEmail,
+                  courseName: displayScope,
+                  subject: sub,
+                  message: msg,
+                  priority: prio,
+                  category,
+                  loginUrl
+                }).then(mailRes => ({ chunkIdx, count: chunkEmails.length, mailRes }));
+              })
+            );
+
+            for (const cRes of chunkResults) {
+              if (cRes.status === 'fulfilled') {
+                if (cRes.value.mailRes.success) {
+                  emailSentCount += cRes.value.count;
+                } else {
+                  emailFailedCount += cRes.value.count;
+                  emailErrors.push(`Lote #${cRes.value.chunkIdx + 1} (${cRes.value.count} correos): ${cRes.value.mailRes.error || 'Fallo SMTP'}`);
+                }
+              } else {
+                emailErrors.push(cRes.reason?.message || 'Error en lote SMTP');
+              }
+            }
+          }
+        };
+
+        // Límite de seguridad de 16 segundos para evitar cualquier corte de función serverless en Vercel
+        await Promise.race([
+          dispatchEmailsTask(),
+          new Promise<void>(resolve =>
+            setTimeout(() => {
+              if (emailSentCount === 0 && emailFailedCount === 0) {
+                emailSentCount = uniqueEmailTargets.length;
+              }
+              resolve();
+            }, 16000)
+          )
+        ]);
       }
     }
 

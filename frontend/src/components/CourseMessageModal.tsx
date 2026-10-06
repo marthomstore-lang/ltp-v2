@@ -307,8 +307,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
           email: t.email,
           emails: t.email ? [t.email] : [],
           run: t.run,
-          role: t.roles.join(', ') || 'Docente',
-          subject: t.subjects.join(', ') || 'Asignatura',
+          role: 'Docente',
           courseName: isAllCourses ? 'ALL' : selectedCourse
         })),
         ...selectedStudents.map(s => ({
@@ -343,10 +342,20 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
         })
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: any = null;
+      try {
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch (_) {
+        throw new Error(
+          res.status === 504 || rawText.includes('TIMEOUT') || rawText.includes('An error occurred')
+            ? 'El servidor demoró demasiado procesando el envío masivo. Por favor intente nuevamente.'
+            : `Respuesta inesperada del servidor (HTTP ${res.status}).`
+        );
+      }
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Ocurrió un error al despachar el comunicado.');
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Ocurrió un error al despachar el comunicado.');
       }
 
       await Swal.fire({
