@@ -2450,6 +2450,22 @@ router.get('/students', authMiddleware, async (req: Request, res: Response) => {
       };
     });
 
+    // Regla de Privacidad PIE: Los profesores de integración / diferenciales solo pueden ver la información de los cursos que atienden
+    const pieAccess = await getPieCourseAccessForUser(req.user);
+    if (pieAccess.isPieRestricted) {
+      const normProfName = normalizePieText(pieAccess.professionalName);
+      const filteredForPie = sanitizedRows.filter((s: any) => {
+        const stCourse = getStudentCourseHelper(s);
+        const stRawCourse = String(s.desc_grado || '').trim();
+        const stPieTeacher = normalizePieText(s.profesor_pie);
+        if (normProfName && stPieTeacher && stPieTeacher === normProfName) return true;
+        return pieAccess.allowedCourses.some(ac =>
+          coursesMatchPie(stCourse, ac) || coursesMatchPie(stRawCourse, ac)
+        );
+      });
+      return res.json(filteredForPie);
+    }
+
     res.json(sanitizedRows);
   } catch (err: any) {
     console.error('⛔ Error en /api/students:', err?.message || err);
@@ -8808,7 +8824,20 @@ router.get('/evaluations', authMiddleware, async (req: Request, res: Response) =
       original_folder_path: ev.original_folder_path || buildEvaluationFolderPath(ev.course_name, ev.subject_name, false),
       pie_folder_path: ev.pie_folder_path || buildEvaluationFolderPath(ev.course_name, ev.subject_name, true)
     }));
-    res.json({ evaluations: enriched });
+
+    const pieAccess = await getPieCourseAccessForUser(req.user);
+    const finalEvaluations = pieAccess.isPieRestricted
+      ? enriched.filter((ev: any) =>
+          pieAccess.allowedCourses.some(ac => coursesMatchPie(ev.course_name, ac))
+        )
+      : enriched;
+
+    res.json({
+      evaluations: finalEvaluations,
+      isPieRestricted: pieAccess.isPieRestricted,
+      allowedPieCourses: pieAccess.allowedCourses,
+      pieProfessionalName: pieAccess.professionalName
+    });
   } catch (err: any) {
     console.error('Error al consultar evaluaciones:', err);
     res.status(500).json({ error: 'Error al consultar evaluaciones pedagógicas.' });
@@ -9320,33 +9349,562 @@ router.post('/evaluations/:id/attach-pie', authMiddleware, uploadMemory.single('
   }
 });
 
-// Permisos PIE por Curso
-router.get('/evaluations/pie-permissions', authMiddleware, async (_req: Request, res: Response) => {
+// =============================================================================
+// REGLA DE PRIVACIDAD Y AISLAMIENTO POR CURSO PARA PROFESORES DIFERENCIALES / PIE
+// =============================================================================
+function normalizePieText(val: any): string {
+  return String(val || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function namesMatchPie(nameA: any, nameB: any): boolean {
+  const a = normalizePieText(nameA);
+  const b = normalizePieText(nameB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.includes('\ufffd') || b.includes('\ufffd')) {
+    const patternStr = (a.includes('\ufffd') ? a : b)
+      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/\ufffd+/g, '[a-z0-9]{0,3}');
+    const targetStr = a.includes('\ufffd') ? b : a;
+    try {
+      if (new RegExp(`^${patternStr}$`, 'i').test(targetStr)) return true;
+    } catch (_) {}
+  }
+  return false;
+}
+
+function isPieOrDifferentialRole(str: any): boolean {
+  const norm = normalizePieText(str);
+  if (!norm) return false;
+  return (
+    norm.includes('pie') ||
+    norm.includes('diferencial') ||
+    norm.includes('integracion') ||
+    norm.includes('psicopedagog') ||
+    norm.includes('fonoaudiolog') ||
+    norm.includes('terapeuta ocupacional')
+  );
+}
+
+function parseCoursesAllowedList(raw: any): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return Array.from(new Set(raw.map((c: any) => String(c || '').trim()).filter(Boolean)));
+  }
+  const str = String(raw).trim();
+  if (!str || str === 'null' || str === 'undefined') return [];
   try {
-    const result = await query('SELECT * FROM pie_course_permissions ORDER BY teacher_name ASC');
-    res.json({ permissions: result.rows });
+    const parsed = JSON.parse(str);
+    if (Array.isArray(parsed)) {
+      return Array.from(new Set(parsed.map((c: any) => String(c || '').trim()).filter(Boolean)));
+    }
+  } catch (_) {}
+  return Array.from(new Set(str.split(',').map(s => s.trim()).filter(Boolean)));
+}
+
+function coursesMatchPie(courseA: any, courseB: any): boolean {
+  const a = normalizePieText(courseA);
+  const b = normalizePieText(courseB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const compactA = a.replace(/[^a-z0-9]/g, '');
+  const compactB = b.replace(/[^a-z0-9]/g, '');
+  if (compactA && compactA === compactB) return true;
+
+  // Pre-Kinder vs Kinder
+  const isPreKinder = (s: string) => s.includes('pre-kinder') || s.includes('prekinder') || s.includes('1er nivel de transicion');
+  const isKinder = (s: string) => !isPreKinder(s) && (s.includes('kinder') || s.includes('2° nivel de transicion') || s.includes('2do nivel de transicion'));
+  if (isPreKinder(a) && isPreKinder(b)) return true;
+  if (isKinder(a) && isKinder(b)) return true;
+
+  // Especialidades TP (3° y 4° Medio Mecánica / Párvulos / Electricidad / Telecomunicaciones)
+  const extractTpSpecialty = (s: string) => {
+    const gMatch = s.match(/\b([34])\s*(?:°|º|ro|to)?\b/);
+    if (!gMatch) return null;
+    const grade = gMatch[1];
+    if (s.includes('mecanica')) return { grade, spec: 'mecanica' };
+    if (s.includes('parvulo')) return { grade, spec: 'parvulo' };
+    if (s.includes('electricidad')) return { grade, spec: 'electricidad' };
+    if (s.includes('telecom')) return { grade, spec: 'telecom' };
+    return null;
+  };
+  const tpA = extractTpSpecialty(a);
+  const tpB = extractTpSpecialty(b);
+  if (tpA || tpB) {
+    if (tpA && tpB) return tpA.grade === tpB.grade && tpA.spec === tpB.spec;
+    return false;
+  }
+
+  // Cursos científicos-humanistas y básicos (1° a 8° Básico, 1° y 2° Medio A/B)
+  const extractGradeLetter = (s: string) => {
+    const m = s.match(/^([1-8])\s*(?:°|º|er|do|ro|to|vo)?\s*(basico|medio)(?:\s+([ab]))?$/i);
+    if (!m) return null;
+    return { grade: m[1], level: m[2], letter: (m[3] || '').toLowerCase() };
+  };
+  const ga = extractGradeLetter(a);
+  const gb = extractGradeLetter(b);
+  if (ga && gb && ga.grade === gb.grade && ga.level === gb.level) {
+    if (ga.letter && gb.letter) return ga.letter === gb.letter;
+    return true;
+  }
+  return false;
+}
+
+async function resolveProfessionalIdentity(nameInput: string, emailInput?: string) {
+  const cleanName = String(nameInput || '').trim();
+  let cleanEmail = String(emailInput || '').toLowerCase().trim();
+  const normName = normalizePieText(cleanName);
+
+  const [usersRes, staffRes] = await Promise.all([
+    query('SELECT id, run, name, email, role, roles, job_function FROM users').catch(() => ({ rows: [] })),
+    query('SELECT id, user_id, run, full_name, email, role, job_function, subject_specialty FROM staff_profiles').catch(() => ({ rows: [] }))
+  ]);
+
+  let matchedUser = (usersRes.rows || []).find((u: any) =>
+    (cleanEmail && String(u.email || '').toLowerCase().trim() === cleanEmail) ||
+    (normName && namesMatchPie(u.name, cleanName))
+  );
+  let matchedStaff = (staffRes.rows || []).find((s: any) =>
+    (cleanEmail && String(s.email || '').toLowerCase().trim() === cleanEmail) ||
+    (normName && namesMatchPie(s.full_name, cleanName))
+  );
+
+  if (!cleanEmail) {
+    cleanEmail = String(matchedUser?.email || matchedStaff?.email || '').toLowerCase().trim();
+  }
+
+  const resolvedName =
+    (cleanName.includes('\ufffd') ? (matchedUser?.name || matchedStaff?.full_name || cleanName) : cleanName) ||
+    matchedUser?.name ||
+    matchedStaff?.full_name ||
+    cleanEmail;
+
+  if (!cleanEmail && resolvedName) {
+    cleanEmail = `${normalizePieText(resolvedName).replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '')}@pie.ltp.cl`;
+  }
+
+  return {
+    name: resolvedName,
+    email: cleanEmail,
+    user: matchedUser || null,
+    staff: matchedStaff || null
+  };
+}
+
+async function syncPieProfessionalCourses(opts: {
+  name: string;
+  email?: string;
+  role?: string;
+  coursesToAdd?: string[];
+  coursesToRemove?: string[];
+  exactCoursesList?: string[];
+  markAsPieProfile?: boolean;
+}) {
+  const identity = await resolveProfessionalIdentity(opts.name, opts.email);
+  if (!identity.email && !identity.name) return { coursesAllowed: [] as string[], email: '', name: '' };
+
+  // Buscar registro existente en pie_course_permissions por email o nombre
+  const existingPermRes = await query('SELECT * FROM pie_course_permissions').catch(() => ({ rows: [] }));
+  const existingRow = (existingPermRes.rows || []).find((r: any) =>
+    (identity.email && String(r.teacher_email || '').toLowerCase().trim() === identity.email) ||
+    (identity.name && namesMatchPie(r.teacher_name, identity.name))
+  );
+
+  const targetEmail = existingRow?.teacher_email
+    ? String(existingRow.teacher_email).toLowerCase().trim()
+    : identity.email;
+
+  let currentCourses = existingRow ? parseCoursesAllowedList(existingRow.courses_allowed) : [];
+
+  // También incorporar cursos que ya tenga en course_support_professionals si no es exactCoursesList
+  if (!opts.exactCoursesList) {
+    const supRes = await query('SELECT id, course_name, professional_name, contact_email, role FROM course_support_professionals').catch(() => ({ rows: [] }));
+    for (const s of supRes.rows || []) {
+      const sEmail = String(s.contact_email || '').toLowerCase().trim();
+      if ((sEmail && sEmail === targetEmail) || (identity.name && namesMatchPie(s.professional_name, identity.name))) {
+        if (s.course_name && !currentCourses.some(c => coursesMatchPie(c, s.course_name))) {
+          currentCourses.push(String(s.course_name).trim());
+        }
+        if (String(s.professional_name || '').includes('\ufffd') && !identity.name.includes('\ufffd')) {
+          await query('UPDATE course_support_professionals SET professional_name = $1 WHERE id = $2', [identity.name, s.id]).catch(() => {});
+        }
+      }
+    }
+  }
+
+  if (opts.exactCoursesList) {
+    currentCourses = Array.from(new Set(opts.exactCoursesList.map(c => String(c || '').trim()).filter(Boolean)));
+  } else {
+    if (Array.isArray(opts.coursesToAdd)) {
+      for (const c of opts.coursesToAdd) {
+        const cleanC = String(c || '').trim();
+        if (cleanC && !currentCourses.some(existing => coursesMatchPie(existing, cleanC))) {
+          currentCourses.push(cleanC);
+        }
+      }
+    }
+    if (Array.isArray(opts.coursesToRemove)) {
+      currentCourses = currentCourses.filter(existing =>
+        !opts.coursesToRemove!.some(rem => coursesMatchPie(existing, rem))
+      );
+    }
+  }
+
+  const serializedCourses = JSON.stringify(currentCourses);
+
+  if (existingRow?.id) {
+    await query(
+      `UPDATE pie_course_permissions SET teacher_email = $1, teacher_name = $2, courses_allowed = $3 WHERE id = $4`,
+      [targetEmail, identity.name, serializedCourses, existingRow.id]
+    ).catch(e => console.error('Error actualizando pie_course_permissions:', e));
+  } else {
+    await query(
+      `INSERT INTO pie_course_permissions (teacher_email, teacher_name, courses_allowed) VALUES ($1, $2, $3)`,
+      [targetEmail, identity.name, serializedCourses]
+    ).catch(e => console.error('Error insertando pie_course_permissions:', e));
+  }
+
+  // Si se envió exactCoursesList (desde la matriz de configuración PIE), sincronizar course_support_professionals
+  if (opts.exactCoursesList) {
+    const supRes = await query('SELECT * FROM course_support_professionals').catch(() => ({ rows: [] }));
+    const existingRowsForProf = (supRes.rows || []).filter((s: any) => {
+      const sEmail = String(s.contact_email || '').toLowerCase().trim();
+      return (sEmail && sEmail === targetEmail) || (identity.name && namesMatchPie(s.professional_name, identity.name));
+    });
+
+    // Eliminar cursos que ya no están en exactCoursesList
+    for (const row of existingRowsForProf) {
+      if (!currentCourses.some(c => coursesMatchPie(c, row.course_name))) {
+        await query('DELETE FROM course_support_professionals WHERE id = $1', [row.id]).catch(() => {});
+      }
+    }
+
+    // Agregar cursos nuevos que no estaban en course_support_professionals
+    for (const cName of currentCourses) {
+      const alreadyInCourse = existingRowsForProf.some((r: any) => coursesMatchPie(r.course_name, cName));
+      if (!alreadyInCourse) {
+        const supId = `SUP-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        await query(`
+          INSERT INTO course_support_professionals (
+            id, course_name, professional_name, role, intervention_days,
+            intervention_type, target_students, contact_email, contact_phone,
+            notes, academic_year
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `, [
+          supId,
+          cName,
+          identity.name,
+          opts.role || 'Educador(a) Diferencial PIE',
+          'Lunes a Viernes',
+          'Co-docencia en Aula y Aula de Recursos',
+          'Estudiantes PIE del curso',
+          targetEmail.endsWith('@pie.ltp.cl') ? null : targetEmail,
+          null,
+          'Asignado desde Matriz de Cursos PIE (Aislamiento de Privacidad Activo)',
+          2026
+        ]).catch(() => {});
+      }
+    }
+  }
+
+  // Si corresponde marcar perfil como Educador(a) Diferencial PIE en users/staff_profiles
+  if (opts.markAsPieProfile || isPieOrDifferentialRole(opts.role)) {
+    const newJobFn = opts.role && isPieOrDifferentialRole(opts.role) ? opts.role : 'Educador(a) Diferencial PIE';
+    if (identity.user?.id) {
+      await query(
+        `UPDATE users SET job_function = COALESCE(NULLIF(job_function, 'Docente de Aula'), $1) WHERE id = $2`,
+        [newJobFn, identity.user.id]
+      ).catch(() => {});
+    }
+    if (identity.staff?.id) {
+      await query(
+        `UPDATE staff_profiles SET job_function = COALESCE(NULLIF(job_function, 'Docente de Aula'), $1) WHERE id = $2`,
+        [newJobFn, identity.staff.id]
+      ).catch(() => {});
+    }
+  }
+
+  // Sincronizar students.profesor_pie en los cursos asignados
+  try {
+    const allStudentsRes = await query('SELECT id, desc_grado, letra_curso, profesor_pie FROM students').catch(() => ({ rows: [] }));
+    for (const st of allStudentsRes.rows || []) {
+      const stCourse = getStudentCourseHelper(st);
+      if (currentCourses.some(c => coursesMatchPie(c, stCourse) || coursesMatchPie(c, st.desc_grado))) {
+        await query('UPDATE students SET profesor_pie = $1 WHERE id = $2', [identity.name, st.id]).catch(() => {});
+      }
+    }
+  } catch (_) {}
+
+  return { coursesAllowed: currentCourses, email: targetEmail, name: identity.name };
+}
+
+async function getPieCourseAccessForUser(user: any): Promise<{
+  isPieRestricted: boolean;
+  isPieProfessional: boolean;
+  allowedCourses: string[];
+  professionalName: string;
+  professionalEmail: string;
+}> {
+  if (!user) {
+    return { isPieRestricted: false, isPieProfessional: false, allowedCourses: [], professionalName: '', professionalEmail: '' };
+  }
+
+  const rawRole = String(user.role || '').trim();
+  const userRolesArr: string[] = Array.isArray(user.roles) ? user.roles.map((r: any) => String(r)) : [rawRole];
+
+  // Admin, Director y Secretaria tienen visión global institucional
+  if (
+    ['Admin', 'Administrador', 'Director', 'Secretaria'].includes(rawRole) ||
+    userRolesArr.some(r => ['Admin', 'Administrador', 'Director'].includes(r))
+  ) {
+    return {
+      isPieRestricted: false,
+      isPieProfessional: false,
+      allowedCourses: [],
+      professionalName: user.name || '',
+      professionalEmail: user.email || ''
+    };
+  }
+
+  const cleanRun = String(user.run || '').replace(/[^0-9kK]/g, '').toLowerCase();
+
+  const [dbUsersRes, dbStaffRes, permsRes, supRes] = await Promise.all([
+    query('SELECT id, run, name, email, role, roles, job_function FROM users').catch(() => ({ rows: [] })),
+    query('SELECT id, user_id, run, full_name, email, role, job_function, subject_specialty FROM staff_profiles').catch(() => ({ rows: [] })),
+    query('SELECT * FROM pie_course_permissions').catch(() => ({ rows: [] })),
+    query('SELECT * FROM course_support_professionals').catch(() => ({ rows: [] }))
+  ]);
+
+  const dbUser = (dbUsersRes.rows || []).find((u: any) =>
+    (user.id && String(u.id) === String(user.id)) ||
+    (cleanRun && String(u.run || '').replace(/[^0-9kK]/g, '').toLowerCase() === cleanRun) ||
+    (user.name && namesMatchPie(u.name, user.name))
+  );
+
+  const dbStaff = (dbStaffRes.rows || []).find((s: any) =>
+    (user.id && (String(s.user_id) === String(user.id) || String(s.id) === String(user.id))) ||
+    (cleanRun && String(s.run || '').replace(/[^0-9kK]/g, '').toLowerCase() === cleanRun) ||
+    (user.name && namesMatchPie(s.full_name, user.name)) ||
+    (dbUser?.name && namesMatchPie(s.full_name, dbUser.name))
+  );
+
+  const effectiveEmail = String(user.email || dbUser?.email || dbStaff?.email || '').toLowerCase().trim();
+  const effectiveName = String(dbUser?.name || dbStaff?.full_name || user.name || '').trim();
+
+  // Buscar permisos explícitos en pie_course_permissions
+  const matchingPerms = (permsRes.rows || []).filter((p: any) => {
+    const pEmail = String(p.teacher_email || '').toLowerCase().trim();
+    return (effectiveEmail && pEmail === effectiveEmail) || (effectiveName && namesMatchPie(p.teacher_name, effectiveName));
+  });
+
+  // Buscar asignaciones en course_support_professionals
+  const matchingSupport = (supRes.rows || []).filter((s: any) => {
+    const sEmail = String(s.contact_email || '').toLowerCase().trim();
+    return (effectiveEmail && sEmail === effectiveEmail) || (effectiveName && namesMatchPie(s.professional_name, effectiveName));
+  });
+
+  const hasPieRoleInProfile =
+    isPieOrDifferentialRole(rawRole) ||
+    userRolesArr.some(r => isPieOrDifferentialRole(r)) ||
+    isPieOrDifferentialRole(dbUser?.role) ||
+    isPieOrDifferentialRole(dbUser?.job_function) ||
+    isPieOrDifferentialRole(dbStaff?.role) ||
+    isPieOrDifferentialRole(dbStaff?.job_function) ||
+    isPieOrDifferentialRole(dbStaff?.subject_specialty);
+
+  const hasPieSupportAssignment = matchingSupport.some((s: any) => isPieOrDifferentialRole(s.role));
+  const isPieProfessional = Boolean(hasPieRoleInProfile || matchingPerms.length > 0 || hasPieSupportAssignment);
+
+  if (!isPieProfessional) {
+    return {
+      isPieRestricted: false,
+      isPieProfessional: false,
+      allowedCourses: [],
+      professionalName: effectiveName,
+      professionalEmail: effectiveEmail
+    };
+  }
+
+  const allowedCourses: string[] = [];
+  const addCourseUnique = (c: string) => {
+    const clean = String(c || '').trim();
+    if (clean && !allowedCourses.some(existing => coursesMatchPie(existing, clean))) {
+      allowedCourses.push(clean);
+    }
+  };
+
+  for (const p of matchingPerms) {
+    parseCoursesAllowedList(p.courses_allowed).forEach(addCourseUnique);
+  }
+  for (const s of matchingSupport) {
+    if (s.course_name) addCourseUnique(s.course_name);
+  }
+
+  return {
+    isPieRestricted: true,
+    isPieProfessional: true,
+    allowedCourses,
+    professionalName: effectiveName,
+    professionalEmail: effectiveEmail
+  };
+}
+
+// Permisos PIE por Curso y Catálogo Unificado de Profesionales de Integración
+router.get('/evaluations/pie-permissions', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    // 1. Sincronizar cualquier profesional PIE registrado en course_support_professionals hacia pie_course_permissions
+    const supRes = await query('SELECT * FROM course_support_professionals ORDER BY created_at ASC').catch(() => ({ rows: [] }));
+    for (const sup of supRes.rows || []) {
+      if (isPieOrDifferentialRole(sup.role)) {
+        await syncPieProfessionalCourses({
+          name: sup.professional_name,
+          email: sup.contact_email,
+          role: sup.role,
+          coursesToAdd: [sup.course_name]
+        });
+      }
+    }
+
+    const [result, usersRes, staffRes] = await Promise.all([
+      query('SELECT * FROM pie_course_permissions ORDER BY teacher_name ASC').catch(() => ({ rows: [] })),
+      query('SELECT id, run, name, email, role, roles, job_function FROM users ORDER BY name ASC').catch(() => ({ rows: [] })),
+      query('SELECT id, user_id, run, full_name, email, role, job_function, subject_specialty FROM staff_profiles ORDER BY full_name ASC').catch(() => ({ rows: [] }))
+    ]);
+
+    const permissionsRows = (result.rows || []).map((r: any) => ({
+      ...r,
+      courses_list: parseCoursesAllowedList(r.courses_allowed)
+    }));
+
+    // Construir catálogo unificado de docentes y profesionales PIE para asignación rápida
+    const profMap = new Map<string, any>();
+
+    const upsertCandidate = (cand: {
+      name: string;
+      email?: string;
+      run?: string;
+      role?: string;
+      job_function?: string;
+      isPieSpecialist?: boolean;
+    }) => {
+      const cleanName = String(cand.name || '').trim();
+      if (!cleanName || cleanName === 'null' || cleanName === 'Sin Asignar' || cleanName.includes('\ufffd')) return;
+      const key = normalizePieText(cleanName);
+      if (!key) return;
+      const existing = profMap.get(key) || {
+        name: cleanName,
+        email: '',
+        run: '',
+        role: 'Docente',
+        job_function: 'Docente de Aula',
+        isPieSpecialist: false,
+        courses_allowed: [] as string[]
+      };
+      if (cand.email && !String(cand.email).includes('null')) existing.email = String(cand.email).toLowerCase().trim();
+      if (cand.run && !String(cand.run).includes('null')) existing.run = String(cand.run).trim();
+      if (cand.role) existing.role = cand.role;
+      if (cand.job_function) existing.job_function = cand.job_function;
+      if (cand.isPieSpecialist) existing.isPieSpecialist = true;
+      profMap.set(key, existing);
+    };
+
+    for (const s of staffRes.rows || []) {
+      const isPie = isPieOrDifferentialRole(s.role) || isPieOrDifferentialRole(s.job_function) || isPieOrDifferentialRole(s.subject_specialty);
+      upsertCandidate({
+        name: s.full_name,
+        email: s.email,
+        run: s.run,
+        role: s.role || 'Docente',
+        job_function: s.job_function || s.subject_specialty || 'Docente de Aula',
+        isPieSpecialist: isPie
+      });
+    }
+
+    for (const u of usersRes.rows || []) {
+      if (['Estudiante', 'Apoderado'].includes(String(u.role || ''))) continue;
+      const isPie = isPieOrDifferentialRole(u.role) || isPieOrDifferentialRole(u.job_function);
+      upsertCandidate({
+        name: u.name,
+        email: u.email,
+        run: u.run,
+        role: u.role,
+        job_function: u.job_function,
+        isPieSpecialist: isPie
+      });
+    }
+
+    for (const sup of supRes.rows || []) {
+      upsertCandidate({
+        name: sup.professional_name,
+        email: sup.contact_email,
+        role: sup.role,
+        job_function: sup.role,
+        isPieSpecialist: isPieOrDifferentialRole(sup.role)
+      });
+    }
+
+    for (const perm of permissionsRows) {
+      upsertCandidate({
+        name: perm.teacher_name,
+        email: perm.teacher_email,
+        job_function: 'Educador(a) Diferencial PIE',
+        isPieSpecialist: true
+      });
+      const key = normalizePieText(perm.teacher_name);
+      const item = profMap.get(key);
+      if (item) {
+        item.courses_allowed = perm.courses_list;
+        if (!item.email && perm.teacher_email) item.email = perm.teacher_email;
+      }
+    }
+
+    const currentUserAccess = await getPieCourseAccessForUser(req.user);
+
+    res.json({
+      permissions: permissionsRows,
+      professionalsCatalog: Array.from(profMap.values()),
+      currentUserAccess
+    });
   } catch (err: any) {
     console.error('Error al consultar permisos PIE:', err);
     res.status(500).json({ error: 'Error al consultar permisos PIE.' });
   }
 });
 
-router.post('/evaluations/pie-permissions', authMiddleware, checkRoles(['Admin', 'Director', 'PIE']), async (req: Request, res: Response) => {
-  const { teacher_email, teacher_name, courses_allowed } = req.body;
-  if (!teacher_email || !courses_allowed) {
-    return res.status(400).json({ error: 'Correo de docente y cursos permitidos son obligatorios.' });
+router.post('/evaluations/pie-permissions', authMiddleware, checkRoles(['Admin', 'Director', 'PIE', 'Docente']), async (req: Request, res: Response) => {
+  const { teacher_email, teacher_name, courses_allowed, role } = req.body;
+  if (!teacher_name && !teacher_email) {
+    return res.status(400).json({ error: 'Nombre o correo del profesional PIE es obligatorio.' });
   }
 
   try {
-    await query(`
-      INSERT INTO pie_course_permissions (teacher_email, teacher_name, courses_allowed)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (teacher_email) DO UPDATE SET
-        teacher_name = EXCLUDED.teacher_name,
-        courses_allowed = EXCLUDED.courses_allowed
-    `, [teacher_email.toLowerCase().trim(), teacher_name || teacher_email, courses_allowed]);
+    const parsedCourses = parseCoursesAllowedList(courses_allowed);
+    const synced = await syncPieProfessionalCourses({
+      name: teacher_name || teacher_email,
+      email: teacher_email,
+      role: role || 'Educador(a) Diferencial PIE',
+      exactCoursesList: parsedCourses,
+      markAsPieProfile: true
+    });
 
-    res.json({ success: true, message: 'Permisos PIE actualizados correctamente.' });
+    await logAudit(
+      req,
+      'UPDATE_PIE_COURSE_PERMISSIONS',
+      `Actualizados cursos permitidos PIE para "${synced.name}" (${synced.email}): [${synced.coursesAllowed.join(', ') || 'Ninguno'}]`
+    );
+
+    res.json({
+      success: true,
+      message: `Permisos de cursos PIE actualizados para ${synced.name}. Solo podrá visualizar información de sus cursos asignados.`,
+      teacher_email: synced.email,
+      teacher_name: synced.name,
+      courses_allowed: synced.coursesAllowed
+    });
   } catch (err: any) {
     console.error('Error al guardar permisos PIE:', err);
     res.status(500).json({ error: 'Error al guardar permisos PIE.' });
@@ -9396,6 +9954,9 @@ router.post('/courses/:courseName/support-professionals', authMiddleware, async 
   }
 
   try {
+    const identity = await resolveProfessionalIdentity(profName, contact_email);
+    const resolvedEmail = contact_email || (identity.email && !identity.email.endsWith('@pie.ltp.cl') ? identity.email : null);
+
     const id = `SUP-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     await query(`
       INSERT INTO course_support_professionals (
@@ -9405,15 +9966,31 @@ router.post('/courses/:courseName/support-professionals', authMiddleware, async 
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     `, [
       id, cleanCourse, profName, profRole, days,
-      intervention_type, target_students || null, contact_email || null, contact_phone || null,
+      intervention_type, target_students || null, resolvedEmail, contact_phone || null,
       notes || null, academic_year
     ]);
 
-    await logAudit(req, 'ADD_COURSE_SUPPORT', `Asignado profesional de apoyo "${profName}" (${profRole}) al curso "${cleanCourse}"`);
+    // Si es Educador(a) Diferencial / PIE, sincronizar automáticamente permisos de aislamiento por curso y ficha de estudiantes
+    let pieSynced = false;
+    if (isPieOrDifferentialRole(profRole)) {
+      await syncPieProfessionalCourses({
+        name: profName,
+        email: resolvedEmail || identity.email,
+        role: profRole,
+        coursesToAdd: [cleanCourse],
+        markAsPieProfile: true
+      });
+      pieSynced = true;
+    }
+
+    await logAudit(req, 'ADD_COURSE_SUPPORT', `Asignado profesional de apoyo "${profName}" (${profRole}) al curso "${cleanCourse}"${pieSynced ? ' [Permiso y privacidad PIE activados]' : ''}`);
 
     res.json({
       success: true,
-      message: 'Profesional de apoyo asignado al curso correctamente.',
+      pieSynced,
+      message: pieSynced
+        ? `Profesional Diferencial/PIE asignado al curso ${cleanCourse} y permisos de privacidad por curso configurados automáticamente.`
+        : 'Profesional de apoyo asignado al curso correctamente.',
       professional: {
         id,
         course_name: cleanCourse,
@@ -9422,7 +9999,7 @@ router.post('/courses/:courseName/support-professionals', authMiddleware, async 
         intervention_days: days,
         intervention_type,
         target_students,
-        contact_email,
+        contact_email: resolvedEmail,
         contact_phone,
         notes
       }
@@ -9463,6 +10040,18 @@ router.put('/courses/support-professionals/:id', authMiddleware, async (req: Req
       target_students, contact_email, contact_phone, notes, id
     ]);
 
+    const updatedRowRes = await query('SELECT * FROM course_support_professionals WHERE id = $1 LIMIT 1', [id]).catch(() => ({ rows: [] }));
+    const updatedRow = updatedRowRes.rows?.[0];
+    if (updatedRow && isPieOrDifferentialRole(updatedRow.role)) {
+      await syncPieProfessionalCourses({
+        name: updatedRow.professional_name,
+        email: updatedRow.contact_email,
+        role: updatedRow.role,
+        coursesToAdd: [updatedRow.course_name],
+        markAsPieProfile: true
+      });
+    }
+
     res.json({ success: true, message: 'Datos del profesional de apoyo actualizados.' });
   } catch (err: any) {
     console.error('Error al actualizar profesional de apoyo:', err);
@@ -9473,9 +10062,22 @@ router.put('/courses/support-professionals/:id', authMiddleware, async (req: Req
 router.delete('/courses/support-professionals/:id', authMiddleware, async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
+    const existingRes = await query('SELECT * FROM course_support_professionals WHERE id = $1 LIMIT 1', [id]).catch(() => ({ rows: [] }));
+    const existingRow = existingRes.rows?.[0];
+
     await query('DELETE FROM course_support_professionals WHERE id = $1', [id]);
+
+    if (existingRow && isPieOrDifferentialRole(existingRow.role)) {
+      await syncPieProfessionalCourses({
+        name: existingRow.professional_name,
+        email: existingRow.contact_email,
+        role: existingRow.role,
+        coursesToRemove: [existingRow.course_name]
+      });
+    }
+
     await logAudit(req, 'DELETE_COURSE_SUPPORT', `Eliminado profesional de apoyo ID ${id}`);
-    res.json({ success: true, message: 'Profesional de apoyo desvinculado del curso.' });
+    res.json({ success: true, message: 'Profesional de apoyo desvinculado del curso y permisos actualizados.' });
   } catch (err: any) {
     console.error('Error al eliminar profesional de apoyo:', err);
     res.status(500).json({ error: 'Error al eliminar profesional de apoyo.' });
@@ -9981,17 +10583,20 @@ router.post('/drive/consolidate-institutional', authMiddleware, async (_req: Req
 });
 
 // Explorador de la jerarquía automática de carpetas en Google Drive (Curso -> Asignatura, PIE Aparte, Files / Perfiles y Calendarios)
-router.get('/drive/folders', authMiddleware, async (_req: Request, res: Response) => {
+router.get('/drive/folders', authMiddleware, async (req: Request, res: Response) => {
   try {
     await consolidateInstitutionalFilesAndCalendars(false).catch(() => {});
 
-    const evalsRes = await query(`
-      SELECT id, course_name, subject_name, evaluation_date, block_label, status,
-             teacher_name, original_file_name, original_file_url, original_folder_path,
-             pie_file_name, pie_file_url, pie_teacher_name, pie_folder_path
-      FROM pedagogical_evaluations
-      ORDER BY course_name ASC, subject_name ASC, evaluation_date DESC
-    `);
+    const [evalsRes, pieAccess] = await Promise.all([
+      query(`
+        SELECT id, course_name, subject_name, evaluation_date, block_label, status,
+               teacher_name, original_file_name, original_file_url, original_folder_path,
+               pie_file_name, pie_file_url, pie_teacher_name, pie_folder_path
+        FROM pedagogical_evaluations
+        ORDER BY course_name ASC, subject_name ASC, evaluation_date DESC
+      `),
+      getPieCourseAccessForUser(req.user)
+    ]);
 
     const vaultRes = await query(`
       SELECT id, file_id, storage_name, original_name, entity_type, entity_id, folder_path,
@@ -10005,7 +10610,13 @@ router.get('/drive/folders', authMiddleware, async (_req: Request, res: Response
     const originalsByCourse: Record<string, Record<string, any[]>> = {};
     const pieByCourse: Record<string, Record<string, any[]>> = {};
 
-    for (const ev of evalsRes.rows) {
+    const visibleEvalRows = pieAccess.isPieRestricted
+      ? (evalsRes.rows || []).filter((ev: any) =>
+          pieAccess.allowedCourses.some(ac => coursesMatchPie(ev.course_name, ac))
+        )
+      : (evalsRes.rows || []);
+
+    for (const ev of visibleEvalRows) {
       const course = sanitizeDriveFolderSegment(ev.course_name, 'Sin Curso');
       const subject = sanitizeDriveFolderSegment(ev.subject_name, 'General');
 

@@ -42,18 +42,29 @@ interface CourseSupportModalProps {
   isOpen: boolean;
   onClose: () => void;
   availableCourses?: string[];
+  initialTab?: 'course' | 'pie_matrix';
+  onPermissionsChanged?: () => void;
 }
 
 const COMMON_ROLES = [
   'Educador(a) Diferencial PIE',
+  'Profesor(a) Diferencial PIE',
+  'Psicopedagogo(a) PIE',
+  'Fonoaudiólogo(a) PIE',
   'Psicólogo(a) Escolar',
-  'Fonoaudiólogo(a)',
   'Terapeuta Ocupacional',
   'Asistente de Aula / Técnico',
   'Trabajador(a) Social',
   'Encargado(a) de Convivencia Escolar',
-  'Tutor(a) Pedagógico(a)',
-  'Psicopedagogo(a)'
+  'Tutor(a) Pedagógico(a)'
+];
+
+const DEFAULT_INSTITUTIONAL_COURSES = [
+  '7° Básico A', '8° Básico A',
+  '1° Medio A', '1° Medio B',
+  '2° Medio A', '2° Medio B',
+  '3° Medio A', '3° Medio B', '3° Medio TP',
+  '4° Medio A', '4° Medio B', '4° Medio TP'
 ];
 
 const COMMON_TYPES = [
@@ -64,6 +75,11 @@ const COMMON_TYPES = [
   'Acompañamiento Socioemocional y Recreos',
   'Evaluaciones Diagnósticas y Reevaluaciones PIE'
 ];
+
+const isPieOrDiffRole = (r: string) => {
+  const low = (r || '').toLowerCase();
+  return low.includes('diferencial') || low.includes('pie') || low.includes('psicopedagog') || low.includes('fonoaudi') || low.includes('terapeuta');
+};
 
 const getRoleColor = (role: string) => {
   const r = (role || '').toLowerCase();
@@ -90,19 +106,19 @@ const getRoleColor = (role: string) => {
 
 const matchStaffRole = (u: any): { role: string; customRole: string } => {
   const combined = `${u.job_function || ''} ${u.role || ''} ${u.staff_type || ''}`.toLowerCase();
-  if (combined.includes('diferencial')) return { role: 'Educador(a) Diferencial PIE', customRole: '' };
-  if (combined.includes('psicolog')) return { role: 'Psicólogo(a)', customRole: '' };
-  if (combined.includes('fono')) return { role: 'Fonoaudiólogo(a)', customRole: '' };
+  if (combined.includes('diferencial') || combined.includes('pie')) return { role: 'Educador(a) Diferencial PIE', customRole: '' };
+  if (combined.includes('psicolog')) return { role: 'Psicólogo(a) Escolar', customRole: '' };
+  if (combined.includes('fono')) return { role: 'Fonoaudiólogo(a) PIE', customRole: '' };
   if (combined.includes('terapeuta') || combined.includes('ocupacional')) return { role: 'Terapeuta Ocupacional', customRole: '' };
   if (combined.includes('asistente') && (combined.includes('aula') || combined.includes('educación') || combined.includes('educacion'))) {
-    return { role: 'Asistente de Aula', customRole: '' };
+    return { role: 'Asistente de Aula / Técnico', customRole: '' };
   }
   if (combined.includes('social') || combined.includes('trabajador')) return { role: 'Trabajador(a) Social', customRole: '' };
-  if (combined.includes('kinesiol')) return { role: 'Kinesiólogo(a)', customRole: '' };
-  if (combined.includes('psicopedag')) return { role: 'Psicopedagogo(a)', customRole: '' };
-  if (combined.includes('orientad')) return { role: 'Orientador(a)', customRole: '' };
-  if (combined.includes('tutor')) return { role: 'Tutor(a) Pedagógico', customRole: '' };
-  if (combined.includes('docente') || combined.includes('profesor')) return { role: 'Docente de Apoyo / Refuerzo', customRole: '' };
+  if (combined.includes('kinesiol')) return { role: 'Otro', customRole: 'Kinesiólogo(a)' };
+  if (combined.includes('psicopedag')) return { role: 'Psicopedagogo(a) PIE', customRole: '' };
+  if (combined.includes('orientad')) return { role: 'Otro', customRole: 'Orientador(a)' };
+  if (combined.includes('tutor')) return { role: 'Tutor(a) Pedagógico(a)', customRole: '' };
+  if (combined.includes('docente') || combined.includes('profesor')) return { role: 'Educador(a) Diferencial PIE', customRole: '' };
 
   if (u.job_function && u.job_function !== 'DOCENTE DE AULA') {
     return { role: 'Otro', customRole: u.job_function };
@@ -114,14 +130,32 @@ export const CourseSupportModal: React.FC<CourseSupportModalProps> = ({
   courseName: initialCourseName,
   isOpen,
   onClose,
-  availableCourses = []
+  availableCourses = [],
+  initialTab = 'course',
+  onPermissionsChanged
 }) => {
   const { token, user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'course' | 'pie_matrix'>(initialTab);
   const [selectedCourse, setSelectedCourse] = useState(initialCourseName);
   const [professionals, setProfessionals] = useState<CourseSupportProfessional[]>([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+
+  // Matriz de Permisos y Cursos por Profesor PIE
+  const [piePermissionsList, setPiePermissionsList] = useState<any[]>([]);
+  const [pieCatalog, setPieCatalog] = useState<any[]>([]);
+  const [loadingMatrix, setLoadingMatrix] = useState(false);
+  const [selectedMatrixTeacherName, setSelectedMatrixTeacherName] = useState('');
+  const [selectedMatrixTeacherEmail, setSelectedMatrixTeacherEmail] = useState('');
+  const [selectedMatrixRole, setSelectedMatrixRole] = useState('Educador(a) Diferencial PIE');
+  const [selectedMatrixCourses, setSelectedMatrixCourses] = useState<string[]>([]);
+  const [savingMatrix, setSavingMatrix] = useState(false);
+
+  const allCourseOptions = useMemo(() => {
+    const merged = Array.from(new Set([...(availableCourses || []), ...DEFAULT_INSTITUTIONAL_COURSES])).filter(Boolean);
+    return merged;
+  }, [availableCourses]);
 
   // Lista de funcionarios registrados en la base de datos
   const [staffUsers, setStaffUsers] = useState<any[]>([]);
@@ -134,7 +168,7 @@ export const CourseSupportModal: React.FC<CourseSupportModalProps> = ({
     professional_name: '',
     role: COMMON_ROLES[0],
     custom_role: '',
-    intervention_days: '',
+    intervention_days: 'Lunes a Viernes',
     intervention_type: COMMON_TYPES[0],
     target_students: '',
     contact_email: '',
@@ -170,13 +204,42 @@ export const CourseSupportModal: React.FC<CourseSupportModalProps> = ({
   }, [initialCourseName]);
 
   useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
+
+  useEffect(() => {
     if (isOpen && selectedCourse) {
       loadProfessionals(selectedCourse);
     }
   }, [isOpen, selectedCourse]);
 
+  const loadPiePermissionsMatrix = async () => {
+    setLoadingMatrix(true);
+    try {
+      const res = await fetch('/api/evaluations/pie-permissions', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      const data = await res.json();
+      if (data) {
+        if (Array.isArray(data.permissions)) {
+          setPiePermissionsList(data.permissions);
+        }
+        if (Array.isArray(data.professionalsCatalog)) {
+          setPieCatalog(data.professionalsCatalog);
+        }
+      }
+    } catch (err) {
+      console.error('Error al cargar matriz de permisos PIE:', err);
+    } finally {
+      setLoadingMatrix(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
+      loadPiePermissionsMatrix();
       fetch('/api/users', {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       })
@@ -189,6 +252,75 @@ export const CourseSupportModal: React.FC<CourseSupportModalProps> = ({
         .catch(err => console.error('Error al cargar funcionarios de la base de datos:', err));
     }
   }, [isOpen, token]);
+
+  const handleSelectMatrixProfessional = (prof: any) => {
+    setSelectedMatrixTeacherName(prof.name || '');
+    setSelectedMatrixTeacherEmail(prof.email || '');
+    setSelectedMatrixRole(
+      isPieOrDiffRole(prof.job_function || prof.role)
+        ? (prof.job_function || prof.role)
+        : 'Educador(a) Diferencial PIE'
+    );
+    const existingPerm = piePermissionsList.find(
+      p =>
+        (prof.email && String(p.teacher_email || '').toLowerCase() === String(prof.email).toLowerCase()) ||
+        (prof.name && String(p.teacher_name || '').toLowerCase().trim() === String(prof.name).toLowerCase().trim())
+    );
+    const allowed = existingPerm?.courses_list || prof.courses_allowed || [];
+    setSelectedMatrixCourses(Array.isArray(allowed) ? allowed : []);
+  };
+
+  const toggleMatrixCourse = (cName: string) => {
+    setSelectedMatrixCourses(prev =>
+      prev.includes(cName) ? prev.filter(c => c !== cName) : [...prev, cName]
+    );
+  };
+
+  const handleSavePieMatrix = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMatrixTeacherName.trim()) {
+      Swal.fire('Atención', 'Selecciona o escribe el nombre del Profesor(a) Diferencial / Profesional PIE.', 'warning');
+      return;
+    }
+    setSavingMatrix(true);
+    try {
+      const res = await fetch('/api/evaluations/pie-permissions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          teacher_name: selectedMatrixTeacherName.trim(),
+          teacher_email: selectedMatrixTeacherEmail.trim(),
+          role: selectedMatrixRole,
+          courses_allowed: selectedMatrixCourses
+        })
+      });
+      const data = await res.json();
+      if (data && data.success) {
+        Swal.fire({
+          icon: 'success',
+          title: 'Cursos PIE y Privacidad Guardados',
+          html: `<strong>${selectedMatrixTeacherName}</strong> quedó asignado(a) exclusivamente a: <br/><span style="color:#047857;font-weight:800">${
+            selectedMatrixCourses.length > 0 ? selectedMatrixCourses.join(', ') : 'Sin cursos asignados'
+          }</span>.<br/><small style="color:#64748b">Regla PIE activa: No podrá ver evaluaciones ni fichas de otros cursos.</small>`,
+          timer: 2800,
+          showConfirmButton: false
+        });
+        await loadPiePermissionsMatrix();
+        if (selectedCourse) await loadProfessionals(selectedCourse);
+        onPermissionsChanged?.();
+      } else {
+        Swal.fire('Error', data.error || 'No se pudo guardar la asignación de cursos PIE.', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      Swal.fire('Error', 'Fallo de conexión al guardar cursos PIE.', 'error');
+    } finally {
+      setSavingMatrix(false);
+    }
+  };
 
   const filteredStaffUsers = useMemo(() => {
     if (!staffSearchQuery.trim()) {
@@ -253,7 +385,7 @@ export const CourseSupportModal: React.FC<CourseSupportModalProps> = ({
       professional_name: '',
       role: COMMON_ROLES[0],
       custom_role: '',
-      intervention_days: '',
+      intervention_days: 'Lunes a Viernes',
       intervention_type: COMMON_TYPES[0],
       target_students: '',
       contact_email: '',
@@ -341,13 +473,15 @@ export const CourseSupportModal: React.FC<CourseSupportModalProps> = ({
       if (data && data.success) {
         Swal.fire({
           icon: 'success',
-          title: editingId ? 'Actualizado' : 'Registrado',
+          title: editingId ? 'Actualizado' : 'Registrado y Sincronizado',
           text: data.message || 'Profesional de apoyo guardado correctamente.',
-          timer: 2000,
+          timer: 2400,
           showConfirmButton: false
         });
         resetForm();
         loadProfessionals(selectedCourse);
+        loadPiePermissionsMatrix();
+        onPermissionsChanged?.();
       } else {
         Swal.fire('Error', data.error || 'No se pudo guardar.', 'error');
       }
@@ -378,6 +512,8 @@ export const CourseSupportModal: React.FC<CourseSupportModalProps> = ({
         if (data && data.success) {
           Swal.fire('Eliminado', data.message, 'success');
           loadProfessionals(selectedCourse);
+          loadPiePermissionsMatrix();
+          onPermissionsChanged?.();
         } else {
           Swal.fire('Error', data.error || 'No se pudo eliminar.', 'error');
         }
@@ -455,87 +591,138 @@ export const CourseSupportModal: React.FC<CourseSupportModalProps> = ({
           </button>
         </div>
 
-        {/* BARRA SUPERIOR: SELECTOR DE CURSO Y ACCIÓN NUEVO */}
+        {/* PESTAÑAS DE NAVEGACIÓN: EQUIPO POR CURSO vs MATRIZ DE PRIVACIDAD PIE */}
         <div style={{
-          padding: '0.9rem 1.75rem',
-          background: '#f8fafc',
-          borderBottom: '1px solid #e2e8f0',
           display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '0.75rem'
+          background: '#1e1b4b',
+          padding: '0 1.75rem',
+          gap: '0.5rem',
+          borderTop: '1px solid rgba(255,255,255,0.1)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>
-              📚 Curso seleccionado:
-            </label>
-            {availableCourses && availableCourses.length > 1 ? (
-              <select
-                value={selectedCourse}
-                onChange={e => setSelectedCourse(e.target.value)}
-                style={{
-                  padding: '0.4rem 0.75rem',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontWeight: 700,
-                  fontSize: '0.85rem',
-                  color: '#1e1b4b',
-                  background: '#ffffff'
-                }}
-              >
-                {availableCourses.map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            ) : (
-              <span style={{
-                background: '#e0e7ff',
-                color: '#3730a3',
-                padding: '0.3rem 0.75rem',
-                borderRadius: '8px',
-                fontWeight: 800,
-                fontSize: '0.85rem'
-              }}>
-                {selectedCourse}
-              </span>
-            )}
-
-            <span style={{ fontSize: '0.75rem', color: '#64748b', background: '#ffffff', padding: '0.25rem 0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              Año Escolar {formData.academic_year}
-            </span>
-          </div>
-
           <button
-            onClick={() => {
-              if (showForm) {
-                resetForm();
-              } else {
-                setShowForm(true);
-              }
-            }}
+            type="button"
+            onClick={() => setActiveTab('course')}
             style={{
-              background: showForm ? '#f1f5f9' : '#4f46e5',
-              color: showForm ? '#475569' : '#ffffff',
-              border: showForm ? '1px solid #cbd5e1' : 'none',
-              borderRadius: '8px',
-              padding: '0.45rem 0.9rem',
+              background: activeTab === 'course' ? '#f8fafc' : 'rgba(255,255,255,0.08)',
+              color: activeTab === 'course' ? '#1e1b4b' : '#c7d2fe',
+              border: 'none',
+              borderRadius: '10px 10px 0 0',
+              padding: '0.6rem 1.1rem',
               fontSize: '0.82rem',
-              fontWeight: 700,
+              fontWeight: 800,
               cursor: 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px'
             }}
           >
-            {showForm ? <X size={15} /> : <Plus size={15} />}
-            {showForm ? 'Cerrar Formulario' : 'Asignar Profesional'}
+            🤝 Profesionales por Curso ({selectedCourse})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('pie_matrix')}
+            style={{
+              background: activeTab === 'pie_matrix' ? '#ecfdf5' : 'rgba(255,255,255,0.08)',
+              color: activeTab === 'pie_matrix' ? '#065f46' : '#a7f3d0',
+              border: 'none',
+              borderRadius: '10px 10px 0 0',
+              padding: '0.6rem 1.1rem',
+              fontSize: '0.82rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            🔐 Asignar Cursos por Profesor PIE (Regla de Privacidad)
           </button>
         </div>
 
+        {/* BARRA SUPERIOR: SELECTOR DE CURSO Y ACCIÓN NUEVO */}
+        {activeTab === 'course' && (
+          <div style={{
+            padding: '0.9rem 1.75rem',
+            background: '#f8fafc',
+            borderBottom: '1px solid #e2e8f0',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.75rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>
+                📚 Curso seleccionado:
+              </label>
+              {allCourseOptions.length > 1 ? (
+                <select
+                  value={selectedCourse}
+                  onChange={e => setSelectedCourse(e.target.value)}
+                  style={{
+                    padding: '0.4rem 0.75rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    color: '#1e1b4b',
+                    background: '#ffffff'
+                  }}
+                >
+                  {allCourseOptions.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              ) : (
+                <span style={{
+                  background: '#e0e7ff',
+                  color: '#3730a3',
+                  padding: '0.3rem 0.75rem',
+                  borderRadius: '8px',
+                  fontWeight: 800,
+                  fontSize: '0.85rem'
+                }}>
+                  {selectedCourse}
+                </span>
+              )}
+
+              <span style={{ fontSize: '0.75rem', color: '#64748b', background: '#ffffff', padding: '0.25rem 0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                Año Escolar {formData.academic_year}
+              </span>
+            </div>
+
+            <button
+              onClick={() => {
+                if (showForm) {
+                  resetForm();
+                } else {
+                  setShowForm(true);
+                }
+              }}
+              style={{
+                background: showForm ? '#f1f5f9' : '#4f46e5',
+                color: showForm ? '#475569' : '#ffffff',
+                border: showForm ? '1px solid #cbd5e1' : 'none',
+                borderRadius: '8px',
+                padding: '0.45rem 0.9rem',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              {showForm ? <X size={15} /> : <Plus size={15} />}
+              {showForm ? 'Cerrar Formulario' : 'Asignar Profesional'}
+            </button>
+          </div>
+        )}
+
         {/* CONTENEDOR CON SCROLL */}
         <div style={{ padding: '1.25rem 1.75rem', overflowY: 'auto', flex: 1 }}>
-          
+          {activeTab === 'course' ? (
+            <>
           {/* FORMULARIO AGREGAR / EDITAR */}
           {showForm && (
             <form onSubmit={handleSubmit} style={{
@@ -734,6 +921,21 @@ export const CourseSupportModal: React.FC<CourseSupportModalProps> = ({
                     ))}
                     <option value="Otro">Otro (Especificar)</option>
                   </select>
+                  {isPieOrDiffRole(formData.role === 'Otro' ? formData.custom_role : formData.role) && (
+                    <div style={{
+                      marginTop: '0.45rem',
+                      background: '#ecfdf5',
+                      border: '1px solid #6ee7b7',
+                      borderRadius: '8px',
+                      padding: '0.45rem 0.65rem',
+                      fontSize: '0.73rem',
+                      color: '#065f46',
+                      fontWeight: 600,
+                      lineHeight: 1.35
+                    }}>
+                      🔒 <strong>Regla de Privacidad PIE Automática:</strong> Al registrarlo como Profesor(a)/Educador(a) Diferencial PIE en <strong>{selectedCourse}</strong>, quedará habilitado para este curso y <strong>no podrá ver la información de los demás cursos</strong> que no atienda.
+                    </div>
+                  )}
                 </div>
 
                 {formData.role === 'Otro' && (
@@ -1018,6 +1220,7 @@ export const CourseSupportModal: React.FC<CourseSupportModalProps> = ({
 
               {professionals.map(prof => {
                 const styleColors = getRoleColor(prof.role);
+                const isPieCard = isPieOrDiffRole(prof.role);
                 return (
                   <div
                     key={prof.id}
@@ -1046,6 +1249,19 @@ export const CourseSupportModal: React.FC<CourseSupportModalProps> = ({
                         }}>
                           {prof.role}
                         </span>
+                        {isPieCard && (
+                          <span style={{
+                            background: '#f0fdf4',
+                            color: '#15803d',
+                            border: '1px solid #bbf7d0',
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: '9999px',
+                            fontSize: '0.7rem',
+                            fontWeight: 700
+                          }}>
+                            🔒 Privacidad PIE Activa (Aislado por curso)
+                          </span>
+                        )}
                       </div>
 
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
@@ -1130,6 +1346,278 @@ export const CourseSupportModal: React.FC<CourseSupportModalProps> = ({
                   </div>
                 );
               })}
+            </div>
+          )}
+            </>
+          ) : (
+            /* PESTAÑA 2: MATRIZ DE ASIGNACIÓN DE CURSOS POR PROFESOR DIFERENCIAL / PIE */
+            <div>
+              <div style={{
+                background: 'linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)',
+                border: '1px solid #6ee7b7',
+                borderRadius: '12px',
+                padding: '1rem 1.25rem',
+                marginBottom: '1.25rem'
+              }}>
+                <h4 style={{ margin: '0 0 0.35rem', fontSize: '0.98rem', fontWeight: 800, color: '#065f46' }}>
+                  🔐 Regla de Privacidad y Aislamiento por Curso — Profesores de Integración (PIE)
+                </h4>
+                <p style={{ margin: 0, fontSize: '0.82rem', color: '#047857', lineHeight: 1.45 }}>
+                  Los Profesores Diferenciales y especialistas PIE <strong>solo pueden ver las evaluaciones, carpetas Drive y fichas de los cursos que atienden</strong>, y no tienen acceso a la información de los demás cursos. Puedes asignarlos directamente agregándolos como <em>Educador(a) / Profesor(a) Diferencial PIE</em> en la pestaña anterior, o marcar sus cursos aquí.
+                </p>
+              </div>
+
+              <form onSubmit={handleSavePieMatrix} style={{
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                borderRadius: '12px',
+                padding: '1.25rem',
+                marginBottom: '1.5rem'
+              }}>
+                <h4 style={{ margin: '0 0 0.85rem', fontSize: '0.92rem', fontWeight: 800, color: '#1e293b' }}>
+                  1. Selecciona un Profesor(a) Diferencial / Profesional PIE (o cualquier docente para asignarle perfil PIE):
+                </h4>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.85rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
+                       Elegir desde Nómina Institucional:
+                    </label>
+                    <select
+                      value={selectedMatrixTeacherName}
+                      onChange={e => {
+                        const found = pieCatalog.find(p => p.name === e.target.value);
+                        if (found) {
+                          handleSelectMatrixProfessional(found);
+                        } else {
+                          setSelectedMatrixTeacherName(e.target.value);
+                        }
+                      }}
+                      style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #93c5fd', fontSize: '0.82rem', fontWeight: 700, background: '#ffffff' }}
+                    >
+                      <option value="">-- Seleccionar funcionario o escribir abajo --</option>
+                      {pieCatalog.map((p, idx) => (
+                        <option key={`${p.name}-${idx}`} value={p.name}>
+                          {p.isPieSpecialist ? '⭐ [PIE] ' : ''}{p.name} ({p.job_function || p.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
+                      👤 Nombre del Profesor(a) Diferencial / PIE: *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={selectedMatrixTeacherName}
+                      onChange={e => setSelectedMatrixTeacherName(e.target.value)}
+                      placeholder="Ej: Valentina Sepúlveda"
+                      style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', background: '#ffffff' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
+                      ✉️ Correo Institucional (Vinculación de Cuenta):
+                    </label>
+                    <input
+                      type="email"
+                      value={selectedMatrixTeacherEmail}
+                      onChange={e => setSelectedMatrixTeacherEmail(e.target.value)}
+                      placeholder="Se vincula automáticamente con su usuario"
+                      style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', background: '#ffffff' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1e293b' }}>
+                      2. Cursos que atiende (Solo podrá ver información de los cursos marcados):
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMatrixCourses([...allCourseOptions])}
+                        style={{ background: '#e0e7ff', color: '#3730a3', border: 'none', borderRadius: '6px', padding: '0.25rem 0.6rem', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Marcar Todos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMatrixCourses([])}
+                        style={{ background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '6px', padding: '0.25rem 0.6rem', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Desmarcar Todos
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+                    gap: '0.5rem',
+                    background: '#ffffff',
+                    padding: '0.85rem',
+                    borderRadius: '10px',
+                    border: '1px solid #cbd5e1'
+                  }}>
+                    {allCourseOptions.map(cName => {
+                      const isChecked = selectedMatrixCourses.includes(cName);
+                      return (
+                        <label
+                          key={cName}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.45rem',
+                            padding: '0.45rem 0.65rem',
+                            borderRadius: '8px',
+                            border: isChecked ? '2px solid #10b981' : '1px solid #e2e8f0',
+                            background: isChecked ? '#ecfdf5' : '#f8fafc',
+                            color: isChecked ? '#065f46' : '#334155',
+                            fontWeight: isChecked ? 800 : 600,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleMatrixCourse(cName)}
+                            style={{ accentColor: '#10b981', width: '16px', height: '16px', cursor: 'pointer' }}
+                          />
+                          {cName}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="submit"
+                    disabled={savingMatrix}
+                    style={{
+                      background: '#059669',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '0.55rem 1.25rem',
+                      fontSize: '0.84rem',
+                      fontWeight: 800,
+                      cursor: savingMatrix ? 'wait' : 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <CheckCircle2 size={16} />
+                    {savingMatrix ? 'Guardando Permisos...' : 'Guardar Cursos Asignados y Aplicar Privacidad PIE'}
+                  </button>
+                </div>
+              </form>
+
+              {/* RESUMEN DE PROFESORES DIFERENCIALES / PIE Y SUS CURSOS EXCLUSIVOS */}
+              <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.92rem', fontWeight: 800, color: '#1e293b' }}>
+                📋 Profesores Diferenciales / PIE con Cursos Asignados ({piePermissionsList.length})
+              </h4>
+              {loadingMatrix ? (
+                <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+                  Cargando asignaciones PIE...
+                </div>
+              ) : piePermissionsList.length === 0 ? (
+                <div style={{ padding: '1.5rem', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1', color: '#64748b', fontSize: '0.82rem' }}>
+                  Aún no hay profesores diferenciales con cursos restringidos. Selecciona un profesional arriba o agrégalo como Educador(a) Diferencial PIE en un curso.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {piePermissionsList.map((perm: any, idx: number) => {
+                    const coursesArr: string[] = Array.isArray(perm.courses_list)
+                      ? perm.courses_list
+                      : String(perm.courses_allowed || '').split(',').map(s => s.trim()).filter(Boolean);
+                    return (
+                      <div
+                        key={perm.teacher_email || idx}
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '10px',
+                          padding: '0.85rem 1rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: '0.75rem'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span>👩‍🏫 {perm.teacher_name}</span>
+                            <span style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', fontSize: '0.7rem', padding: '2px 8px', borderRadius: '999px', fontWeight: 700 }}>
+                              🔒 Acceso Exclusivo a {coursesArr.length} curso(s)
+                            </span>
+                          </div>
+                          {perm.teacher_email && !String(perm.teacher_email).endsWith('@pie.ltp.cl') && (
+                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                              ✉️ {perm.teacher_email}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.45rem' }}>
+                            {coursesArr.length === 0 ? (
+                              <span style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 700 }}>
+                                ⚠️ Sin cursos habilitados (No puede ver ningún curso)
+                              </span>
+                            ) : (
+                              coursesArr.map(c => (
+                                <span
+                                  key={c}
+                                  style={{
+                                    background: '#eff6ff',
+                                    color: '#1d4ed8',
+                                    border: '1px solid #bfdbfe',
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 800
+                                  }}
+                                >
+                                  📚 {c}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleSelectMatrixProfessional({
+                              name: perm.teacher_name,
+                              email: perm.teacher_email,
+                              courses_allowed: coursesArr
+                            })
+                          }
+                          style={{
+                            background: '#f8fafc',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '8px',
+                            padding: '0.4rem 0.75rem',
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                            color: '#1e1b4b',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ✏️ Editar Cursos
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>

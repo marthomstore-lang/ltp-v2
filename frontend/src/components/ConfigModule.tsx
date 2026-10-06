@@ -70,6 +70,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
   const [driveStatus, setDriveStatus] = useState<any>(null);
   const [testingDrive, setTestingDrive] = useState(false);
   const [supportCourseModal, setSupportCourseModal] = useState<string | null>(null);
+  const [supportModalInitialTab, setSupportModalInitialTab] = useState<'course' | 'pie_matrix'>('course');
 
   const fetchDriveStatus = () => {
     if (!token) return;
@@ -2144,7 +2145,30 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
               </p>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setSupportModalInitialTab('pie_matrix');
+                  setSupportCourseModal(coursesList[0]?.name || '1° Medio A');
+                }}
+                className="btn"
+                style={{
+                  background: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
+                  color: '#ffffff',
+                  border: '1px solid #312e81',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 800,
+                  boxShadow: '0 2px 6px rgba(79,70,229,0.25)'
+                }}
+                title="Asignar cursos a cada Profesor(a) Diferencial / PIE y activar aislamiento de privacidad por curso"
+              >
+                🔐 Asignar Cursos por Profesor PIE (Privacidad)
+              </button>
+
               <button
                 onClick={() => setShowPositionsModal(true)}
                 className="btn"
@@ -2586,14 +2610,49 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
         </div>
       )}
 
+      {/* MODAL GLOBAL DE APOYO Y PROFESIONALES DEL CURSO / MATRIZ PIE */}
+      {supportCourseModal && (
+        <CourseSupportModal
+          isOpen={true}
+          onClose={() => setSupportCourseModal(null)}
+          courseName={supportCourseModal}
+          availableCourses={coursesList.map(c => c.name)}
+          initialTab={supportModalInitialTab}
+        />
+      )}
+
       {/* SUB-VENTANA 6.1: CURSOS Y VACANTES */}
       {subTab === 'courses' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap', gap: '0.6rem' }}>
             <h3>Gestión de Cursos y Vacantes</h3>
-            <button onClick={() => setEditingCourse({ isNew: true, name: '', capacity: 45, enrolled: 0, teacher: 'Sin Asignar' })} className="btn btn-primary">
-              + Nuevo Curso
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setSupportModalInitialTab('pie_matrix');
+                  setSupportCourseModal(coursesList[0]?.name || '1° Medio A');
+                }}
+                className="btn"
+                style={{
+                  background: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
+                  color: '#ffffff',
+                  border: '1px solid #312e81',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                  boxShadow: '0 2px 6px rgba(79,70,229,0.25)'
+                }}
+                title="Asignar cursos a cada Profesor(a) Diferencial / PIE y activar aislamiento de privacidad por curso"
+              >
+                🔐 Asignar Cursos por Profesor PIE (Privacidad)
+              </button>
+              <button onClick={() => setEditingCourse({ isNew: true, name: '', capacity: 45, enrolled: 0, teacher: 'Sin Asignar' })} className="btn btn-primary">
+                + Nuevo Curso
+              </button>
+            </div>
           </div>
           <div className="table-container">
             <table>
@@ -2626,7 +2685,10 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
                         <button
                           type="button"
-                          onClick={() => setSupportCourseModal(c.name)}
+                          onClick={() => {
+                            setSupportModalInitialTab('course');
+                            setSupportCourseModal(c.name);
+                          }}
                           className="btn"
                           style={{
                             background: '#ecfdf5',
@@ -2675,16 +2737,6 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
               </tbody>
             </table>
           </div>
-
-          {/* MODAL DE APOYO Y PROFESIONALES DEL CURSO */}
-          {supportCourseModal && (
-            <CourseSupportModal
-              isOpen={true}
-              onClose={() => setSupportCourseModal(null)}
-              courseName={supportCourseModal}
-              availableCourses={coursesList.map(c => c.name)}
-            />
-          )}
         </div>
       )}
 

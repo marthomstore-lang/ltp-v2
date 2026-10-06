@@ -195,7 +195,10 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [calendarKey, setCalendarKey] = useState(Date.now());
   const [showSupportModal, setShowSupportModal] = useState(false);
-  const [supportModalCourse, setSupportModalCourse] = useState('1° Básico');
+  const [supportModalCourse, setSupportModalCourse] = useState('1° Medio A');
+  const [supportModalTab, setSupportModalTab] = useState<'course' | 'pie_matrix'>('course');
+  const [isPieRestricted, setIsPieRestricted] = useState(false);
+  const [allowedPieCourses, setAllowedPieCourses] = useState<string[]>([]);
 
   // Estado del Calendario Interno Institucional (Vista Mensual y Vista Semanal por Bloques)
   const [calendarViewMode, setCalendarViewMode] = useState<'monthly' | 'weekly_blocks'>('monthly');
@@ -323,6 +326,12 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
       const data = await res.json();
       if (data && Array.isArray(data.evaluations)) {
         setEvaluations(data.evaluations);
+      }
+      if (data && typeof data.isPieRestricted === 'boolean') {
+        setIsPieRestricted(data.isPieRestricted);
+      }
+      if (data && Array.isArray(data.allowedPieCourses)) {
+        setAllowedPieCourses(data.allowedPieCourses);
       }
     } catch (err) {
       console.error('Error al cargar evaluaciones:', err);
@@ -641,15 +650,64 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
   };
 
   // Lista única de cursos y asignaturas presentes en evaluaciones + base de datos
-  const allAvailableCourses = useMemo(() => {
+  const allInstitutionalCourses = useMemo(() => {
     const evalCourses = evaluations.map(e => e.course_name).filter(Boolean);
     return sortCoursesList(Array.from(new Set([...coursesList, ...evalCourses])));
   }, [coursesList, evaluations]);
+
+  const allAvailableCourses = useMemo(() => {
+    if (isPieRestricted) {
+      return sortCoursesList(Array.from(new Set(allowedPieCourses)));
+    }
+    return allInstitutionalCourses;
+  }, [isPieRestricted, allowedPieCourses, allInstitutionalCourses]);
 
   const allAvailableSubjects = useMemo(() => {
     const evalSubjects = evaluations.map(e => e.subject_name).filter(Boolean);
     return Array.from(new Set([...subjectsList, ...evalSubjects])).sort((a, b) => a.localeCompare(b));
   }, [subjectsList, evaluations]);
+
+  const coursesMatchFrontend = (courseA: string, courseB: string): boolean => {
+    const norm = (v: string) =>
+      String(v || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+    const a = norm(courseA);
+    const b = norm(courseB);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const isPK = (s: string) => s.includes('pre-kinder') || s.includes('prekinder') || s.includes('1er nivel de transicion');
+    const isK = (s: string) => !isPK(s) && (s.includes('kinder') || s.includes('2° nivel de transicion') || s.includes('2do nivel de transicion'));
+    if (isPK(a) && isPK(b)) return true;
+    if (isK(a) && isK(b)) return true;
+    const tp = (s: string) => {
+      const m = s.match(/\b([34])\s*(?:°|º|ro|to)?\b/);
+      if (!m) return null;
+      if (s.includes('mecanica')) return `${m[1]}_mecanica`;
+      if (s.includes('parvulo')) return `${m[1]}_parvulo`;
+      if (s.includes('electricidad')) return `${m[1]}_electricidad`;
+      if (s.includes('telecom')) return `${m[1]}_telecom`;
+      return null;
+    };
+    const tpA = tp(a);
+    const tpB = tp(b);
+    if (tpA || tpB) return Boolean(tpA && tpB && tpA === tpB);
+    const gl = (s: string) => {
+      const m = s.match(/^([1-8])\s*(?:°|º|er|do|ro|to|vo)?\s*(basico|medio)(?:\s+([ab]))?$/i);
+      if (!m) return null;
+      return { g: m[1], l: m[2], let: (m[3] || '').toLowerCase() };
+    };
+    const ga = gl(a);
+    const gb = gl(b);
+    if (ga && gb && ga.g === gb.g && ga.l === gb.l) {
+      if (ga.let && gb.let) return ga.let === gb.let;
+      return true;
+    }
+    return false;
+  };
 
   // Filtros
   const myEvaluationsCount = evaluations.filter(ev => ev.teacher_email === user?.email || ev.teacher_name === user?.name).length;
@@ -661,7 +719,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
         const matchName = user.name && ev.teacher_name?.toLowerCase().includes(user.name.toLowerCase());
         if (!matchMail && !matchName) return false;
       }
-      if (tableCourseFilter && ev.course_name !== tableCourseFilter) return false;
+      if (tableCourseFilter && !coursesMatchFrontend(ev.course_name, tableCourseFilter)) return false;
       if (tableSubjectFilter && ev.subject_name !== tableSubjectFilter) return false;
       return true;
     });
@@ -669,7 +727,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
 
   const pendingFilesEvaluations = useMemo(() => {
     return evaluations.filter(ev => {
-      if (tableCourseFilter && ev.course_name !== tableCourseFilter) return false;
+      if (tableCourseFilter && !coursesMatchFrontend(ev.course_name, tableCourseFilter)) return false;
       if (tableSubjectFilter && ev.subject_name !== tableSubjectFilter) return false;
       return ev.status === 'Pendiente de Archivo' || !ev.original_file_url;
     });
@@ -678,7 +736,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
   // Evaluaciones filtradas para el Calendario Institucional
   const calendarFilteredEvaluations = useMemo(() => {
     return evaluations.filter(ev => {
-      if (calendarCourseFilter && ev.course_name !== calendarCourseFilter) return false;
+      if (calendarCourseFilter && !coursesMatchFrontend(ev.course_name, calendarCourseFilter)) return false;
       if (calendarSubjectFilter && ev.subject_name !== calendarSubjectFilter) return false;
       return true;
     });
@@ -1041,30 +1099,76 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
           <FolderOpen size={16} /> 6. Carpetas Google Drive
         </button>
 
-        <button
-          onClick={() => {
-            if (allAvailableCourses.length > 0) setSupportModalCourse(allAvailableCourses[0]);
-            setShowSupportModal(true);
-          }}
-          style={{
-            marginLeft: 'auto',
-            padding: '0.55rem 1rem',
-            borderRadius: '8px',
-            border: '1px solid #a7f3d0',
-            fontWeight: 700,
-            fontSize: '0.85rem',
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-            background: '#ecfdf5',
-            color: '#065f46'
-          }}
-          title="Ver y gestionar el equipo de apoyo y profesionales PIE por curso"
-        >
-          <Users size={16} /> 🤝 Equipo de Apoyo por Curso
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => {
+              if (allAvailableCourses.length > 0) setSupportModalCourse(allAvailableCourses[0]);
+              setSupportModalTab('course');
+              setShowSupportModal(true);
+            }}
+            style={{
+              padding: '0.55rem 0.95rem',
+              borderRadius: '8px',
+              border: '1px solid #a7f3d0',
+              fontWeight: 700,
+              fontSize: '0.84rem',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              background: '#ecfdf5',
+              color: '#065f46'
+            }}
+            title="Ver y gestionar el equipo de apoyo y profesionales PIE por curso"
+          >
+            <Users size={16} /> 🤝 Equipo de Apoyo por Curso
+          </button>
+
+          <button
+            onClick={() => {
+              if (allAvailableCourses.length > 0) setSupportModalCourse(allAvailableCourses[0]);
+              setSupportModalTab('pie_matrix');
+              setShowSupportModal(true);
+            }}
+            style={{
+              padding: '0.55rem 0.95rem',
+              borderRadius: '8px',
+              border: '1px solid #818cf8',
+              fontWeight: 700,
+              fontSize: '0.84rem',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              background: '#eef2ff',
+              color: '#3730a3'
+            }}
+            title="Asignar cursos exclusivos a Profesores Diferenciales / PIE (Regla de Privacidad)"
+          >
+            🔐 Asignar Cursos PIE (Privacidad)
+          </button>
+        </div>
       </div>
+
+      {/* BANNER DE REGLA DE PRIVACIDAD PIE CUANDO EL USUARIO ES PROFESOR DIFERENCIAL / PIE */}
+      {isPieRestricted && (
+        <div style={{
+          background: 'linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)',
+          border: '1px solid #6ee7b7',
+          borderRadius: '12px',
+          padding: '0.85rem 1.25rem',
+          marginBottom: '1.25rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.75rem'
+        }}>
+          <div style={{ fontSize: '0.84rem', color: '#065f46', fontWeight: 700 }}>
+            🔒 <strong>Privacidad de Integración PIE Activa:</strong> Solo visualizas la información, evaluaciones y carpetas de tus cursos asignados ({allowedPieCourses.length > 0 ? allowedPieCourses.join(', ') : 'Sin cursos asignados aún'}). La información de los demás cursos está oculta por normativa PIE.
+          </div>
+        </div>
+      )}
 
       {/* CONTENIDO SEGÚN LA PESTAÑA ACTIVA */}
 
@@ -2952,7 +3056,12 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
         isOpen={showSupportModal}
         onClose={() => setShowSupportModal(false)}
         courseName={supportModalCourse}
-        availableCourses={allAvailableCourses}
+        availableCourses={allInstitutionalCourses.length > 0 ? allInstitutionalCourses : allAvailableCourses}
+        initialTab={supportModalTab}
+        onPermissionsChanged={() => {
+          loadEvaluations();
+          loadDriveFolders();
+        }}
       />
     </div>
   );
