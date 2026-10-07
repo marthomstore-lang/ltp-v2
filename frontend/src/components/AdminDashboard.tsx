@@ -374,6 +374,8 @@ export const AdminDashboard: React.FC = () => {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
+  const [showReviewedNotifications, setShowReviewedNotifications] = useState(false);
+  const [justOpenedUnreadIds, setJustOpenedUnreadIds] = useState<string[]>([]);
   const [pendingStatements, setPendingStatements] = useState<PendingStatementItem[]>([]);
   const [selectedStatementItem, setSelectedStatementItem] = useState<PendingStatementItem | null>(null);
   const headerDropdownRef = React.useRef<HTMLDivElement>(null);
@@ -388,6 +390,7 @@ export const AdminDashboard: React.FC = () => {
     const handleClickOutside = (event: MouseEvent) => {
       if (headerDropdownRef.current && !headerDropdownRef.current.contains(event.target as Node)) {
         setShowNotificationDropdown(false);
+        setJustOpenedUnreadIds([]);
         setShowUserDropdown(false);
       }
     };
@@ -412,6 +415,12 @@ export const AdminDashboard: React.FC = () => {
       .catch(err => console.error('Error cargando notificaciones:', err));
   };
 
+  useEffect(() => {
+    const handleRefreshNotifs = () => loadNotifications();
+    window.addEventListener('ltp_refresh_notifications', handleRefreshNotifs);
+    return () => window.removeEventListener('ltp_refresh_notifications', handleRefreshNotifs);
+  }, [token, user?.role]);
+
   const loadPendingStatements = () => {
     if (!token) return;
     fetch('/api/interviews/pending-statements', { credentials: 'omit', headers: { Authorization: `Bearer ${token}` } })
@@ -424,14 +433,49 @@ export const AdminDashboard: React.FC = () => {
       .catch(err => console.error('Error cargando relatos pendientes:', err));
   };
 
-  const markNotificationsAsRead = () => {
+  const markNotificationsAsRead = (keepVisibleWhileOpen = false) => {
+    if (!token) return;
     fetch(`/api/notifications/read-all?role=${encodeURIComponent(user?.role || '')}`, {
       method: 'PUT',
-      headers: { Authorization: `Bearer ${token}` }
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ role: user?.role || '', run: user?.run || '' })
     })
       .then(() => {
         setUnreadCount(0);
         setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+        if (!keepVisibleWhileOpen) {
+          setJustOpenedUnreadIds([]);
+        }
+      })
+      .catch(err => console.error(err));
+  };
+
+  const markSingleNotificationAsRead = (n: any) => {
+    if (!token || !n) return;
+    fetch(`/api/notifications/${encodeURIComponent(n.id)}/read`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        role: user?.role || '',
+        run: user?.run || '',
+        title: n.title || '',
+        commId: n.comm_id || ''
+      })
+    })
+      .then(() => {
+        setNotifications(prev => {
+          const updated = prev.map(item => (item.id === n.id ? { ...item, is_read: true } : item));
+          const remainingUnread = updated.filter(item => !item.is_read).length;
+          setUnreadCount(remainingUnread);
+          return updated;
+        });
+        setJustOpenedUnreadIds(prev => prev.filter(id => id !== String(n.id)));
       })
       .catch(err => console.error(err));
   };
@@ -826,14 +870,19 @@ export const AdminDashboard: React.FC = () => {
             <div style={{ position: 'relative' }}>
               <button
                 onClick={() => {
-                  setShowNotificationDropdown(prev => {
-                    const next = !prev;
-                    if (next) setShowUserDropdown(false);
-                    return next;
-                  });
-                  if (!showNotificationDropdown && unreadCount > 0) {
-                    markNotificationsAsRead();
+                  const willOpen = !showNotificationDropdown;
+                  if (willOpen) {
+                    setShowUserDropdown(false);
+                    setShowReviewedNotifications(false);
+                    const currentUnreadIds = notifications.filter(n => !n.is_read).map(n => String(n.id));
+                    setJustOpenedUnreadIds(currentUnreadIds);
+                    if (unreadCount > 0) {
+                      markNotificationsAsRead(true);
+                    }
+                  } else {
+                    setJustOpenedUnreadIds([]);
                   }
+                  setShowNotificationDropdown(willOpen);
                 }}
                 style={{
                   background: showNotificationDropdown ? '#e0e7ff' : 'transparent',
@@ -869,151 +918,269 @@ export const AdminDashboard: React.FC = () => {
                 )}
               </button>
 
-              {showNotificationDropdown && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: '0.5rem',
-                  background: '#ffffff',
-                  borderRadius: '16px',
-                  boxShadow: '0 20px 30px -10px rgba(0,0,0,0.18)',
-                  border: '1px solid #e2e8f0',
-                  width: '360px',
-                  maxHeight: '450px',
-                  zIndex: 600,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden'
-                }}>
-                  <div style={{
-                    padding: '0.85rem 1rem',
-                    background: '#f8fafc',
-                    borderBottom: '1px solid #e2e8f0',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <Bell size={16} color="#4f46e5" /> Alertas de TI & Sistema ({notifications.length})
-                    </div>
-                    {unreadCount > 0 && (
-                      <button
-                        onClick={markNotificationsAsRead}
-                        style={{ background: 'none', border: 'none', color: '#4f46e5', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
-                      >
-                        Marcar leídas
-                      </button>
-                    )}
-                  </div>
+              {showNotificationDropdown && (() => {
+                const activeAlerts = notifications.filter(
+                  n => !n.is_read || justOpenedUnreadIds.includes(String(n.id))
+                );
+                const reviewedAlerts = notifications.filter(
+                  n => n.is_read && !justOpenedUnreadIds.includes(String(n.id))
+                );
+                const displayedNotifications = showReviewedNotifications ? reviewedAlerts : activeAlerts;
 
-                  <div style={{ overflowY: 'auto', flex: 1 }}>
-                    {notifications.length === 0 ? (
-                      <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
-                        No hay notificaciones recientes.
+                return (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '0.5rem',
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    boxShadow: '0 20px 30px -10px rgba(0,0,0,0.18)',
+                    border: '1px solid #e2e8f0',
+                    width: '380px',
+                    maxHeight: '480px',
+                    zIndex: 600,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{
+                      padding: '0.85rem 1rem',
+                      background: '#f8fafc',
+                      borderBottom: '1px solid #e2e8f0',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <Bell size={16} color="#4f46e5" />
+                        {showReviewedNotifications
+                          ? `Revisadas (${reviewedAlerts.length})`
+                          : `Alertas Activas (${activeAlerts.length})`}
                       </div>
-                    ) : (
-                      notifications.map(n => (
-                        <div
-                          key={n.id}
-                          style={{
-                            padding: '0.85rem 1rem',
-                            borderBottom: '1px solid #f1f5f9',
-                            background: n.is_read ? '#ffffff' : '#f0f4ff',
-                            transition: 'background 0.2s ease'
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
-                            <div style={{
-                              padding: '6px',
-                              borderRadius: '8px',
-                              background: n.type === 'COURSE_MESSAGE' ? '#e0e7ff' : n.type === 'INTERVIEW_STATEMENT_REQUEST' ? '#e0e7ff' : n.type === 'PASSWORD_RESET_SUCCESS' ? '#dcfce7' : n.type === 'PASSWORD_RESET_REQUEST' ? '#e0e7ff' : '#fef3c7',
-                              color: n.type === 'COURSE_MESSAGE' ? '#4338ca' : n.type === 'INTERVIEW_STATEMENT_REQUEST' ? '#4338ca' : n.type === 'PASSWORD_RESET_SUCCESS' ? '#166534' : n.type === 'PASSWORD_RESET_REQUEST' ? '#3730a3' : '#92400e',
-                              marginTop: '2px'
-                            }}>
-                              {n.type === 'COURSE_MESSAGE' ? <MessageSquare size={16} /> : n.type === 'INTERVIEW_STATEMENT_REQUEST' ? <PenTool size={16} /> : <KeyRound size={16} />}
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: '0.83rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.2rem' }}>
-                                {n.title}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {!showReviewedNotifications && activeAlerts.length > 0 && (
+                          <button
+                            onClick={() => markNotificationsAsRead(false)}
+                            style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '6px', padding: '2px 7px', color: '#4338ca', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer' }}
+                            title="Descartar todas de las alertas activas"
+                          >
+                            ✓ Limpiar revisadas
+                          </button>
+                        )}
+                        {reviewedAlerts.length > 0 && (
+                          <button
+                            onClick={() => setShowReviewedNotifications(prev => !prev)}
+                            style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+                          >
+                            {showReviewedNotifications ? 'Ver activas' : `Historial (${reviewedAlerts.length})`}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ overflowY: 'auto', flex: 1 }}>
+                      {displayedNotifications.length === 0 ? (
+                        <div style={{ padding: '2.2rem 1.25rem', textAlign: 'center', color: '#64748b', fontSize: '0.84rem' }}>
+                          <div style={{ fontSize: '1.5rem', marginBottom: '0.35rem' }}>✅</div>
+                          <div style={{ fontWeight: 700, color: '#334155', marginBottom: '0.2rem' }}>
+                            {showReviewedNotifications ? 'No hay notificaciones revisadas.' : 'Todo al día — Sin alertas pendientes'}
+                          </div>
+                          <div style={{ fontSize: '0.76rem', color: '#94a3b8' }}>
+                            {showReviewedNotifications
+                              ? 'Aún no has revisado alertas anteriores.'
+                              : 'Las notificaciones y comunicados ya revisados salen automáticamente de esta lista.'}
+                          </div>
+                        </div>
+                      ) : (
+                        displayedNotifications.map(n => (
+                          <div
+                            key={n.id}
+                            style={{
+                              padding: '0.85rem 1rem',
+                              borderBottom: '1px solid #f1f5f9',
+                              background: showReviewedNotifications ? '#ffffff' : '#f0f4ff',
+                              transition: 'background 0.2s ease'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
+                              <div style={{
+                                padding: '6px',
+                                borderRadius: '8px',
+                                background: n.type === 'COURSE_MESSAGE' || n.type === 'COURSE_MESSAGE_REPLY' ? '#e0e7ff' : n.type === 'INTERVIEW_STATEMENT_REQUEST' ? '#e0e7ff' : n.type === 'PASSWORD_RESET_SUCCESS' ? '#dcfce7' : n.type === 'PASSWORD_RESET_REQUEST' ? '#e0e7ff' : '#fef3c7',
+                                color: n.type === 'COURSE_MESSAGE' || n.type === 'COURSE_MESSAGE_REPLY' ? '#4338ca' : n.type === 'INTERVIEW_STATEMENT_REQUEST' ? '#4338ca' : n.type === 'PASSWORD_RESET_SUCCESS' ? '#166534' : n.type === 'PASSWORD_RESET_REQUEST' ? '#3730a3' : '#92400e',
+                                marginTop: '2px'
+                              }}>
+                                {n.type === 'COURSE_MESSAGE' || n.type === 'COURSE_MESSAGE_REPLY' ? <MessageSquare size={16} /> : n.type === 'INTERVIEW_STATEMENT_REQUEST' ? <PenTool size={16} /> : <KeyRound size={16} />}
                               </div>
-                              <div style={{ fontSize: '0.78rem', color: '#475569', lineHeight: '1.35', marginBottom: '0.35rem', whiteSpace: 'pre-line' }}>
-                                {n.message}
-                              </div>
-                              {n.type === 'COURSE_MESSAGE' && (
-                                <div style={{ marginBottom: '0.4rem' }}>
-                                  <button
-                                    onClick={() => {
-                                      setShowNotificationDropdown(false);
-                                      Swal.fire({
-                                        title: n.title,
-                                        html: `<div style="text-align: left; font-size: 0.92rem; line-height: 1.6; white-space: pre-line; background: #f8fafc; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; max-height: 350px; overflow-y: auto;">${n.message}</div>`,
-                                        icon: 'info',
-                                        confirmButtonColor: '#4f46e5',
-                                        confirmButtonText: 'Entendido'
-                                      });
-                                    }}
-                                    style={{
-                                      background: '#4f46e5',
-                                      color: '#ffffff',
-                                      border: 'none',
-                                      borderRadius: '6px',
-                                      padding: '0.3rem 0.65rem',
-                                      fontSize: '0.74rem',
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '0.35rem'
-                                    }}
-                                  >
-                                    <MessageSquare size={12} /> Ver Comunicado Completo
-                                  </button>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.4rem', marginBottom: '0.2rem' }}>
+                                  <div style={{ fontSize: '0.83rem', fontWeight: 800, color: '#0f172a' }}>
+                                    {n.title}
+                                  </div>
+                                  {!showReviewedNotifications && (
+                                    <button
+                                      type="button"
+                                      onClick={() => markSingleNotificationAsRead(n)}
+                                      style={{
+                                        background: '#e2e8f0',
+                                        color: '#475569',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '2px 6px',
+                                        fontSize: '0.68rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        flexShrink: 0
+                                      }}
+                                      title="Marcar como revisado y quitar de alertas"
+                                    >
+                                      ✓ Revisado
+                                    </button>
+                                  )}
                                 </div>
-                              )}
-                              {n.type === 'INTERVIEW_STATEMENT_REQUEST' && (
-                                <div style={{ marginBottom: '0.4rem' }}>
-                                  <button
-                                    onClick={() => {
-                                      setShowNotificationDropdown(false);
-                                      fetch('/api/interviews/pending-statements', { credentials: 'omit', headers: { Authorization: `Bearer ${token}` } })
-                                        .then(r => r.json())
-                                        .then(list => {
-                                          if (Array.isArray(list) && list.length > 0) {
-                                            const found = list.find((item: any) => String(item.id) === String(n.reference_id)) || list[0];
-                                            setSelectedStatementItem(found);
-                                          }
+
+                                {n.type === 'COURSE_MESSAGE' && (
+                                  <div style={{ marginBottom: '0.3rem' }}>
+                                    <span style={{
+                                      display: 'inline-block',
+                                      background: n.allow_replies ? '#dcfce7' : '#f1f5f9',
+                                      color: n.allow_replies ? '#166534' : '#64748b',
+                                      border: n.allow_replies ? '1px solid #86efac' : '1px solid #cbd5e1',
+                                      fontSize: '0.68rem',
+                                      fontWeight: 800,
+                                      padding: '1px 7px',
+                                      borderRadius: '999px'
+                                    }}>
+                                      {n.allow_replies ? '💬 Permite responder al profesor' : '🔒 Solo Informativo'}
+                                    </span>
+                                  </div>
+                                )}
+
+                                <div style={{ fontSize: '0.78rem', color: '#475569', lineHeight: '1.35', marginBottom: '0.35rem', whiteSpace: 'pre-line' }}>
+                                  {n.message}
+                                </div>
+                                {n.type === 'COURSE_MESSAGE' && (
+                                  <div style={{ marginBottom: '0.4rem' }}>
+                                    <button
+                                      onClick={async () => {
+                                        markSingleNotificationAsRead(n);
+                                        setShowNotificationDropdown(false);
+                                        const canReplyHere = Boolean(n.allow_replies && n.comm_id);
+                                        const result = await Swal.fire({
+                                          title: n.title,
+                                          html: `
+                                            <div style="margin-bottom: 10px;">
+                                              <span style="display: inline-block; background: ${n.allow_replies ? '#dcfce7' : '#f1f5f9'}; color: ${n.allow_replies ? '#166534' : '#64748b'}; border: 1px solid ${n.allow_replies ? '#86efac' : '#cbd5e1'}; font-size: 0.76rem; font-weight: 800; padding: 3px 10px; border-radius: 999px;">
+                                                ${n.allow_replies ? '💬 Respuestas Habilitadas por el Profesor/Emisor' : '🔒 Comunicado Solo Informativo (Sin respuesta)'}
+                                              </span>
+                                            </div>
+                                            <div style="text-align: left; font-size: 0.92rem; line-height: 1.6; white-space: pre-line; background: #f8fafc; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; max-height: 300px; overflow-y: auto;">${n.message}</div>
+                                          `,
+                                          icon: 'info',
+                                          input: canReplyHere ? 'textarea' : undefined,
+                                          inputLabel: canReplyHere ? '💬 Escribir respuesta para el Profesor / Emisor (Opcional):' : undefined,
+                                          inputPlaceholder: canReplyHere ? 'Escriba aquí su respuesta o confirmación...' : undefined,
+                                          showCancelButton: canReplyHere,
+                                          confirmButtonColor: canReplyHere ? '#16a34a' : '#4f46e5',
+                                          confirmButtonText: canReplyHere ? '💬 Enviar Respuesta' : '✓ Entendido (Marcar Revisado)',
+                                          cancelButtonText: 'Cerrar (Ya revisado)'
                                         });
-                                    }}
-                                    style={{
-                                      background: '#4f46e5',
-                                      color: '#ffffff',
-                                      border: 'none',
-                                      borderRadius: '6px',
-                                      padding: '0.3rem 0.65rem',
-                                      fontSize: '0.74rem',
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '0.35rem'
-                                    }}
-                                  >
-                                    <PenTool size={12} /> Redactar y Firmar Relato Digital
-                                  </button>
+                                        if (canReplyHere && result.isConfirmed && result.value && String(result.value).trim()) {
+                                          try {
+                                            const res = await fetch(`/api/communications/${encodeURIComponent(n.comm_id)}/reply`, {
+                                              method: 'POST',
+                                              headers: {
+                                                Authorization: `Bearer ${token}`,
+                                                'Content-Type': 'application/json'
+                                              },
+                                              body: JSON.stringify({
+                                                replyText: String(result.value).trim(),
+                                                guardianName: user?.name || 'Apoderado',
+                                                guardianRun: user?.run || ''
+                                              })
+                                            });
+                                            const data = await res.json();
+                                            if (res.ok && data.success) {
+                                              Swal.fire({
+                                                title: '✅ Respuesta Enviada',
+                                                text: 'Su respuesta fue registrada y enviada al profesor.',
+                                                icon: 'success',
+                                                timer: 2200,
+                                                showConfirmButton: false
+                                              });
+                                            } else {
+                                              Swal.fire('Aviso', data.error || 'No se pudo enviar la respuesta.', 'warning');
+                                            }
+                                          } catch (_) {
+                                            Swal.fire('Error', 'Error de conexión al enviar la respuesta.', 'error');
+                                          }
+                                        }
+                                      }}
+                                      style={{
+                                        background: '#4f46e5',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '0.3rem 0.65rem',
+                                        fontSize: '0.74rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.35rem'
+                                      }}
+                                    >
+                                      <MessageSquare size={12} /> {n.allow_replies ? 'Ver Comunicado / Responder' : 'Ver Comunicado Completo'}
+                                    </button>
+                                  </div>
+                                )}
+                                {n.type === 'INTERVIEW_STATEMENT_REQUEST' && (
+                                  <div style={{ marginBottom: '0.4rem' }}>
+                                    <button
+                                      onClick={() => {
+                                        markSingleNotificationAsRead(n);
+                                        setShowNotificationDropdown(false);
+                                        fetch('/api/interviews/pending-statements', { credentials: 'omit', headers: { Authorization: `Bearer ${token}` } })
+                                          .then(r => r.json())
+                                          .then(list => {
+                                            if (Array.isArray(list) && list.length > 0) {
+                                              const found = list.find((item: any) => String(item.id) === String(n.reference_id)) || list[0];
+                                              setSelectedStatementItem(found);
+                                            }
+                                          });
+                                      }}
+                                      style={{
+                                        background: '#4f46e5',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '0.3rem 0.65rem',
+                                        fontSize: '0.74rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.35rem'
+                                      }}
+                                    >
+                                      <PenTool size={12} /> Redactar y Firmar Relato Digital
+                                    </button>
+                                  </div>
+                                )}
+                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>
+                                  {new Date(n.created_at).toLocaleString('es-CL')}
                                 </div>
-                              )}
-                              <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>
-                                {new Date(n.created_at).toLocaleString('es-CL')}
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))
-                    )}
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* BADGE DESTACADO DE PERFIL ACTIVO */}

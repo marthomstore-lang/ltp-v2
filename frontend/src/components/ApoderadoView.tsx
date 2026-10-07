@@ -112,6 +112,9 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
   const [previewPass, setPreviewPass] = useState<ThermalPassData | null>(null);
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
   const [searchRut, setSearchRut] = useState('');
+  const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
+  const [sendingReplyId, setSendingReplyId] = useState<string | null>(null);
+  const [replyFeedback, setReplyFeedback] = useState<Record<string, string>>({});
 
   const fetchPendingStatements = () => {
     if (!token) return;
@@ -131,6 +134,61 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
     const interval = setInterval(fetchPendingStatements, 15000);
     return () => clearInterval(interval);
   }, [token]);
+
+  useEffect(() => {
+    if (activeSubTab === 'communications' && token) {
+      fetch(`/api/notifications/read-all?role=${encodeURIComponent(user?.role || '')}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ role: user?.role || '', run: user?.run || '' })
+      })
+        .then(() => {
+          window.dispatchEvent(new CustomEvent('ltp_refresh_notifications'));
+        })
+        .catch(() => {});
+    }
+  }, [activeSubTab, token, user?.role, user?.run]);
+
+  const handleSendReply = async (comm: any) => {
+    const commTargetId = comm.commId || comm.id;
+    const text = (replyTexts[commTargetId] || '').trim();
+    if (!text) return;
+
+    setSendingReplyId(commTargetId);
+    try {
+      const res = await fetch(`/api/communications/${encodeURIComponent(commTargetId)}/reply`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          replyText: text,
+          studentRun: currentPupilo?.run || '',
+          studentName: currentPupilo?.fullName || '',
+          courseName: currentPupilo?.levelName || '',
+          guardianName: user?.name || currentPupilo?.guardianName || 'Apoderado',
+          guardianRun: user?.run || ''
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setReplyTexts(prev => ({ ...prev, [commTargetId]: '' }));
+        setReplyFeedback(prev => ({ ...prev, [commTargetId]: '✅ Respuesta enviada exitosamente al docente/emisor.' }));
+        await fetchPupilos();
+        window.dispatchEvent(new CustomEvent('ltp_refresh_notifications'));
+      } else {
+        setReplyFeedback(prev => ({ ...prev, [commTargetId]: `⚠️ ${data.error || 'No se pudo enviar la respuesta.'}` }));
+      }
+    } catch (err) {
+      setReplyFeedback(prev => ({ ...prev, [commTargetId]: '⚠️ Error de conexión al enviar la respuesta.' }));
+    } finally {
+      setSendingReplyId(null);
+    }
+  };
 
   const fetchPupilos = async () => {
     setLoading(true);
@@ -1239,6 +1297,9 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                       const dt = formatDateTime24h(comm.created_at, comm.created_at);
                       const isUrgent = String(comm.title || '').includes('🚨') || String(comm.message || '').includes('URGENTE');
                       const isImportant = String(comm.title || '').includes('⚠️') || String(comm.message || '').includes('IMPORTANTE');
+                      const commTargetId = comm.commId || comm.id;
+                      const existingReplies = Array.isArray(comm.replies) ? comm.replies : [];
+
                       return (
                         <div
                           key={comm.id || idx}
@@ -1262,6 +1323,17 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                               }}>
                                 {comm.scope === 'Masivo Liceo' ? '🌐 Comunicado General Liceo' : `🏫 Curso ${comm.scope}`}
                               </span>
+                              <span style={{
+                                background: comm.allowReplies ? '#dcfce7' : '#f1f5f9',
+                                color: comm.allowReplies ? '#166534' : '#64748b',
+                                border: comm.allowReplies ? '1px solid #86efac' : '1px solid #cbd5e1',
+                                fontSize: '0.71rem',
+                                fontWeight: 800,
+                                padding: '2px 8px',
+                                borderRadius: '999px'
+                              }}>
+                                {comm.allowReplies ? '💬 Respuestas Habilitadas' : '🔒 Solo Informativo (Sin respuesta)'}
+                              </span>
                               <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
                                 {comm.title}
                               </span>
@@ -1282,6 +1354,101 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                           }}>
                             {comm.message}
                           </div>
+
+                          {/* Mostrar respuestas previas enviadas por el apoderado */}
+                          {existingReplies.length > 0 && (
+                            <div style={{
+                              marginTop: '0.75rem',
+                              background: '#ecfdf5',
+                              border: '1px solid #a7f3d0',
+                              borderRadius: '10px',
+                              padding: '0.65rem 0.9rem'
+                            }}>
+                              <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#065f46', marginBottom: '0.4rem' }}>
+                                💬 Tu(s) respuesta(s) enviada(s) ({existingReplies.length}):
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                {existingReplies.map((rep: any, rIdx: number) => (
+                                  <div
+                                    key={rep.id || rIdx}
+                                    style={{
+                                      background: '#ffffff',
+                                      border: '1px solid #d1fae5',
+                                      borderRadius: '8px',
+                                      padding: '0.45rem 0.7rem',
+                                      fontSize: '0.8rem'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: '#047857', fontWeight: 700, marginBottom: '0.15rem' }}>
+                                      <span>👨‍👩‍👧 {rep.guardianName || 'Apoderado'}</span>
+                                      <span>{new Date(rep.created_at || rep.createdAt).toLocaleString('es-CL')}</span>
+                                    </div>
+                                    <div style={{ color: '#1e293b', whiteSpace: 'pre-line' }}>
+                                      {rep.message || rep.replyText}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Caja de respuesta si el docente/emisor habilitó respuestas */}
+                          {comm.allowReplies && !isStudentRole && (
+                            <div style={{
+                              marginTop: '0.75rem',
+                              background: '#ffffff',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '10px',
+                              padding: '0.75rem 0.95rem'
+                            }}>
+                              <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#1e293b', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <MessageSquare size={14} color="#16a34a" /> Responder al Profesor / Emisor ({comm.senderName || 'Docente'}):
+                              </div>
+                              <textarea
+                                rows={2}
+                                value={replyTexts[commTargetId] || ''}
+                                onChange={e => setReplyTexts(prev => ({ ...prev, [commTargetId]: e.target.value }))}
+                                placeholder="Escriba aquí su respuesta o confirmación para el profesor..."
+                                style={{
+                                  width: '100%',
+                                  padding: '0.55rem 0.75rem',
+                                  borderRadius: '8px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '0.83rem',
+                                  fontFamily: 'inherit',
+                                  resize: 'vertical',
+                                  boxSizing: 'border-box',
+                                  marginBottom: '0.45rem'
+                                }}
+                              />
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: replyFeedback[commTargetId]?.startsWith('✅') ? '#15803d' : '#b45309' }}>
+                                  {replyFeedback[commTargetId] || 'Su respuesta quedará registrada directamente en el perfil del profesor.'}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={sendingReplyId === commTargetId || !(replyTexts[commTargetId] || '').trim()}
+                                  onClick={() => handleSendReply(comm)}
+                                  style={{
+                                    background: sendingReplyId === commTargetId || !(replyTexts[commTargetId] || '').trim() ? '#94a3b8' : '#16a34a',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    padding: '0.42rem 0.95rem',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 800,
+                                    cursor: sendingReplyId === commTargetId || !(replyTexts[commTargetId] || '').trim() ? 'not-allowed' : 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem'
+                                  }}
+                                >
+                                  <MessageSquare size={13} />
+                                  {sendingReplyId === commTargetId ? 'Enviando...' : 'Enviar Respuesta'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}

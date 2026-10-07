@@ -191,7 +191,18 @@ async function ensureTablesExist() {
         reference_id TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+      ALTER TABLE system_notifications ALTER COLUMN is_read DROP DEFAULT;
+      ALTER TABLE system_notifications ALTER COLUMN is_read TYPE INTEGER USING (CASE WHEN is_read::text IN ('true', 't', '1') THEN 1 ELSE 0 END);
+      ALTER TABLE system_notifications ALTER COLUMN is_read SET DEFAULT 0;
       CREATE INDEX IF NOT EXISTS idx_system_notifications_target ON system_notifications(target_role, is_read);
+
+      CREATE TABLE IF NOT EXISTS notification_reads (
+        user_key TEXT NOT NULL,
+        notification_id TEXT NOT NULL,
+        read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_key, notification_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_notification_reads_user ON notification_reads(user_key);
 
       CREATE TABLE IF NOT EXISTS communications_log (
         id TEXT PRIMARY KEY,
@@ -212,8 +223,12 @@ async function ensureTablesExist() {
         email_sent_count INTEGER DEFAULT 0,
         email_failed_count INTEGER DEFAULT 0,
         recipients_json TEXT,
+        allow_replies INTEGER DEFAULT 0,
+        replies_json TEXT DEFAULT '[]',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+      ALTER TABLE communications_log ADD COLUMN IF NOT EXISTS allow_replies INTEGER DEFAULT 0;
+      ALTER TABLE communications_log ADD COLUMN IF NOT EXISTS replies_json TEXT DEFAULT '[]';
       CREATE INDEX IF NOT EXISTS idx_communications_log_course ON communications_log(course_name, created_at);
 
       CREATE TABLE IF NOT EXISTS pedagogical_trips (
@@ -1425,27 +1440,79 @@ router.get('/notifications', authMiddleware, async (req: Request, res: Response)
     const cleanRun = userRun.replace(/\./g, '').trim();
     const alnumRun = cleanRun.replace(/[^0-9kK]/g, '').toLowerCase();
 
+    const userKey = `${userId || 'anon'}:${userRole}:${alnumRun || 'norun'}`;
+    const roleKey = `role:${userRole}`;
+
     const whereClause = `
       (user_id IS NOT NULL AND user_id != '' AND user_id = $2)
       OR (target_run IS NOT NULL AND target_run != '' AND $5 != '' AND (
         target_run = $3 OR target_run = $4 OR REPLACE(REPLACE(LOWER(target_run), '.', ''), '-', '') = $5
       ))
       OR (target_role = $1 AND (target_run IS NULL OR target_run = '') AND (user_id IS NULL OR user_id = ''))
-      OR ($1 IN ('Admin', 'Director', 'Comunicaciones') AND type = 'COURSE_MESSAGE' AND id LIKE 'NOTIF-CRS-MASTER-%')
+      OR ($1 IN ('Admin', 'Director', 'Comunicaciones') AND type IN ('COURSE_MESSAGE', 'COURSE_MESSAGE_REPLY') AND (id LIKE 'NOTIF-CRS-MASTER-%' OR type = 'COURSE_MESSAGE_REPLY'))
       OR ($1 IN ('Apoderado', 'Estudiante') AND type = 'COURSE_MESSAGE' AND (target_role IN ('Apoderado', 'Estudiante', 'Comunidad') OR reference_id = 'ALL'))
     `;
 
-    const [result, commLogsRes] = await Promise.all([
+    const [result, commLogsRes, readsRes] = await Promise.all([
       query(
         `SELECT * FROM system_notifications 
          WHERE ${whereClause}
          ORDER BY created_at DESC LIMIT 120`,
         [userRole, userId, userRun, cleanRun, alnumRun]
       ).catch(() => ({ rows: [] })),
-      query('SELECT * FROM communications_log ORDER BY created_at DESC LIMIT 40').catch(() => ({ rows: [] }))
+      query('SELECT * FROM communications_log ORDER BY created_at DESC LIMIT 50').catch(() => ({ rows: [] })),
+      query(
+        'SELECT notification_id FROM notification_reads WHERE user_key IN ($1, $2)',
+        [userKey, roleKey]
+      ).catch(() => ({ rows: [] }))
     ]);
 
-    const combinedRows: any[] = [...(result.rows || [])];
+    const readIdsSet = new Set<string>(
+      (readsRes.rows || []).map((r: any) => String(r.notification_id || ''))
+    );
+
+    const commByTitleMap = new Map<string, any>();
+    const commByIdMap = new Map<string, any>();
+
+    for (const cl of commLogsRes.rows || []) {
+      const isAll = cl.course_name === 'ALL' || String(cl.course_name || '').toLowerCase().includes('todos los cursos');
+      const scopeLabel = isAll ? 'LICEO MASIVO' : cl.course_name;
+      const prioIcon = cl.priority === 'urgente' ? '🚨 ' : cl.priority === 'importante' ? '⚠️ ' : '📢 ';
+      const synthTitle = `[${scopeLabel}] ${prioIcon}${cl.subject}`;
+      const cleanTitleKey = synthTitle.toLowerCase().trim();
+      commByTitleMap.set(cleanTitleKey, cl);
+      commByIdMap.set(String(cl.id), cl);
+    }
+
+    const combinedRows: any[] = (result.rows || []).map((r: any) => {
+      const cleanTitleKey = String(r.title || '').toLowerCase().trim();
+      const matchedCl =
+        (r.id && String(r.id).startsWith('NOTIF-CRS-MASTER-')
+          ? commByIdMap.get(String(r.id).replace('NOTIF-CRS-MASTER-', ''))
+          : null) || commByTitleMap.get(cleanTitleKey);
+
+      let parsedReplies: any[] = [];
+      if (matchedCl?.replies_json) {
+        try {
+          parsedReplies = typeof matchedCl.replies_json === 'string' ? JSON.parse(matchedCl.replies_json) : matchedCl.replies_json;
+        } catch (_) {}
+      }
+
+      const dbRead = r.is_read === 1 || r.is_read === true || String(r.is_read) === 'true' || String(r.is_read) === '1';
+      const isMarkedRead =
+        dbRead ||
+        readIdsSet.has(String(r.id)) ||
+        (matchedCl?.id && readIdsSet.has(String(matchedCl.id))) ||
+        (cleanTitleKey && readIdsSet.has(`TITLE:${cleanTitleKey}`));
+
+      return {
+        ...r,
+        comm_id: matchedCl?.id || null,
+        allow_replies: matchedCl ? (matchedCl.allow_replies === 1 || matchedCl.allow_replies === true) : false,
+        replies: Array.isArray(parsedReplies) ? parsedReplies : [],
+        is_read: isMarkedRead ? 1 : 0
+      };
+    });
 
     // Incorporar comunicados oficiales desde communications_log para garantizar que siempre aparezcan en la campanita
     for (const cl of commLogsRes.rows || []) {
@@ -1461,12 +1528,27 @@ router.get('/notifications', authMiddleware, async (req: Request, res: Response)
       const scopeLabel = isAll ? 'LICEO MASIVO' : cl.course_name;
       const prioIcon = cl.priority === 'urgente' ? '🚨 ' : cl.priority === 'importante' ? '⚠️ ' : '📢 ';
       const synthTitle = `[${scopeLabel}] ${prioIcon}${cl.subject}`;
+      const cleanTitleKey = synthTitle.toLowerCase().trim();
+      const synthId = `NOTIF-CRS-MASTER-${cl.id}`;
       const synthMsg = cl.message && String(cl.message).includes('📌')
         ? cl.message
         : `📌 Comunicado Oficial para ${cl.audience_label || 'Comunidad Escolar'} — ${isAll ? 'Todos los Cursos (Masivo Liceo)' : cl.course_name}\n👤 De: ${cl.sender_name || 'Administración LTP'} (${cl.sender_role || 'Institucional'})\n\n${cl.message}`;
 
+      let parsedReplies: any[] = [];
+      if (cl.replies_json) {
+        try {
+          parsedReplies = typeof cl.replies_json === 'string' ? JSON.parse(cl.replies_json) : cl.replies_json;
+        } catch (_) {}
+      }
+
+      const isSynthRead =
+        readIdsSet.has(synthId) ||
+        readIdsSet.has(String(cl.id)) ||
+        readIdsSet.has(`TITLE:${cleanTitleKey}`);
+
       combinedRows.push({
-        id: `NOTIF-CRS-MASTER-${cl.id}`,
+        id: synthId,
+        comm_id: cl.id,
         user_id: null,
         target_role: aud === 'teachers' ? 'Docente' : 'Comunidad',
         target_run: null,
@@ -1474,7 +1556,9 @@ router.get('/notifications', authMiddleware, async (req: Request, res: Response)
         type: 'COURSE_MESSAGE',
         title: synthTitle,
         message: synthMsg,
-        is_read: 0,
+        allow_replies: cl.allow_replies === 1 || cl.allow_replies === true,
+        replies: Array.isArray(parsedReplies) ? parsedReplies : [],
+        is_read: isSynthRead ? 1 : 0,
         created_at: cl.created_at
       });
     }
@@ -1487,7 +1571,14 @@ router.get('/notifications', authMiddleware, async (req: Request, res: Response)
     for (const row of combinedRows) {
       if (row.type === 'COURSE_MESSAGE') {
         const cleanTitleKey = String(row.title || '').toLowerCase().trim();
-        if (seenCourseMsgs.has(cleanTitleKey)) continue;
+        if (seenCourseMsgs.has(cleanTitleKey)) {
+          // Si alguna de las copias ya estaba leída, propagar estado leído al registro conservado
+          if (row.is_read === 1) {
+            const existing = dedupedRows.find(d => d.type === 'COURSE_MESSAGE' && String(d.title || '').toLowerCase().trim() === cleanTitleKey);
+            if (existing) existing.is_read = 1;
+          }
+          continue;
+        }
         seenCourseMsgs.add(cleanTitleKey);
       }
       dedupedRows.push(row);
@@ -1509,23 +1600,65 @@ router.put('/notifications/read-all', authMiddleware, async (req: Request, res: 
   try {
     const userRole = String(req.query.role || req.body?.role || req.user?.role || 'Admin').trim();
     const userId = req.user?.id || '';
-    const userRun = String(req.query.run || req.user?.run || '').trim();
+    const userRun = String(req.query.run || req.body?.run || req.user?.run || '').trim();
     const cleanRun = userRun.replace(/\./g, '').trim();
     const alnumRun = cleanRun.replace(/[^0-9kK]/g, '').toLowerCase();
 
-    await query(
-      `UPDATE system_notifications SET is_read = 1 
-       WHERE (user_id IS NOT NULL AND user_id != '' AND user_id = $2)
-          OR (target_run IS NOT NULL AND target_run != '' AND $5 != '' AND (
-            target_run = $3 OR target_run = $4 OR REPLACE(REPLACE(LOWER(target_run), '.', ''), '-', '') = $5
-          ))
-          OR (target_role = $1 AND (target_run IS NULL OR target_run = '') AND (user_id IS NULL OR user_id = ''))
-          OR ($1 IN ('Admin', 'Director', 'Comunicaciones') AND type = 'COURSE_MESSAGE' AND id LIKE 'NOTIF-CRS-MASTER-%')
-          OR ($1 IN ('Apoderado', 'Estudiante') AND type = 'COURSE_MESSAGE')`,
-      [userRole, userId, userRun, cleanRun, alnumRun]
-    );
+    const userKey = `${userId || 'anon'}:${userRole}:${alnumRun || 'norun'}`;
+    const roleKey = `role:${userRole}`;
 
-    res.json({ success: true });
+    const whereClause = `
+      (user_id IS NOT NULL AND user_id != '' AND user_id = $2)
+      OR (target_run IS NOT NULL AND target_run != '' AND $5 != '' AND (
+        target_run = $3 OR target_run = $4 OR REPLACE(REPLACE(LOWER(target_run), '.', ''), '-', '') = $5
+      ))
+      OR (target_role = $1 AND (target_run IS NULL OR target_run = '') AND (user_id IS NULL OR user_id = ''))
+      OR ($1 IN ('Admin', 'Director', 'Comunicaciones') AND type IN ('COURSE_MESSAGE', 'COURSE_MESSAGE_REPLY'))
+      OR ($1 IN ('Apoderado', 'Estudiante') AND type = 'COURSE_MESSAGE')
+    `;
+
+    // 1. Actualizar is_read = 1 en system_notifications
+    await query(
+      `UPDATE system_notifications SET is_read = 1 WHERE ${whereClause}`,
+      [userRole, userId, userRun, cleanRun, alnumRun]
+    ).catch(() => {});
+
+    // 2. Registrar en notification_reads todas las notificaciones y comunicados actuales para que no vuelvan a aparecer como alerta al recargar
+    const [matchingNotifs, commLogsRes] = await Promise.all([
+      query(`SELECT id, title FROM system_notifications WHERE ${whereClause} LIMIT 150`, [userRole, userId, userRun, cleanRun, alnumRun]).catch(() => ({ rows: [] })),
+      query('SELECT id, course_name, priority, subject FROM communications_log ORDER BY created_at DESC LIMIT 60').catch(() => ({ rows: [] }))
+    ]);
+
+    const idsToMark = new Set<string>();
+    for (const n of matchingNotifs.rows || []) {
+      if (n.id) idsToMark.add(String(n.id));
+      if (n.title) idsToMark.add(`TITLE:${String(n.title).toLowerCase().trim()}`);
+    }
+    for (const cl of commLogsRes.rows || []) {
+      const isAll = cl.course_name === 'ALL' || String(cl.course_name || '').toLowerCase().includes('todos los cursos');
+      const scopeLabel = isAll ? 'LICEO MASIVO' : cl.course_name;
+      const prioIcon = cl.priority === 'urgente' ? '🚨 ' : cl.priority === 'importante' ? '⚠️ ' : '📢 ';
+      const synthTitle = `[${scopeLabel}] ${prioIcon}${cl.subject}`.toLowerCase().trim();
+      idsToMark.add(`NOTIF-CRS-MASTER-${cl.id}`);
+      idsToMark.add(String(cl.id));
+      idsToMark.add(`TITLE:${synthTitle}`);
+    }
+
+    const markArr = Array.from(idsToMark);
+    for (const nId of markArr) {
+      await Promise.all([
+        query(
+          'INSERT INTO notification_reads (user_key, notification_id) VALUES ($1, $2) ON CONFLICT (user_key, notification_id) DO NOTHING',
+          [userKey, nId]
+        ).catch(() => {}),
+        query(
+          'INSERT INTO notification_reads (user_key, notification_id) VALUES ($1, $2) ON CONFLICT (user_key, notification_id) DO NOTHING',
+          [roleKey, nId]
+        ).catch(() => {})
+      ]);
+    }
+
+    res.json({ success: true, markedCount: markArr.length });
   } catch (err) {
     res.status(500).json({ error: 'Error al marcar notificaciones como leídas.' });
   }
@@ -1534,7 +1667,51 @@ router.put('/notifications/read-all', authMiddleware, async (req: Request, res: 
 router.put('/notifications/:id/read', authMiddleware, async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    await query('UPDATE system_notifications SET is_read = 1 WHERE id = $1', [id]);
+    const userRole = String(req.query.role || req.body?.role || req.user?.role || 'Admin').trim();
+    const userId = req.user?.id || '';
+    const userRun = String(req.query.run || req.body?.run || req.user?.run || '').trim();
+    const cleanRun = userRun.replace(/\./g, '').trim();
+    const alnumRun = cleanRun.replace(/[^0-9kK]/g, '').toLowerCase();
+
+    const userKey = `${userId || 'anon'}:${userRole}:${alnumRun || 'norun'}`;
+    const roleKey = `role:${userRole}`;
+
+    await query('UPDATE system_notifications SET is_read = 1 WHERE id = $1', [id]).catch(() => {});
+
+    const idsToMark = new Set<string>([String(id)]);
+    if (String(id).startsWith('NOTIF-CRS-MASTER-')) {
+      idsToMark.add(String(id).replace('NOTIF-CRS-MASTER-', ''));
+    }
+    if (req.body?.commId) {
+      idsToMark.add(String(req.body.commId));
+      idsToMark.add(`NOTIF-CRS-MASTER-${req.body.commId}`);
+    }
+    if (req.body?.title) {
+      const cleanT = String(req.body.title).toLowerCase().trim();
+      idsToMark.add(`TITLE:${cleanT}`);
+      await query('UPDATE system_notifications SET is_read = 1 WHERE LOWER(TRIM(title)) = $1', [cleanT]).catch(() => {});
+    } else {
+      const existingNotif = await query('SELECT title FROM system_notifications WHERE id = $1 LIMIT 1', [id]).catch(() => ({ rows: [] }));
+      if (existingNotif.rows?.[0]?.title) {
+        const cleanT = String(existingNotif.rows[0].title).toLowerCase().trim();
+        idsToMark.add(`TITLE:${cleanT}`);
+        await query('UPDATE system_notifications SET is_read = 1 WHERE LOWER(TRIM(title)) = $1', [cleanT]).catch(() => {});
+      }
+    }
+
+    for (const nId of Array.from(idsToMark)) {
+      await Promise.all([
+        query(
+          'INSERT INTO notification_reads (user_key, notification_id) VALUES ($1, $2) ON CONFLICT (user_key, notification_id) DO NOTHING',
+          [userKey, nId]
+        ).catch(() => {}),
+        query(
+          'INSERT INTO notification_reads (user_key, notification_id) VALUES ($1, $2) ON CONFLICT (user_key, notification_id) DO NOTHING',
+          [roleKey, nId]
+        ).catch(() => {})
+      ]);
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Error al actualizar notificación.' });
@@ -5803,6 +5980,89 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
       const commMap = new Map<string, any>();
       const cleanStAlnum = cleanStRun.replace(/[^0-9k]/g, '');
       const cleanGuardAlnum = cleanGuardRun.replace(/[^0-9k]/g, '');
+
+      // 1. Primero incluir comunicados desde el registro oficial permanente (communications_log) con soporte de respuestas (allow_replies / replies_json)
+      (commLogRes.rows || []).forEach((cl: any) => {
+        if (cl.audience === 'teachers') return;
+        const cScope = String(cl.course_name || '').trim();
+        const normLogCourse = normalizeTeacherStr(cScope);
+        const isSchoolWide = cScope === 'ALL' || normLogCourse.includes('todos los cursos') || normLogCourse.includes('masivo');
+        const isCourseMatch = Boolean(normCourse && (normLogCourse === normCourse || normLogCourse.includes(normCourse) || normCourse.includes(normLogCourse)));
+        let isRecipientMatch = false;
+        if (cl.recipients_json) {
+          const rawJson = String(cl.recipients_json).toLowerCase();
+          if ((cleanStAlnum && rawJson.includes(cleanStAlnum)) || (cleanGuardAlnum && rawJson.includes(cleanGuardAlnum))) {
+            isRecipientMatch = true;
+          }
+        }
+        // Si es un comunicado focalizado a algunos alumnos específicos de un curso, verificar si el alumno está en recipients_json
+        let parsedRecipients: any[] = [];
+        try {
+          if (cl.recipients_json) {
+            parsedRecipients = typeof cl.recipients_json === 'string' ? JSON.parse(cl.recipients_json) : cl.recipients_json;
+          }
+        } catch (_) {}
+        const studentRecipientsInLog = Array.isArray(parsedRecipients)
+          ? parsedRecipients.filter((r: any) => r.recipientType === 'student' || r.role?.includes('Estudiante') || r.role?.includes('Apoderado'))
+          : [];
+
+        const matchesThisStudent =
+          isSchoolWide ||
+          isRecipientMatch ||
+          (isCourseMatch && (
+            studentRecipientsInLog.length === 0 ||
+            studentRecipientsInLog.some((r: any) => {
+              const rStRun = String(r.run || '').replace(/[^0-9kK]/g, '').toLowerCase();
+              const rGdRun = String(r.guardianRun || '').replace(/[^0-9kK]/g, '').toLowerCase();
+              return String(r.id) === String(st.id) || (cleanStAlnum && rStRun === cleanStAlnum) || (cleanGuardAlnum && rGdRun === cleanGuardAlnum);
+            })
+          ));
+
+        if (matchesThisStudent) {
+          const prio = String(cl.priority || 'normal').toLowerCase();
+          const title = `[${isSchoolWide ? 'LICEO MASIVO' : cScope}] ${prio === 'urgente' ? '🚨 ' : prio === 'importante' ? '⚠️ ' : '📢 '}${cl.subject || 'Comunicado Oficial'}`;
+          const message = `📌 Comunicado Oficial para ${cl.audience_label || 'Comunidad Escolar'} — ${isSchoolWide ? 'Todos los Cursos (Masivo Liceo)' : cScope}\n👤 De: ${cl.sender_name || 'Dirección'} (${cl.sender_role || 'Institucional'})\n⚡ Prioridad: ${prio.toUpperCase()} | 📁 Categoría: ${cl.category || 'General'}\n\n${cl.message || ''}`;
+          const dedupKey = title.toLowerCase().trim();
+
+          let allReplies: any[] = [];
+          try {
+            if (cl.replies_json) {
+              allReplies = typeof cl.replies_json === 'string' ? JSON.parse(cl.replies_json) : cl.replies_json;
+            }
+          } catch (_) {}
+
+          const myReplies = (Array.isArray(allReplies) ? allReplies : []).filter((rep: any) => {
+            const repStRun = String(rep.studentRun || '').replace(/[^0-9kK]/g, '').toLowerCase();
+            const repGdRun = String(rep.guardianRun || '').replace(/[^0-9kK]/g, '').toLowerCase();
+            return (
+              (rep.studentId && String(rep.studentId) === String(st.id)) ||
+              (cleanStAlnum && repStRun === cleanStAlnum) ||
+              (cleanGuardAlnum && repGdRun === cleanGuardAlnum) ||
+              (cleanAlnumUserRun && repGdRun === cleanAlnumUserRun)
+            );
+          });
+
+          if (!commMap.has(dedupKey)) {
+            commMap.set(dedupKey, {
+              id: cl.id,
+              commId: cl.id,
+              title,
+              subject: cl.subject || 'Comunicado Oficial',
+              message,
+              cleanMessage: cl.message || '',
+              senderName: cl.sender_name || 'Docente / Administración',
+              senderRole: cl.sender_role || 'Institucional',
+              scope: isSchoolWide ? 'Masivo Liceo' : cScope,
+              targetRole: cl.audience === 'students' ? 'Apoderado / Estudiante' : 'Comunidad',
+              allowReplies: cl.allow_replies === 1 || cl.allow_replies === true,
+              replies: myReplies,
+              created_at: cl.created_at
+            });
+          }
+        }
+      });
+
+      // 2. Respaldo desde system_notifications en caso de comunicados previos
       allComms.forEach((c: any) => {
         const refNorm = normalizeTeacherStr(c.reference_id || '');
         const tRun = String(c.target_run || '').replace(/[^0-9kK]/g, '').toLowerCase();
@@ -5813,47 +6073,18 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
           (tRole === 'Apoderado' || tRole === 'Estudiante' || tRole === 'Comunidad' || !tRole || isDirectMatch);
 
         if (isDirectMatch || isCourseOrSchoolMatch) {
-          const dedupKey = `${c.title || ''}||${c.message || ''}`;
+          const dedupKey = String(c.title || '').toLowerCase().trim();
           if (!commMap.has(dedupKey)) {
             commMap.set(dedupKey, {
               id: c.id,
+              commId: c.id && String(c.id).startsWith('NOTIF-CRS-MASTER-') ? String(c.id).replace('NOTIF-CRS-MASTER-', '') : null,
               title: c.title,
               message: c.message,
               scope: c.reference_id === 'ALL' ? 'Masivo Liceo' : (c.reference_id || studentCourse),
               targetRole: c.target_role || 'Comunidad',
+              allowReplies: false,
+              replies: [],
               created_at: c.created_at
-            });
-          }
-        }
-      });
-
-      // También incluir comunicados desde el registro oficial permanente (communications_log)
-      (commLogRes.rows || []).forEach((cl: any) => {
-        if (cl.audience === 'teachers') return;
-        const cScope = String(cl.course_name || '').trim();
-        const normLogCourse = normalizeTeacherStr(cScope);
-        const isSchoolWide = cScope === 'ALL' || normLogCourse.includes('todos los cursos') || normLogCourse.includes('masivo');
-        const isCourseMatch = Boolean(normCourse && (normLogCourse === normCourse || normLogCourse.includes(normCourse) || normCourse.includes(normLogCourse)));
-        let isRecipientMatch = false;
-        if (!isSchoolWide && !isCourseMatch && cl.recipients_json) {
-          const rawJson = String(cl.recipients_json).toLowerCase();
-          if ((cleanStAlnum && rawJson.includes(cleanStAlnum)) || (cleanGuardAlnum && rawJson.includes(cleanGuardAlnum))) {
-            isRecipientMatch = true;
-          }
-        }
-        if (isSchoolWide || isCourseMatch || isRecipientMatch) {
-          const prio = String(cl.priority || 'normal').toLowerCase();
-          const title = `[${isSchoolWide ? 'LICEO MASIVO' : cScope}] ${prio === 'urgente' ? '🚨 ' : prio === 'importante' ? '⚠️ ' : '📢 '}${cl.subject || 'Comunicado Oficial'}`;
-          const message = `📌 Comunicado Oficial para ${cl.audience_label || 'Comunidad Escolar'} — ${isSchoolWide ? 'Todos los Cursos (Masivo Liceo)' : cScope}\n👤 De: ${cl.sender_name || 'Dirección'} (${cl.sender_role || 'Institucional'})\n⚡ Prioridad: ${prio.toUpperCase()} | 📁 Categoría: ${cl.category || 'General'}\n\n${cl.message || ''}`;
-          const dedupKey = `${title}||${message}`;
-          if (!commMap.has(dedupKey)) {
-            commMap.set(dedupKey, {
-              id: cl.id,
-              title,
-              message,
-              scope: isSchoolWide ? 'Masivo Liceo' : cScope,
-              targetRole: cl.audience === 'students' ? 'Apoderado / Estudiante' : 'Comunidad',
-              created_at: cl.created_at
             });
           }
         }
@@ -6613,9 +6844,11 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
     category = 'General',
     subject,
     message,
-    recipients
+    recipients,
+    allowReplies = false
   } = req.body;
 
+  const canReplyBool = Boolean(allowReplies === true || allowReplies === 1 || allowReplies === 'true' || allowReplies === '1');
   const cName = String(courseName || '').trim();
   const isAllCourses = cName === 'ALL' || cName.toLowerCase() === 'todos los cursos';
   const displayScope = isAllCourses ? 'Todos los Cursos (Masivo Liceo)' : cName;
@@ -6654,8 +6887,11 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
         ? 'Comunidad Escolar (Docentes, Estudiantes y Apoderados)'
         : 'Equipo Docente';
 
+    const replyTag = audience !== 'teachers'
+      ? (canReplyBool ? ' | 💬 Respuestas de Apoderados: HABILITADAS' : ' | 🔒 Solo Informativo (Sin respuesta)')
+      : '';
     const notifTitle = `[${isAllCourses ? 'LICEO MASIVO' : cName}] ${prio === 'urgente' ? '🚨 ' : prio === 'importante' ? '⚠️ ' : '📢 '}${sub}`;
-    const notifBody = `📌 Comunicado Oficial para ${audienceLabel} — ${displayScope}\n👤 De: ${senderName} (${senderRole})\n⚡ Prioridad: ${prio.toUpperCase()} | 📁 Categoría: ${category}\n\n${msg}`;
+    const notifBody = `📌 Comunicado Oficial para ${audienceLabel} — ${displayScope}\n👤 De: ${senderName} (${senderRole})\n⚡ Prioridad: ${prio.toUpperCase()} | 📁 Categoría: ${category}${replyTag}\n\n${msg}`;
     const baseTs = Date.now();
     const canonicalCourseRef = isAllCourses ? 'ALL' : cName;
     const recipientLogItems: any[] = [];
@@ -6954,8 +7190,8 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
          id, course_name, audience, audience_label, channels, priority, category,
          subject, message, sender_id, sender_name, sender_role, sender_email,
          total_recipients, platform_count, email_sent_count, email_failed_count,
-         recipients_json, created_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())`,
+         recipients_json, allow_replies, replies_json, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, '[]', NOW())`,
       [
         commId,
         isAllCourses ? 'ALL' : cName,
@@ -6974,24 +7210,27 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
         platformCount,
         emailSentCount,
         emailFailedCount,
-        JSON.stringify(recipientLogItems)
+        JSON.stringify(recipientLogItems),
+        canReplyBool ? 1 : 0
       ]
     ).catch((logErr: any) => {
       console.error('Error al guardar en communications_log:', logErr.message);
     });
 
     // 4. REGISTRO DE AUDITORÍA
-    const auditDetail = `Comunicado enviado a "${displayScope}" [Audiencia: ${audienceLabel}] (${recipients.length} destinatarios). Canales: [${selectedChannels.join(', ')}]. Plataforma: ${platformCount}, Correos: ${emailSentCount}${emailFailedCount > 0 ? `, Fallidos: ${emailFailedCount}` : ''}. Asunto: "${sub}".`;
+    const auditDetail = `Comunicado enviado a "${displayScope}" [Audiencia: ${audienceLabel}] (${recipients.length} destinatarios). Canales: [${selectedChannels.join(', ')}]. Respuestas de Apoderados: ${canReplyBool ? 'Habilitadas' : 'Deshabilitadas'}. Plataforma: ${platformCount}, Correos: ${emailSentCount}${emailFailedCount > 0 ? `, Fallidos: ${emailFailedCount}` : ''}. Asunto: "${sub}".`;
     await logAudit(req, 'SEND_COURSE_MESSAGE', auditDetail);
 
     res.json({
       success: true,
       communicationId: commId,
+      allowReplies: canReplyBool,
       message: `Comunicado enviado exitosamente a ${displayScope}.`,
       summary: {
         communicationId: commId,
         courseName: displayScope,
         audience,
+        allowReplies: canReplyBool,
         totalRecipients: recipients.length,
         channels: selectedChannels,
         platformNotificationsCount: platformCount,
@@ -7218,17 +7457,25 @@ router.get('/communications/history', authMiddleware, async (req: Request, res: 
     await backfillAuditCommunicationsIfNeeded();
 
     const { course, audience, search } = req.query;
-    const [logsRes, notifsRes] = await Promise.all([
+    const [logsRes, notifsRes, readsRes] = await Promise.all([
       query('SELECT * FROM communications_log ORDER BY created_at DESC LIMIT 250').catch(() => ({ rows: [] })),
-      query("SELECT id, target_run, is_read FROM system_notifications WHERE type = 'COURSE_MESSAGE'").catch(() => ({ rows: [] }))
+      query("SELECT id, target_run, is_read FROM system_notifications WHERE type = 'COURSE_MESSAGE'").catch(() => ({ rows: [] })),
+      query('SELECT user_key, notification_id FROM notification_reads').catch(() => ({ rows: [] }))
     ]);
 
     const readNotifIds = new Set<string>();
     const readRuns = new Set<string>();
     (notifsRes.rows || []).forEach((n: any) => {
-      if (n.is_read === 1 || n.is_read === true) {
+      if (n.is_read === 1 || n.is_read === true || String(n.is_read) === '1' || String(n.is_read) === 'true') {
         if (n.id) readNotifIds.add(String(n.id));
         if (n.target_run) readRuns.add(String(n.target_run).replace(/[^0-9kK]/g, '').toLowerCase());
+      }
+    });
+    (readsRes.rows || []).forEach((nr: any) => {
+      if (nr.notification_id) readNotifIds.add(String(nr.notification_id));
+      const parts = String(nr.user_key || '').split(':');
+      if (parts.length >= 3 && parts[2] && parts[2] !== 'norun') {
+        readRuns.add(parts[2].toLowerCase());
       }
     });
 
@@ -7247,6 +7494,14 @@ router.get('/communications/history', authMiddleware, async (req: Request, res: 
         }
       } catch (_) {}
 
+      let repliesList: any[] = [];
+      try {
+        if (row.replies_json) {
+          repliesList = typeof row.replies_json === 'string' ? JSON.parse(row.replies_json) : row.replies_json;
+        }
+      } catch (_) {}
+      if (!Array.isArray(repliesList)) repliesList = [];
+
       let readCount = 0;
       const rawRecipientsArr = Array.isArray(recipientsList) ? recipientsList : [];
       const slicedRecipientsArr =
@@ -7264,7 +7519,20 @@ router.get('/communications/history', authMiddleware, async (req: Request, res: 
             : [];
         const cleanR = String(r.run || '').replace(/[^0-9kK]/g, '').toLowerCase();
         const cleanG = String(r.guardianRun || '').replace(/[^0-9kK]/g, '').toLowerCase();
+
+        // Buscar respuestas enviadas por el apoderado/estudiante de este destinatario
+        const matchingReplies = repliesList.filter((rep: any) => {
+          const repStRun = String(rep.studentRun || '').replace(/[^0-9kK]/g, '').toLowerCase();
+          const repGdRun = String(rep.guardianRun || '').replace(/[^0-9kK]/g, '').toLowerCase();
+          return (
+            (r.id && rep.studentId && String(r.id) === String(rep.studentId)) ||
+            (cleanR && (repStRun === cleanR || repGdRun === cleanR)) ||
+            (cleanG && (repGdRun === cleanG || repStRun === cleanG))
+          );
+        });
+
         const isRead =
+          matchingReplies.length > 0 ||
           Boolean(r.isReadInPlatform) ||
           Boolean(r.isRead) ||
           nIds.some(id => readNotifIds.has(id)) ||
@@ -7284,7 +7552,9 @@ router.get('/communications/history', authMiddleware, async (req: Request, res: 
           notificationIds: nIds,
           notifIds: nIds,
           isRead: Boolean(isRead),
-          isReadInPlatform: Boolean(isRead)
+          isReadInPlatform: Boolean(isRead),
+          hasReplied: matchingReplies.length > 0,
+          replies: matchingReplies
         };
       });
 
@@ -7296,6 +7566,7 @@ router.get('/communications/history', authMiddleware, async (req: Request, res: 
       const emailFailedCnt = row.email_failed_count || 0;
       const sName = row.sender_name || 'Administración LTP';
       const sRole = row.sender_role || 'Institucional';
+      const allowRep = row.allow_replies === 1 || row.allow_replies === true;
 
       return {
         id: row.id,
@@ -7330,6 +7601,10 @@ router.get('/communications/history', authMiddleware, async (req: Request, res: 
         readCount,
         teachersCount,
         studentsCount,
+        allow_replies: allowRep ? 1 : 0,
+        allowReplies: allowRep,
+        replies: repliesList,
+        repliesCount: repliesList.length,
         recipients: enrichedRecipients,
         created_at: row.created_at,
         createdAt: row.created_at
@@ -7373,6 +7648,137 @@ router.get('/communications/history', authMiddleware, async (req: Request, res: 
   } catch (err: any) {
     console.error('Error en GET /api/communications/history:', err);
     res.status(500).json({ error: 'Error al consultar el historial de comunicaciones.' });
+  }
+});
+
+// POST /api/communications/:id/reply — RESPUESTA DEL APODERADO AL DOCENTE / EMISOR (SI allow_replies = 1)
+router.post('/communications/:id/reply', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const rawId = String(req.params.id || '').trim();
+    const {
+      replyMessage,
+      replyText,
+      studentId,
+      studentName,
+      studentRun,
+      courseName,
+      guardianName,
+      guardianRun,
+      title
+    } = req.body;
+
+    const cleanReplyText = String(replyMessage || replyText || '').trim();
+    if (!cleanReplyText) {
+      return res.status(400).json({ error: 'Debe escribir un mensaje de respuesta.' });
+    }
+
+    const commIdCandidate = rawId.startsWith('NOTIF-CRS-MASTER-')
+      ? rawId.replace('NOTIF-CRS-MASTER-', '')
+      : rawId;
+
+    let commRes = await query('SELECT * FROM communications_log WHERE id = $1 LIMIT 1', [commIdCandidate]).catch(() => ({ rows: [] }));
+    if ((!commRes.rows || commRes.rows.length === 0) && title) {
+      const allLogs = await query('SELECT * FROM communications_log ORDER BY created_at DESC LIMIT 80').catch(() => ({ rows: [] }));
+      const cleanT = String(title).toLowerCase().trim();
+      const matched = (allLogs.rows || []).find((cl: any) => {
+        const subj = String(cl.subject || '').toLowerCase().trim();
+        return subj && cleanT.includes(subj);
+      });
+      if (matched) commRes = { rows: [matched] } as any;
+    }
+
+    if (!commRes.rows || commRes.rows.length === 0) {
+      return res.status(404).json({ error: 'No se encontró el comunicado original.' });
+    }
+
+    const commRow = commRes.rows[0];
+    const isAllowed = commRow.allow_replies === 1 || commRow.allow_replies === true;
+    if (!isAllowed) {
+      return res.status(403).json({ error: 'Este comunicado fue enviado como Solo Informativo y no tiene respuestas habilitadas.' });
+    }
+
+    let existingReplies: any[] = [];
+    try {
+      if (commRow.replies_json) {
+        existingReplies = typeof commRow.replies_json === 'string' ? JSON.parse(commRow.replies_json) : commRow.replies_json;
+      }
+    } catch (_) {}
+    if (!Array.isArray(existingReplies)) existingReplies = [];
+
+    const finalGuardianName = String(guardianName || req.user?.name || 'Apoderado').trim();
+    const finalGuardianRun = String(guardianRun || req.user?.run || '').trim();
+    const finalStudentName = String(studentName || '').trim();
+    const finalStudentRun = String(studentRun || '').trim();
+    const finalCourseName = String(courseName || (commRow.course_name === 'ALL' ? 'Liceo' : commRow.course_name) || '').trim();
+    const nowIso = new Date().toISOString();
+
+    const newReply = {
+      id: `REP-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+      communicationId: commRow.id,
+      studentId: studentId || '',
+      studentName: finalStudentName,
+      studentRun: finalStudentRun,
+      courseName: finalCourseName,
+      guardianName: finalGuardianName,
+      guardianRun: finalGuardianRun,
+      authorRole: req.user?.role || 'Apoderado',
+      message: cleanReplyText,
+      replyText: cleanReplyText,
+      created_at: nowIso,
+      createdAt: nowIso
+    };
+
+    existingReplies.push(newReply);
+
+    await query(
+      'UPDATE communications_log SET replies_json = $1 WHERE id = $2',
+      [JSON.stringify(existingReplies), commRow.id]
+    );
+
+    // Notificar en plataforma al profesor/emisor y al módulo de Comunicaciones
+    const replyNotifId = `NOTIF-REP-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const replyTitle = `💬 Respuesta de Apoderado [${finalCourseName}] — ${commRow.subject}`;
+    const replyBody = `📌 Respuesta recibida al comunicado "${commRow.subject}"\n👤 Apoderado(a): ${finalGuardianName}${finalGuardianRun ? ` (${finalGuardianRun})` : ''}\n🎓 Estudiante: ${finalStudentName || 'Pupilo'}${finalStudentRun ? ` (${finalStudentRun})` : ''} — Curso: ${finalCourseName}\n👨‍🏫 Dirigido a: ${commRow.sender_name || 'Docente Emisor'} (${commRow.sender_role || 'Docente'})\n\n💬 Respuesta:\n"${cleanReplyText}"`;
+
+    await query(
+      `INSERT INTO system_notifications (id, user_id, target_role, target_run, reference_id, type, title, message, is_read, created_at)
+       VALUES ($1, $2, $3, NULL, $4, 'COURSE_MESSAGE_REPLY', $5, $6, 0, NOW())`,
+      [
+        replyNotifId,
+        commRow.sender_id || null,
+        commRow.sender_role || 'Docente',
+        commRow.id,
+        replyTitle,
+        replyBody
+      ]
+    ).catch(() => {});
+
+    // Marcar automáticamente el comunicado como revisado para este apoderado
+    const cleanGAlnum = finalGuardianRun.replace(/[^0-9kK]/g, '').toLowerCase();
+    const userKey = `${req.user?.id || 'anon'}:${req.user?.role || 'Apoderado'}:${cleanGAlnum || 'norun'}`;
+    const roleKey = `role:${req.user?.role || 'Apoderado'}`;
+    await Promise.all([
+      query('INSERT INTO notification_reads (user_key, notification_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userKey, commRow.id]).catch(() => {}),
+      query('INSERT INTO notification_reads (user_key, notification_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userKey, `NOTIF-CRS-MASTER-${commRow.id}`]).catch(() => {}),
+      query('INSERT INTO notification_reads (user_key, notification_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [roleKey, commRow.id]).catch(() => {}),
+      query('INSERT INTO notification_reads (user_key, notification_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [roleKey, `NOTIF-CRS-MASTER-${commRow.id}`]).catch(() => {})
+    ]);
+
+    await logAudit(
+      req,
+      'REPLY_COURSE_MESSAGE',
+      `Respuesta de Apoderado (${finalGuardianName} - Est. ${finalStudentName || finalCourseName}) al comunicado "${commRow.subject}" (${commRow.id})`
+    );
+
+    res.json({
+      success: true,
+      message: '¡Su respuesta ha sido enviada exitosamente al profesor/emisor!',
+      reply: newReply,
+      replies: existingReplies
+    });
+  } catch (err: any) {
+    console.error('Error en POST /api/communications/:id/reply:', err);
+    res.status(500).json({ error: 'Error al enviar la respuesta al comunicado.' });
   }
 });
 

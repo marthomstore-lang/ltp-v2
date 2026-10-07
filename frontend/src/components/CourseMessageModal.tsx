@@ -54,6 +54,22 @@ interface CourseStudent {
   hasEmail: boolean;
 }
 
+export interface GuardianCommunicationReply {
+  id: string;
+  communicationId: string;
+  studentId?: string;
+  studentName?: string;
+  studentRun?: string;
+  courseName?: string;
+  guardianName: string;
+  guardianRun?: string;
+  authorRole?: string;
+  message: string;
+  replyText?: string;
+  created_at: string;
+  createdAt?: string;
+}
+
 export interface CommunicationRecipientLog {
   recipientType: 'student' | 'teacher';
   id: string;
@@ -70,6 +86,8 @@ export interface CommunicationRecipientLog {
   notificationIds?: string[];
   isReadInPlatform?: boolean;
   readAt?: string | null;
+  hasReplied?: boolean;
+  replies?: GuardianCommunicationReply[];
 }
 
 export interface CommunicationHistoryItem {
@@ -84,6 +102,10 @@ export interface CommunicationHistoryItem {
   sender_id?: string;
   sender_name: string;
   sender_role: string;
+  allow_replies?: number | boolean;
+  allowReplies?: boolean;
+  replies?: GuardianCommunicationReply[];
+  repliesCount?: number;
   recipients: CommunicationRecipientLog[];
   total_recipients: number;
   platform_count: number;
@@ -132,6 +154,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
   const [channels, setChannels] = useState<'both' | 'platform' | 'email'>('both');
   const [priority, setPriority] = useState<'normal' | 'importante' | 'urgente'>('normal');
   const [category, setCategory] = useState<string>('General');
+  const [allowReplies, setAllowReplies] = useState<boolean>(false);
   const [subject, setSubject] = useState<string>('');
   const [message, setMessage] = useState<string>('');
 
@@ -448,6 +471,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
     }
 
     const channelList = channels === 'both' ? ['platform', 'email'] : [channels];
+    const effectiveAllowReplies = (audience === 'students' || audience === 'both') ? allowReplies : false;
     const audienceText = audience === 'students'
       ? `${selectedStudents.length} Estudiante(s) / Apoderado(s)`
       : audience === 'teachers'
@@ -461,6 +485,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
           <p><strong>🏫 Alcance:</strong> ${scopeDisplay}</p>
           <p><strong>👥 Destinatarios:</strong> ${audienceText}</p>
           <p><strong>📡 Canales:</strong> ${channels === 'both' ? `🌐 Plataforma y Correo (${totalUniqueEmails} casillas únicas)` : channels === 'platform' ? '📱 Solo Plataforma (Portal Apoderado/Docente)' : `📧 Solo Correo Electrónico (${totalUniqueEmails} casillas)`}</p>
+          ${audience !== 'teachers' ? `<p><strong>💬 Respuestas de Apoderados:</strong> ${effectiveAllowReplies ? '<span style="color:#059669;font-weight:800;">✅ Habilitadas (Pueden responder al profesor/emisor)</span>' : '<span style="color:#64748b;font-weight:700;">🔒 Solo Informativo (Sin respuesta)</span>'}</p>` : ''}
           <p><strong>📌 Asunto:</strong> ${subject}</p>
         </div>
       `,
@@ -514,6 +539,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
           channels: channelList,
           priority,
           category,
+          allowReplies: effectiveAllowReplies,
           subject: subject.trim(),
           message: message.trim(),
           recipients: combinedRecipients
@@ -548,6 +574,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
               <div>👥 <strong>Destinatarios Registrados en Nómina:</strong> ${totalSelectedCount} persona(s)</div>
               <div>📱 <strong>Notificaciones en Plataforma (Portal Docente / Apoderado / Estudiante):</strong> ${data.summary?.platformNotificationsCount || 0} entregadas</div>
               <div>📧 <strong>Correos Electrónicos Oficiales:</strong> ${data.summary?.emailsSentCount || 0} despachados</div>
+              ${audience !== 'teachers' ? `<div>💬 <strong>Modalidad de Respuesta:</strong> ${effectiveAllowReplies ? 'Apoderados pueden responder este mensaje' : 'Solo informativo (sin respuesta)'}</div>` : ''}
               ${data.summary?.emailsFailedCount > 0 ? `<div style="color: #dc2626;">⚠️ Correos con incidencia: ${data.summary.emailsFailedCount}</div>` : ''}
             </div>
           </div>
@@ -1317,6 +1344,68 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
               </div>
             </div>
 
+            {/* 4.5 Opción: ¿Permitir que los Apoderados respondan este mensaje? */}
+            {(audience === 'students' || audience === 'both') && (
+              <div style={{
+                background: allowReplies ? '#f0fdf4' : '#f8fafc',
+                border: allowReplies ? '1.5px solid #86efac' : '1.5px solid #cbd5e1',
+                borderRadius: '12px',
+                padding: '0.85rem 1.1rem',
+                transition: 'all 0.2s ease'
+              }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem' }}>
+                  💬 ¿Permitir que los Apoderados respondan este comunicado?
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.65rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setAllowReplies(false)}
+                    style={{
+                      padding: '0.65rem 0.9rem',
+                      borderRadius: '10px',
+                      border: !allowReplies ? '2px solid #475569' : '1px solid #cbd5e1',
+                      background: !allowReplies ? '#f1f5f9' : '#ffffff',
+                      color: !allowReplies ? '#0f172a' : '#64748b',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.6rem'
+                    }}
+                  >
+                    <span style={{ fontSize: '1.15rem' }}>🔒</span>
+                    <div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 800 }}>Solo Informativo (Sin respuesta)</div>
+                      <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>Los apoderados leen el aviso sin opción de responder</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAllowReplies(true)}
+                    style={{
+                      padding: '0.65rem 0.9rem',
+                      borderRadius: '10px',
+                      border: allowReplies ? '2px solid #16a34a' : '1px solid #cbd5e1',
+                      background: allowReplies ? '#dcfce7' : '#ffffff',
+                      color: allowReplies ? '#14532d' : '#64748b',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.6rem'
+                    }}
+                  >
+                    <span style={{ fontSize: '1.15rem' }}>💬</span>
+                    <div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 800 }}>Sí, permitir respuestas de Apoderados</div>
+                      <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>Habilita casilla para que el apoderado responda al docente</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* 5. Asunto / Título */}
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
@@ -1725,6 +1814,22 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
                             ⚠️ IMPORTANTE
                           </span>
                         )}
+
+                        {item.audience !== 'teachers' && (
+                          <span style={{
+                            background: item.allowReplies ? '#dcfce7' : '#f1f5f9',
+                            color: item.allowReplies ? '#166534' : '#64748b',
+                            border: item.allowReplies ? '1px solid #86efac' : '1px solid #cbd5e1',
+                            fontSize: '0.71rem',
+                            fontWeight: 800,
+                            padding: '2px 8px',
+                            borderRadius: '6px'
+                          }}>
+                            {item.allowReplies
+                              ? `💬 Respuestas Habilitadas (${Array.isArray(item.replies) ? item.replies.length : (item.repliesCount || 0)})`
+                              : '🔒 Solo Informativo'}
+                          </span>
+                        )}
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
@@ -1765,13 +1870,18 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
                         <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                           <UserCheck size={14} color="#4f46e5" /> ¿A quién se envió este mensaje? ({recipients.length || item.total_recipients} destinatario{recipients.length === 1 ? '' : 's'}):
                         </span>
-                        <div style={{ display: 'flex', gap: '0.6rem', fontSize: '0.73rem', fontWeight: 700 }}>
+                        <div style={{ display: 'flex', gap: '0.6rem', fontSize: '0.73rem', fontWeight: 700, flexWrap: 'wrap' }}>
                           <span style={{ color: '#0369a1' }}>
                             📱 {item.platform_count || 0} en Portal ({item.read_count || 0} leído{(item.read_count || 0) === 1 ? '' : 's'})
                           </span>
                           <span style={{ color: '#15803d' }}>
                             📧 {item.email_sent_count || 0} email(s)
                           </span>
+                          {item.allowReplies && (
+                            <span style={{ color: '#047857' }}>
+                              💬 {Array.isArray(item.replies) ? item.replies.length : (item.repliesCount || 0)} respuesta(s)
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -1826,6 +1936,46 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
                         </div>
                       )}
                     </div>
+
+                    {/* Respuestas recibidas de Apoderados */}
+                    {Array.isArray(item.replies) && item.replies.length > 0 && (
+                      <div style={{
+                        background: '#ecfdf5',
+                        border: '1px solid #a7f3d0',
+                        borderRadius: '10px',
+                        padding: '0.65rem 0.9rem'
+                      }}>
+                        <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#065f46', marginBottom: '0.45rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          💬 Respuestas Recibidas de Apoderados ({item.replies.length}):
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '150px', overflowY: 'auto' }}>
+                          {item.replies.map((rep, repIdx) => (
+                            <div
+                              key={rep.id || repIdx}
+                              style={{
+                                background: '#ffffff',
+                                border: '1px solid #d1fae5',
+                                borderRadius: '8px',
+                                padding: '0.45rem 0.7rem',
+                                fontSize: '0.78rem'
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.35rem', marginBottom: '0.2rem' }}>
+                                <span style={{ fontWeight: 800, color: '#065f46' }}>
+                                  👨‍👩‍👧 {rep.guardianName} {rep.studentName ? `(Apoderado de ${rep.studentName}${rep.courseName ? ` • ${rep.courseName}` : ''})` : ''}
+                                </span>
+                                <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
+                                  {new Date(rep.created_at || rep.createdAt || '').toLocaleString('es-CL')}
+                                </span>
+                              </div>
+                              <div style={{ color: '#1e293b', whiteSpace: 'pre-line', lineHeight: 1.4 }}>
+                                {rep.message || rep.replyText}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Pie de tarjeta: Emisor y Botones */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.6rem', paddingTop: '0.2rem' }}>
