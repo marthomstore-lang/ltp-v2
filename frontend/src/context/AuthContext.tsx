@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-export type UserRole = 'Admin' | 'Director' | 'Docente' | 'Entrevistador' | 'Administrativo' | 'Profesionales' | 'Asistente' | 'Apoderado' | 'Visita' | 'Estudiante';
+export type UserRole = 'Admin' | 'Director' | 'Docente' | 'Entrevistador' | 'Administrativo' | 'Profesionales' | 'Asistente' | 'Comunicaciones' | 'Apoderado' | 'Visita' | 'Estudiante';
 
 export interface UserThemeConfig {
   primaryColor?: string;

@@ -186,12 +186,35 @@ async function ensureTablesExist() {
         type TEXT NOT NULL,
         title TEXT NOT NULL,
         message TEXT NOT NULL,
-        is_read BOOLEAN DEFAULT FALSE,
+        is_read INTEGER DEFAULT 0,
         target_run TEXT,
         reference_id TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS idx_system_notifications_target ON system_notifications(target_role, is_read);
+
+      CREATE TABLE IF NOT EXISTS communications_log (
+        id TEXT PRIMARY KEY,
+        course_name TEXT NOT NULL,
+        audience TEXT DEFAULT 'both',
+        audience_label TEXT,
+        channels TEXT,
+        priority TEXT DEFAULT 'normal',
+        category TEXT DEFAULT 'General',
+        subject TEXT NOT NULL,
+        message TEXT NOT NULL,
+        sender_id TEXT,
+        sender_name TEXT,
+        sender_role TEXT,
+        sender_email TEXT,
+        total_recipients INTEGER DEFAULT 0,
+        platform_count INTEGER DEFAULT 0,
+        email_sent_count INTEGER DEFAULT 0,
+        email_failed_count INTEGER DEFAULT 0,
+        recipients_json TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_communications_log_course ON communications_log(course_name, created_at);
 
       CREATE TABLE IF NOT EXISTS pedagogical_trips (
         id TEXT PRIMARY KEY,
@@ -263,6 +286,8 @@ async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS target_run TEXT;
+      ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS reference_id TEXT;
       ALTER TABLE secure_file_vault ADD COLUMN IF NOT EXISTS folder_path TEXT;
       ALTER TABLE secure_file_vault ADD COLUMN IF NOT EXISTS file_data_base64 TEXT;
       ALTER TABLE pedagogical_evaluations ADD COLUMN IF NOT EXISTS original_folder_path TEXT;
@@ -556,6 +581,7 @@ const loginHandler = async (req: Request, res: Response) => {
       if (lower === 'profesor') return 'Docente';
       if (lower === 'alumno') return 'Estudiante';
       if (lower === 'directivo') return 'Director';
+      if (lower === 'comunicaciones' || lower === 'encargado de comunicaciones' || lower === 'encargada de comunicaciones') return 'Comunicaciones';
       return trimmed;
     };
 
@@ -570,6 +596,7 @@ const loginHandler = async (req: Request, res: Response) => {
       userRolesSet.add('Admin');
       userRolesSet.add('Docente');
       userRolesSet.add('Administrativo');
+      userRolesSet.add('Comunicaciones');
     }
 
     try {
@@ -657,6 +684,8 @@ const CUSTOMIZABLE_STAFF_ROLES = new Set([
   'docente',
   'profesor',
   'funcionario',
+  'comunicaciones',
+  'encargado de comunicaciones',
   'administrativo',
   'asistente',
   'asistente de la educación',
@@ -816,7 +845,7 @@ router.post('/auth/switch-role', authMiddleware, async (req: Request, res: Respo
     }
 
     if (isSuperAdmin || dbUser.role === 'Admin') {
-      ['Admin', 'Director', 'Docente', 'Entrevistador', 'Asistente', 'Administrativo', 'Profesionales', 'Apoderado', 'Estudiante', 'Visita'].forEach(r => userRolesSet.add(r));
+      ['Admin', 'Director', 'Docente', 'Comunicaciones', 'Entrevistador', 'Asistente', 'Administrativo', 'Profesionales', 'Apoderado', 'Estudiante', 'Visita'].forEach(r => userRolesSet.add(r));
     }
 
     if (!userRolesSet.has(newRole) && !isSuperAdmin) {
@@ -1389,9 +1418,10 @@ router.post('/auth/reset-password-with-temp', async (req: Request, res: Response
 // -----------------------------------------------------------------------------
 router.get('/notifications', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const userRole = req.user?.role || 'Admin';
+    await backfillAuditCommunicationsIfNeeded();
+    const userRole = String(req.query.role || req.user?.role || 'Admin').trim();
     const userId = req.user?.id || '';
-    const userRun = req.user?.run || '';
+    const userRun = String(req.query.run || req.user?.run || '').trim();
     const cleanRun = userRun.replace(/\./g, '').trim();
     const alnumRun = cleanRun.replace(/[^0-9kK]/g, '').toLowerCase();
 
@@ -1401,29 +1431,70 @@ router.get('/notifications', authMiddleware, async (req: Request, res: Response)
         target_run = $3 OR target_run = $4 OR REPLACE(REPLACE(LOWER(target_run), '.', ''), '-', '') = $5
       ))
       OR (target_role = $1 AND (target_run IS NULL OR target_run = '') AND (user_id IS NULL OR user_id = ''))
+      OR ($1 IN ('Admin', 'Director', 'Comunicaciones') AND type = 'COURSE_MESSAGE' AND id LIKE 'NOTIF-CRS-MASTER-%')
+      OR ($1 IN ('Apoderado', 'Estudiante') AND type = 'COURSE_MESSAGE' AND (target_role IN ('Apoderado', 'Estudiante', 'Comunidad') OR reference_id = 'ALL'))
     `;
 
-    const result = await query(
-      `SELECT * FROM system_notifications 
-       WHERE ${whereClause}
-       ORDER BY created_at DESC LIMIT 80`,
-      [userRole, userId, userRun, cleanRun, alnumRun]
-    );
+    const [result, commLogsRes] = await Promise.all([
+      query(
+        `SELECT * FROM system_notifications 
+         WHERE ${whereClause}
+         ORDER BY created_at DESC LIMIT 120`,
+        [userRole, userId, userRun, cleanRun, alnumRun]
+      ).catch(() => ({ rows: [] })),
+      query('SELECT * FROM communications_log ORDER BY created_at DESC LIMIT 40').catch(() => ({ rows: [] }))
+    ]);
 
-    // Deduplicar comunicados masivos idénticos para el mismo usuario
+    const combinedRows: any[] = [...(result.rows || [])];
+
+    // Incorporar comunicados oficiales desde communications_log para garantizar que siempre aparezcan en la campanita
+    for (const cl of commLogsRes.rows || []) {
+      const aud = String(cl.audience || 'both').toLowerCase();
+      const matchesRole =
+        ['Admin', 'Director', 'Comunicaciones'].includes(userRole) ||
+        (['Docente', 'Profesionales', 'Asistente', 'Entrevistador'].includes(userRole) && (aud === 'teachers' || aud === 'both')) ||
+        (['Apoderado', 'Estudiante'].includes(userRole) && (aud === 'students' || aud === 'both'));
+
+      if (!matchesRole) continue;
+
+      const isAll = cl.course_name === 'ALL' || String(cl.course_name || '').toLowerCase().includes('todos los cursos');
+      const scopeLabel = isAll ? 'LICEO MASIVO' : cl.course_name;
+      const prioIcon = cl.priority === 'urgente' ? '🚨 ' : cl.priority === 'importante' ? '⚠️ ' : '📢 ';
+      const synthTitle = `[${scopeLabel}] ${prioIcon}${cl.subject}`;
+      const synthMsg = cl.message && String(cl.message).includes('📌')
+        ? cl.message
+        : `📌 Comunicado Oficial para ${cl.audience_label || 'Comunidad Escolar'} — ${isAll ? 'Todos los Cursos (Masivo Liceo)' : cl.course_name}\n👤 De: ${cl.sender_name || 'Administración LTP'} (${cl.sender_role || 'Institucional'})\n\n${cl.message}`;
+
+      combinedRows.push({
+        id: `NOTIF-CRS-MASTER-${cl.id}`,
+        user_id: null,
+        target_role: aud === 'teachers' ? 'Docente' : 'Comunidad',
+        target_run: null,
+        reference_id: cl.course_name,
+        type: 'COURSE_MESSAGE',
+        title: synthTitle,
+        message: synthMsg,
+        is_read: 0,
+        created_at: cl.created_at
+      });
+    }
+
+    // Ordenar por fecha descendente y deduplicar comunicados idénticos para el mismo usuario
+    combinedRows.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
     const seenCourseMsgs = new Set<string>();
     const dedupedRows: any[] = [];
-    for (const row of result.rows || []) {
+    for (const row of combinedRows) {
       if (row.type === 'COURSE_MESSAGE') {
-        const key = `${row.title || ''}||${row.message || ''}`;
-        if (seenCourseMsgs.has(key)) continue;
-        seenCourseMsgs.add(key);
+        const cleanTitleKey = String(row.title || '').toLowerCase().trim();
+        if (seenCourseMsgs.has(cleanTitleKey)) continue;
+        seenCourseMsgs.add(cleanTitleKey);
       }
       dedupedRows.push(row);
       if (dedupedRows.length >= 50) break;
     }
 
-    const unreadCount = dedupedRows.filter((r: any) => !r.is_read).length;
+    const unreadCount = dedupedRows.filter((r: any) => !r.is_read || r.is_read === 0).length;
 
     res.json({
       notifications: dedupedRows,
@@ -1436,19 +1507,21 @@ router.get('/notifications', authMiddleware, async (req: Request, res: Response)
 
 router.put('/notifications/read-all', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const userRole = req.user?.role || 'Admin';
+    const userRole = String(req.query.role || req.body?.role || req.user?.role || 'Admin').trim();
     const userId = req.user?.id || '';
-    const userRun = req.user?.run || '';
+    const userRun = String(req.query.run || req.user?.run || '').trim();
     const cleanRun = userRun.replace(/\./g, '').trim();
     const alnumRun = cleanRun.replace(/[^0-9kK]/g, '').toLowerCase();
 
     await query(
-      `UPDATE system_notifications SET is_read = true 
+      `UPDATE system_notifications SET is_read = 1 
        WHERE (user_id IS NOT NULL AND user_id != '' AND user_id = $2)
           OR (target_run IS NOT NULL AND target_run != '' AND $5 != '' AND (
             target_run = $3 OR target_run = $4 OR REPLACE(REPLACE(LOWER(target_run), '.', ''), '-', '') = $5
           ))
-          OR (target_role = $1 AND (target_run IS NULL OR target_run = '') AND (user_id IS NULL OR user_id = ''))`,
+          OR (target_role = $1 AND (target_run IS NULL OR target_run = '') AND (user_id IS NULL OR user_id = ''))
+          OR ($1 IN ('Admin', 'Director', 'Comunicaciones') AND type = 'COURSE_MESSAGE' AND id LIKE 'NOTIF-CRS-MASTER-%')
+          OR ($1 IN ('Apoderado', 'Estudiante') AND type = 'COURSE_MESSAGE')`,
       [userRole, userId, userRun, cleanRun, alnumRun]
     );
 
@@ -1461,7 +1534,7 @@ router.put('/notifications/read-all', authMiddleware, async (req: Request, res: 
 router.put('/notifications/:id/read', authMiddleware, async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    await query('UPDATE system_notifications SET is_read = true WHERE id = $1', [id]);
+    await query('UPDATE system_notifications SET is_read = 1 WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Error al actualizar notificación.' });
@@ -1832,6 +1905,7 @@ const normalizeProfileRoleId = (r: any): string => {
   if (low === 'admin' || low === 'administrador') return 'Admin';
   if (low === 'director' || low === 'directivo' || low === 'directivo / utp' || low === 'utp') return 'Director';
   if (low === 'docente' || low === 'profesor' || low === 'docente de aula') return 'Docente';
+  if (low === 'comunicaciones' || low === 'encargado de comunicaciones' || low === 'encargada de comunicaciones') return 'Comunicaciones';
   if (low === 'entrevistador' || low === 'convivencia') return 'Entrevistador';
   if (low === 'asistente' || low === 'asistente de la educación' || low === 'asistente de la educacion' || low === 'asistente ed.') return 'Asistente';
   if (low === 'administrativo' || low === 'inspector' || low === 'inspector/a' || low === 'secretario/a') return 'Administrativo';
@@ -4962,26 +5036,27 @@ const OBSOLETE_PERMISSION_IDS = new Set([
 export type AccessLevel = 'edit' | 'view' | 'none';
 
 const DEFAULT_SYSTEM_PERMISSIONS = [
-  { functionId: 'dashboard', functionName: 'Dashboard General & KPIs / Portal', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'view', Profesionales: 'view', Estudiante: 'view', Apoderado: 'view' },
-  { functionId: 'enrollment', functionName: 'Matrícula Completa MINEDUC/FIDE (Ficha, Checklists y Salud/PIE)', Admin: 'edit', Director: 'edit', Docente: 'view', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'apoderados', functionName: 'Nómina & Registro Institucional de Apoderados', Admin: 'edit', Director: 'edit', Docente: 'view', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'grades', functionName: 'Libro de Calificaciones Ponderadas', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'none', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'overview', functionName: 'Panorama de Notas & Reporte de Jefatura', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'computer_lab', functionName: 'Reserva Sala de Computación & Horarios', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'edit', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'evaluations_pie', functionName: 'Portal de Evaluaciones & Integración PIE', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'mineduc_reports', functionName: 'Informes y Formularios Únicos MINEDUC (Dec. 170)', Admin: 'edit', Director: 'view', Docente: 'view', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'interviews', functionName: 'Actas de Entrevistas & Compromisos', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'observations', functionName: 'Hoja de Vida & Anotaciones RICE', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'edit', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'inspector_passes', functionName: 'Control de Atrasos & Pases de Inspectoría', Admin: 'edit', Director: 'edit', Docente: 'view', Asistente: 'edit', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'pedagogical_trips', functionName: 'Salidas Pedagógicas & Autorizaciones', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'hr_staff', functionName: 'Recursos Humanos & Idoneidad', Admin: 'edit', Director: 'view', Docente: 'none', Asistente: 'none', Profesionales: 'none', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'admin_docs', functionName: 'Documentos & Protocolos Institucionales', Admin: 'edit', Director: 'edit', Docente: 'view', Asistente: 'view', Profesionales: 'view', Estudiante: 'view', Apoderado: 'view' },
-  { functionId: 'library', functionName: 'Biblioteca CRA', Admin: 'edit', Director: 'edit', Docente: 'view', Asistente: 'edit', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'permissions', functionName: 'Matriz de Permisos RBAC', Admin: 'edit', Director: 'none', Docente: 'none', Asistente: 'none', Profesionales: 'none', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'config', functionName: 'Ajustes y Configuración del Sistema (13 Sub-ventanas)', Admin: 'edit', Director: 'none', Docente: 'none', Asistente: 'none', Profesionales: 'none', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'audit_logs', functionName: 'Auditoría Silent-Watch', Admin: 'view', Director: 'none', Docente: 'none', Asistente: 'none', Profesionales: 'none', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'course_messaging', functionName: 'Herramienta Superior: Comunicar a Curso (Mensajería Docente)', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'none', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'multiview', functionName: 'Herramienta Superior: Multivista QR Dual Screen', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' }
+  { functionId: 'dashboard', functionName: 'Dashboard General & KPIs / Portal', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'view', Asistente: 'view', Profesionales: 'view', Estudiante: 'view', Apoderado: 'view' },
+  { functionId: 'communications', functionName: 'Centro de Comunicaciones y Registro de Envíos', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'edit', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'enrollment', functionName: 'Matrícula Completa MINEDUC/FIDE (Ficha, Checklists y Salud/PIE)', Admin: 'edit', Director: 'edit', Docente: 'view', Comunicaciones: 'view', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'apoderados', functionName: 'Nómina & Registro Institucional de Apoderados', Admin: 'edit', Director: 'edit', Docente: 'view', Comunicaciones: 'view', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'grades', functionName: 'Libro de Calificaciones Ponderadas', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'none', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'overview', functionName: 'Panorama de Notas & Reporte de Jefatura', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'computer_lab', functionName: 'Reserva Sala de Computación & Horarios', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'view', Asistente: 'edit', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'evaluations_pie', functionName: 'Portal de Evaluaciones & Integración PIE', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'mineduc_reports', functionName: 'Informes y Formularios Únicos MINEDUC (Dec. 170)', Admin: 'edit', Director: 'view', Docente: 'view', Comunicaciones: 'none', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'interviews', functionName: 'Actas de Entrevistas & Compromisos', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'observations', functionName: 'Hoja de Vida & Anotaciones RICE', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'edit', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'inspector_passes', functionName: 'Control de Atrasos & Pases de Inspectoría', Admin: 'edit', Director: 'edit', Docente: 'view', Comunicaciones: 'view', Asistente: 'edit', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'pedagogical_trips', functionName: 'Salidas Pedagógicas & Autorizaciones', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'view', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'hr_staff', functionName: 'Recursos Humanos & Idoneidad', Admin: 'edit', Director: 'view', Docente: 'none', Comunicaciones: 'none', Asistente: 'none', Profesionales: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'admin_docs', functionName: 'Documentos & Protocolos Institucionales', Admin: 'edit', Director: 'edit', Docente: 'view', Comunicaciones: 'view', Asistente: 'view', Profesionales: 'view', Estudiante: 'view', Apoderado: 'view' },
+  { functionId: 'library', functionName: 'Biblioteca CRA', Admin: 'edit', Director: 'edit', Docente: 'view', Comunicaciones: 'none', Asistente: 'edit', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'permissions', functionName: 'Matriz de Permisos RBAC', Admin: 'edit', Director: 'none', Docente: 'none', Comunicaciones: 'none', Asistente: 'none', Profesionales: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'config', functionName: 'Ajustes y Configuración del Sistema (13 Sub-ventanas)', Admin: 'edit', Director: 'none', Docente: 'none', Comunicaciones: 'none', Asistente: 'none', Profesionales: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'audit_logs', functionName: 'Auditoría Silent-Watch', Admin: 'view', Director: 'none', Docente: 'none', Comunicaciones: 'none', Asistente: 'none', Profesionales: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'course_messaging', functionName: 'Herramienta Superior: Comunicar a Curso (Mensajería Docente)', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'edit', Asistente: 'none', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'multiview', functionName: 'Herramienta Superior: Multivista QR Dual Screen', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'view', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' }
 ];
 
 function toAccessLevel(val: any, defLevel: AccessLevel, isLegacyBooleanRow: boolean): AccessLevel {
@@ -5033,12 +5108,16 @@ function normalizePermissionsMatrix(rawMatrix: any[]): { normalized: any[]; hadO
       hadObsoleteOrMissing = true;
       return { ...def };
     }
+    if (saved.Comunicaciones === undefined) {
+      hadObsoleteOrMissing = true;
+    }
     return {
       functionId: def.functionId,
       functionName: def.functionName,
       Admin: def.functionId === 'permissions' ? 'edit' : toAccessLevel(saved.Admin, def.Admin, isLegacyBooleanMatrix),
       Director: toAccessLevel(saved.Director, def.Director, isLegacyBooleanMatrix),
       Docente: toAccessLevel(saved.Docente, def.Docente, isLegacyBooleanMatrix),
+      Comunicaciones: toAccessLevel(saved.Comunicaciones, def.Comunicaciones, isLegacyBooleanMatrix),
       Asistente: toAccessLevel(saved.Asistente, def.Asistente, isLegacyBooleanMatrix),
       Profesionales: toAccessLevel(saved.Profesionales, def.Profesionales, isLegacyBooleanMatrix),
       Estudiante: def.functionId === 'permissions' ? 'none' : toAccessLevel(saved.Estudiante, def.Estudiante, isLegacyBooleanMatrix),
@@ -5054,6 +5133,7 @@ function normalizePermissionsMatrix(rawMatrix: any[]): { normalized: any[]; hadO
         Admin: toAccessLevel(row.Admin, 'edit', false),
         Director: toAccessLevel(row.Director, 'none', false),
         Docente: toAccessLevel(row.Docente, 'none', false),
+        Comunicaciones: toAccessLevel(row.Comunicaciones, 'none', false),
         Asistente: toAccessLevel(row.Asistente, 'none', false),
         Profesionales: toAccessLevel(row.Profesionales, 'none', false),
         Estudiante: toAccessLevel(row.Estudiante, 'none', false),
@@ -5157,6 +5237,7 @@ export const checkMatrixPermission = (functionId: string) => {
         if (['Admin', 'Administrador'].includes(userRole)) roleCol = 'Admin';
         else if (['Director', 'Directivo', 'UTP', 'Inspectoría General'].includes(userRole)) roleCol = 'Director';
         else if (['Docente', 'Docente de Aula', 'Docente Jefatura'].includes(userRole)) roleCol = 'Docente';
+        else if (['Comunicaciones', 'Encargado de Comunicaciones', 'Encargada de Comunicaciones'].includes(userRole)) roleCol = 'Comunicaciones';
         else if (['Asistente', 'Asistente de la Educación', 'PIE', 'Administrativo'].includes(userRole)) roleCol = 'Asistente';
         else if (['Profesionales', 'Convivencia Escolar', 'Entrevistador', 'Psicólogo'].includes(userRole)) roleCol = 'Profesionales';
         else if (userRole === 'Estudiante') roleCol = 'Estudiante';
@@ -5403,6 +5484,7 @@ router.get('/apoderados/list', authMiddleware, async (req: Request, res: Respons
 
 router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Response) => {
   try {
+    await backfillAuditCommunicationsIfNeeded();
     const userRun = (req.user as any)?.run || '';
     const queryRun = String(req.query.run || req.query.guardianRun || userRun || '').trim();
     const cleanUserRun = queryRun.replace(/\./g, '').trim().toLowerCase();
@@ -5419,7 +5501,8 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
       intRes,
       passesRes,
       commsRes,
-      persRes
+      persRes,
+      commLogRes
     ] = await Promise.all([
       query('SELECT * FROM students ORDER BY list_number ASC, full_name ASC').catch(() => ({ rows: [] })),
       query('SELECT * FROM grades').catch(() => ({ rows: [] })),
@@ -5439,7 +5522,8 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
              WHERE type = 'COURSE_MESSAGE'
              ORDER BY created_at DESC
              LIMIT 1500`).catch(() => ({ rows: [] })),
-      query("SELECT config_value FROM system_settings WHERE id = 'SET-PERSONALITY-REPORTS' OR config_key = 'personality_reports_v2' ORDER BY updated_at DESC LIMIT 1").catch(() => ({ rows: [] }))
+      query("SELECT config_value FROM system_settings WHERE id = 'SET-PERSONALITY-REPORTS' OR config_key = 'personality_reports_v2' ORDER BY updated_at DESC LIMIT 1").catch(() => ({ rows: [] })),
+      query('SELECT * FROM communications_log ORDER BY created_at DESC LIMIT 300').catch(() => ({ rows: [] }))
     ]);
 
     let personalityReportsMap: Record<string, any> = {};
@@ -5738,6 +5822,38 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
               scope: c.reference_id === 'ALL' ? 'Masivo Liceo' : (c.reference_id || studentCourse),
               targetRole: c.target_role || 'Comunidad',
               created_at: c.created_at
+            });
+          }
+        }
+      });
+
+      // También incluir comunicados desde el registro oficial permanente (communications_log)
+      (commLogRes.rows || []).forEach((cl: any) => {
+        if (cl.audience === 'teachers') return;
+        const cScope = String(cl.course_name || '').trim();
+        const normLogCourse = normalizeTeacherStr(cScope);
+        const isSchoolWide = cScope === 'ALL' || normLogCourse.includes('todos los cursos') || normLogCourse.includes('masivo');
+        const isCourseMatch = Boolean(normCourse && (normLogCourse === normCourse || normLogCourse.includes(normCourse) || normCourse.includes(normLogCourse)));
+        let isRecipientMatch = false;
+        if (!isSchoolWide && !isCourseMatch && cl.recipients_json) {
+          const rawJson = String(cl.recipients_json).toLowerCase();
+          if ((cleanStAlnum && rawJson.includes(cleanStAlnum)) || (cleanGuardAlnum && rawJson.includes(cleanGuardAlnum))) {
+            isRecipientMatch = true;
+          }
+        }
+        if (isSchoolWide || isCourseMatch || isRecipientMatch) {
+          const prio = String(cl.priority || 'normal').toLowerCase();
+          const title = `[${isSchoolWide ? 'LICEO MASIVO' : cScope}] ${prio === 'urgente' ? '🚨 ' : prio === 'importante' ? '⚠️ ' : '📢 '}${cl.subject || 'Comunicado Oficial'}`;
+          const message = `📌 Comunicado Oficial para ${cl.audience_label || 'Comunidad Escolar'} — ${isSchoolWide ? 'Todos los Cursos (Masivo Liceo)' : cScope}\n👤 De: ${cl.sender_name || 'Dirección'} (${cl.sender_role || 'Institucional'})\n⚡ Prioridad: ${prio.toUpperCase()} | 📁 Categoría: ${cl.category || 'General'}\n\n${cl.message || ''}`;
+          const dedupKey = `${title}||${message}`;
+          if (!commMap.has(dedupKey)) {
+            commMap.set(dedupKey, {
+              id: cl.id,
+              title,
+              message,
+              scope: isSchoolWide ? 'Masivo Liceo' : cScope,
+              targetRole: cl.audience === 'students' ? 'Apoderado / Estudiante' : 'Comunidad',
+              created_at: cl.created_at
             });
           }
         }
@@ -6540,13 +6656,14 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
 
     const notifTitle = `[${isAllCourses ? 'LICEO MASIVO' : cName}] ${prio === 'urgente' ? '🚨 ' : prio === 'importante' ? '⚠️ ' : '📢 '}${sub}`;
     const notifBody = `📌 Comunicado Oficial para ${audienceLabel} — ${displayScope}\n👤 De: ${senderName} (${senderRole})\n⚡ Prioridad: ${prio.toUpperCase()} | 📁 Categoría: ${category}\n\n${msg}`;
+    const baseTs = Date.now();
+    const canonicalCourseRef = isAllCourses ? 'ALL' : cName;
+    const recipientLogItems: any[] = [];
 
     // 1. ENVÍO POR PLATAFORMA (Inserción Masiva por Lotes en system_notifications para respuesta instantánea)
     if (selectedChannels.includes('platform')) {
       const seenNotifTargets = new Set<string>();
       const notifRows: Array<[string, string | null, string, string | null, string, string, string, string]> = [];
-      const baseTs = Date.now();
-      const canonicalCourseRef = isAllCourses ? 'ALL' : cName;
 
       // Registro maestro del comunicado para respaldo en vistas generales de curso / apoderado / dirección
       notifRows.push([
@@ -6564,6 +6681,7 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
         const r = recipients[i];
         const isStudentRecipient = r.recipientType === 'student' || r.role === 'Estudiante' || r.role === 'Apoderado';
         const refCourse = isAllCourses ? 'ALL' : (r.courseName || cName);
+        const generatedNotifIds: string[] = [];
 
         if (isStudentRecipient) {
           const targetRuns: Array<{ role: string; run: string | null }> = [];
@@ -6581,6 +6699,7 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
             seenNotifTargets.add(dedupKey);
 
             const notifId = `NOTIF-CRS-${baseTs}-${i}-${tIdx}-${Math.random().toString(36).substring(2, 6)}`;
+            generatedNotifIds.push(notifId);
             notifRows.push([
               notifId,
               r.userId || null,
@@ -6595,24 +6714,52 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
         } else {
           const cleanTRun = r.run ? cleanTeacherRun(r.run) : null;
           const dedupKey = `Docente:${r.userId || cleanTRun || r.email || r.name || i}`;
-          if (seenNotifTargets.has(dedupKey)) continue;
-          seenNotifTargets.add(dedupKey);
-
-          const notifId = `NOTIF-CRS-${baseTs}-${i}-${Math.random().toString(36).substring(2, 6)}`;
-          notifRows.push([
-            notifId,
-            r.userId || null,
-            'Docente',
-            cleanTRun,
-            refCourse,
-            'COURSE_MESSAGE',
-            notifTitle,
-            notifBody
-          ]);
+          if (!seenNotifTargets.has(dedupKey)) {
+            seenNotifTargets.add(dedupKey);
+            const notifId = `NOTIF-CRS-${baseTs}-${i}-${Math.random().toString(36).substring(2, 6)}`;
+            generatedNotifIds.push(notifId);
+            notifRows.push([
+              notifId,
+              r.userId || null,
+              'Docente',
+              cleanTRun,
+              refCourse,
+              'COURSE_MESSAGE',
+              notifTitle,
+              notifBody
+            ]);
+          }
         }
+
+        const candidateEmails: string[] = [];
+        if (Array.isArray(r.emails)) {
+          r.emails.forEach((em: any) => {
+            if (em && String(em).includes('@')) candidateEmails.push(String(em).trim());
+          });
+        }
+        if (r.email && String(r.email).includes('@') && !candidateEmails.includes(String(r.email).trim())) {
+          candidateEmails.push(String(r.email).trim());
+        }
+
+        recipientLogItems.push({
+          id: r.id || r.run || `REC-${i}`,
+          recipientType: isStudentRecipient ? 'student' : 'teacher',
+          name: r.name || 'Destinatario',
+          run: r.run || '',
+          role: r.role || (isStudentRecipient ? 'Estudiante / Apoderado' : 'Docente'),
+          subject: r.subject || '',
+          courseName: r.courseName || (isAllCourses ? 'Todos los Cursos' : cName),
+          guardianName: r.guardianName || '',
+          guardianRun: r.guardianRun || '',
+          email: candidateEmails[0] || '',
+          emails: candidateEmails,
+          hasPlatform: true,
+          hasEmail: selectedChannels.includes('email') && candidateEmails.length > 0,
+          notifIds: generatedNotifIds
+        });
       }
 
-      // Ejecutar INSERT multi-fila en bloques de 120 registros en paralelo
+      // Ejecutar INSERT multi-fila en bloques de 120 registros en paralelo (is_read = 0 entero para compatibilidad con PostgreSQL INTEGER)
       const BATCH_SIZE = 120;
       const batchPromises: Promise<number>[] = [];
 
@@ -6624,7 +6771,7 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
         chunk.forEach((row, idx) => {
           const baseIdx = idx * 8;
           valueClauses.push(
-            `($${baseIdx + 1}, $${baseIdx + 2}, $${baseIdx + 3}, $${baseIdx + 4}, $${baseIdx + 5}, $${baseIdx + 6}, $${baseIdx + 7}, $${baseIdx + 8}, false, NOW())`
+            `($${baseIdx + 1}, $${baseIdx + 2}, $${baseIdx + 3}, $${baseIdx + 4}, $${baseIdx + 5}, $${baseIdx + 6}, $${baseIdx + 7}, $${baseIdx + 8}, 0, NOW())`
           );
           flatParams.push(...row);
         });
@@ -6647,6 +6794,36 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
       const batchCounts = await Promise.all(batchPromises);
       const totalInserted = batchCounts.reduce((acc, c) => acc + c, 0);
       platformCount = Math.max(0, totalInserted - 1); // Descontar el registro maestro de respaldo
+    } else {
+      for (let i = 0; i < recipients.length; i++) {
+        const r = recipients[i];
+        const isStudentRecipient = r.recipientType === 'student' || r.role === 'Estudiante' || r.role === 'Apoderado';
+        const candidateEmails: string[] = [];
+        if (Array.isArray(r.emails)) {
+          r.emails.forEach((em: any) => {
+            if (em && String(em).includes('@')) candidateEmails.push(String(em).trim());
+          });
+        }
+        if (r.email && String(r.email).includes('@') && !candidateEmails.includes(String(r.email).trim())) {
+          candidateEmails.push(String(r.email).trim());
+        }
+        recipientLogItems.push({
+          id: r.id || r.run || `REC-${i}`,
+          recipientType: isStudentRecipient ? 'student' : 'teacher',
+          name: r.name || 'Destinatario',
+          run: r.run || '',
+          role: r.role || (isStudentRecipient ? 'Estudiante / Apoderado' : 'Docente'),
+          subject: r.subject || '',
+          courseName: r.courseName || (isAllCourses ? 'Todos los Cursos' : cName),
+          guardianName: r.guardianName || '',
+          guardianRun: r.guardianRun || '',
+          email: candidateEmails[0] || '',
+          emails: candidateEmails,
+          hasPlatform: false,
+          hasEmail: selectedChannels.includes('email') && candidateEmails.length > 0,
+          notifIds: []
+        });
+      }
     }
 
     // 2. ENVÍO POR CORREO ELECTRÓNICO (Deduplicado y despachado en paralelo / lotes BCC para evitar timeouts en Serverless)
@@ -6770,14 +6947,49 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
       }
     }
 
-    // 3. REGISTRO DE AUDITORÍA
+    // 3. GUARDAR REGISTRO OFICIAL DE COMUNICACIÓN CON NÓMINA EXACTA DE DESTINATARIOS (communications_log)
+    const commId = `COMM-${baseTs}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    await query(
+      `INSERT INTO communications_log (
+         id, course_name, audience, audience_label, channels, priority, category,
+         subject, message, sender_id, sender_name, sender_role, sender_email,
+         total_recipients, platform_count, email_sent_count, email_failed_count,
+         recipients_json, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())`,
+      [
+        commId,
+        isAllCourses ? 'ALL' : cName,
+        audience,
+        audienceLabel,
+        JSON.stringify(selectedChannels),
+        prio,
+        category || 'General',
+        sub,
+        msg,
+        req.user?.id || null,
+        senderName,
+        senderRole,
+        senderEmail || null,
+        recipientLogItems.length,
+        platformCount,
+        emailSentCount,
+        emailFailedCount,
+        JSON.stringify(recipientLogItems)
+      ]
+    ).catch((logErr: any) => {
+      console.error('Error al guardar en communications_log:', logErr.message);
+    });
+
+    // 4. REGISTRO DE AUDITORÍA
     const auditDetail = `Comunicado enviado a "${displayScope}" [Audiencia: ${audienceLabel}] (${recipients.length} destinatarios). Canales: [${selectedChannels.join(', ')}]. Plataforma: ${platformCount}, Correos: ${emailSentCount}${emailFailedCount > 0 ? `, Fallidos: ${emailFailedCount}` : ''}. Asunto: "${sub}".`;
     await logAudit(req, 'SEND_COURSE_MESSAGE', auditDetail);
 
     res.json({
       success: true,
+      communicationId: commId,
       message: `Comunicado enviado exitosamente a ${displayScope}.`,
       summary: {
+        communicationId: commId,
         courseName: displayScope,
         audience,
         totalRecipients: recipients.length,
@@ -6791,6 +7003,387 @@ router.post('/courses/send-message', authMiddleware, async (req: Request, res: R
   } catch (err: any) {
     console.error('Error al procesar envío de comunicado:', err);
     res.status(500).json({ error: 'Error interno al enviar comunicación.' });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// HISTORIAL Y REGISTRO OFICIAL DE COMUNICADOS ENVIADOS (¿A QUIÉN SE ENVIÓ?)
+// -----------------------------------------------------------------------------
+let hasBackfilledAuditComms = false;
+
+async function backfillAuditCommunicationsIfNeeded() {
+  if (hasBackfilledAuditComms) return;
+  hasBackfilledAuditComms = true;
+  try {
+    const [existingLogsRes, auditRes] = await Promise.all([
+      query('SELECT id, subject, course_name, created_at FROM communications_log').catch(() => ({ rows: [] })),
+      query("SELECT * FROM audit_logs WHERE action = 'SEND_COURSE_MESSAGE' ORDER BY created_at DESC LIMIT 60").catch(() => ({ rows: [] }))
+    ]);
+    const auditRows = auditRes.rows || [];
+    if (auditRows.length === 0) return;
+
+    const existingIds = new Set((existingLogsRes.rows || []).map((r: any) => String(r.id)));
+    const existingKeys = new Set(
+      (existingLogsRes.rows || []).map((r: any) => `${String(r.subject || '').toLowerCase().trim()}__${String(r.course_name || '').toLowerCase().trim()}`)
+    );
+
+    const missingAudits = auditRows.filter((a: any) => !existingIds.has(`COMM-AUD-${a.id}`));
+    if (missingAudits.length === 0) return;
+
+    const [studentsRes, assignRes, coursesRes, usersRes, staffRes] = await Promise.all([
+      query('SELECT * FROM students ORDER BY list_number ASC, full_name ASC').catch(() => ({ rows: [] })),
+      query('SELECT * FROM teacher_assignments').catch(() => ({ rows: [] })),
+      query('SELECT * FROM courses').catch(() => ({ rows: [] })),
+      query('SELECT id, name, email, role, run FROM users').catch(() => ({ rows: [] })),
+      query('SELECT user_id, full_name, email, role, run FROM staff_profiles').catch(() => ({ rows: [] }))
+    ]);
+
+    for (const a of missingAudits) {
+      const detail = String(a.details || a.detail || '');
+      const scopeMatch = detail.match(/Comunicado enviado a "([^"]+)"/i);
+      const audMatch = detail.match(/\[Audiencia:\s*([^\]]+)\]/i);
+      const countMatch = detail.match(/\((\d+)\s+destinatarios\)/i);
+      const chanMatch = detail.match(/Canales:\s*\[([^\]]+)\]/i);
+      const subjMatch = detail.match(/Asunto:\s*"([^"]+)"/i);
+
+      const rawScope = scopeMatch ? scopeMatch[1].trim() : 'Todos los Cursos (Masivo Liceo)';
+      const isAll = rawScope.toLowerCase().includes('todos los cursos') || rawScope === 'ALL';
+      const courseKey = isAll ? 'ALL' : rawScope;
+      const audLabel = audMatch ? audMatch[1].trim() : 'Comunidad Escolar';
+      const subj = subjMatch ? subjMatch[1].trim() : 'Comunicado Oficial';
+      const dedupCheckKey = `${subj.toLowerCase()}__${courseKey.toLowerCase()}`;
+      if (existingKeys.has(dedupCheckKey)) continue;
+      existingKeys.add(dedupCheckKey);
+
+      const audienceCode = audLabel.toLowerCase().includes('equipo docente')
+        ? 'teachers'
+        : audLabel.toLowerCase().includes('comunidad')
+          ? 'both'
+          : 'students';
+      const channelsArr = chanMatch
+        ? chanMatch[1].split(',').map((s: string) => s.trim()).filter(Boolean)
+        : ['platform', 'email'];
+
+      // Reconstruir destinatarios del curso para que quede el registro completo de a quién se envió
+      const normTarget = normalizeTeacherStr(courseKey);
+      const reconstructedRecipients: any[] = [];
+
+      if (audienceCode === 'teachers' || audienceCode === 'both') {
+        const seenT = new Set<string>();
+        (coursesRes.rows || []).forEach((c: any) => {
+          if (!isAll && normalizeTeacherStr(c.name) !== normTarget) return;
+          if (c.teacher && c.teacher !== 'Sin Asignar') {
+            const k = normalizeTeacherStr(c.teacher);
+            if (!seenT.has(k)) {
+              seenT.add(k);
+              const uMatch = (usersRes.rows || []).find((u: any) => normalizeTeacherStr(u.name) === k);
+              const sMatch = (staffRes.rows || []).find((s: any) => normalizeTeacherStr(s.full_name) === k);
+              reconstructedRecipients.push({
+                id: uMatch?.id || `PJ-${k}`,
+                recipientType: 'teacher',
+                name: c.teacher,
+                run: uMatch?.run || sMatch?.run || '',
+                role: 'Profesor(a) Jefe',
+                subject: 'Jefatura de Curso',
+                courseName: c.name,
+                guardianName: '',
+                guardianRun: '',
+                email: uMatch?.email || sMatch?.email || '',
+                emails: [uMatch?.email || sMatch?.email].filter(Boolean),
+                hasPlatform: channelsArr.includes('platform'),
+                hasEmail: channelsArr.includes('email'),
+                notifIds: []
+              });
+            }
+          }
+        });
+        (assignRes.rows || []).forEach((asg: any) => {
+          const cN = asg.level_name || asg.level_id || '';
+          if (!isAll && normalizeTeacherStr(cN) !== normTarget) return;
+          const tName = asg.teacher_name || '';
+          if (tName && tName !== 'Sin Asignar') {
+            const k = normalizeTeacherStr(tName);
+            if (!seenT.has(k)) {
+              seenT.add(k);
+              const uMatch = (usersRes.rows || []).find((u: any) => normalizeTeacherStr(u.name) === k);
+              const sMatch = (staffRes.rows || []).find((s: any) => normalizeTeacherStr(s.full_name) === k);
+              reconstructedRecipients.push({
+                id: uMatch?.id || `DOC-${k}`,
+                recipientType: 'teacher',
+                name: tName,
+                run: uMatch?.run || sMatch?.run || '',
+                role: 'Docente de Asignatura',
+                subject: asg.subject_name || 'Asignatura',
+                courseName: cN,
+                guardianName: '',
+                guardianRun: '',
+                email: uMatch?.email || sMatch?.email || '',
+                emails: [uMatch?.email || sMatch?.email].filter(Boolean),
+                hasPlatform: channelsArr.includes('platform'),
+                hasEmail: channelsArr.includes('email'),
+                notifIds: []
+              });
+            }
+          }
+        });
+      }
+
+      if (audienceCode === 'students' || audienceCode === 'both') {
+        (studentsRes.rows || []).forEach((s: any) => {
+          const isRet = s.is_retired === 1 || s.is_retired === true || String(s.status || '').toLowerCase().includes('retirad');
+          if (isRet) return;
+          const sCourse = getStudentCourseHelper(s);
+          if (!isAll && normalizeTeacherStr(sCourse) !== normTarget && normalizeTeacherStr(s.desc_grado) !== normTarget) return;
+          const mails = [s.guardian_email, s.email, s.mother_email, s.father_email].filter((m: any) => m && String(m).includes('@'));
+          reconstructedRecipients.push({
+            id: s.id,
+            recipientType: 'student',
+            name: s.full_name || 'Estudiante',
+            run: s.run || '',
+            role: 'Estudiante / Apoderado',
+            subject: sCourse,
+            courseName: sCourse,
+            guardianName: s.guardian_name || s.mother_name || s.father_name || '',
+            guardianRun: s.guardian_run || s.mother_run || s.father_run || '',
+            email: mails[0] || '',
+            emails: mails,
+            hasPlatform: channelsArr.includes('platform'),
+            hasEmail: channelsArr.includes('email') && mails.length > 0,
+            notifIds: []
+          });
+        });
+      }
+
+      const commId = `COMM-AUD-${a.id}`;
+      const totalRec = countMatch ? parseInt(countMatch[1], 10) : reconstructedRecipients.length;
+      const senderName = a.user_name || a.username || 'Administración LTP';
+      const senderRole = a.user_role || 'Admin';
+      const createdAt = a.created_at || new Date().toISOString();
+
+      await query(
+        `INSERT INTO communications_log (
+           id, course_name, audience, audience_label, channels, priority, category,
+           subject, message, sender_id, sender_name, sender_role, sender_email,
+           total_recipients, platform_count, email_sent_count, email_failed_count,
+           recipients_json, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          commId,
+          courseKey,
+          audienceCode,
+          audLabel,
+          JSON.stringify(channelsArr),
+          'normal',
+          'General',
+          subj,
+          `Comunicado oficial enviado a ${rawScope} (${audLabel}). Asunto: ${subj}`,
+          a.user_id || null,
+          senderName,
+          senderRole,
+          null,
+          totalRec || reconstructedRecipients.length,
+          reconstructedRecipients.length,
+          reconstructedRecipients.filter(r => r.email).length,
+          0,
+          JSON.stringify(reconstructedRecipients),
+          createdAt
+        ]
+      ).catch(() => {});
+
+      // Asegurar que exista el registro maestro en system_notifications para que aparezca en campanita y portal apoderado
+      const notifTitle = `[${isAll ? 'LICEO MASIVO' : courseKey}] 📢 ${subj}`;
+      const notifBody = `📌 Comunicado Oficial para ${audLabel} — ${rawScope}\n👤 De: ${senderName} (${senderRole})\n⚡ Prioridad: NORMAL | 📁 Categoría: General\n\n${subj}`;
+      await query(
+        `INSERT INTO system_notifications (id, user_id, target_role, target_run, reference_id, type, title, message, is_read, created_at)
+         VALUES ($1, NULL, $2, NULL, $3, 'COURSE_MESSAGE', $4, $5, 0, $6)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          `NOTIF-CRS-MASTER-AUD-${a.id}`,
+          audienceCode === 'teachers' ? 'Docente' : 'Comunidad',
+          courseKey,
+          notifTitle,
+          notifBody,
+          createdAt
+        ]
+      ).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('Aviso en backfillAuditCommunicationsIfNeeded:', err);
+  }
+}
+
+router.get('/communications/history', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    await backfillAuditCommunicationsIfNeeded();
+
+    const { course, audience, search } = req.query;
+    const [logsRes, notifsRes] = await Promise.all([
+      query('SELECT * FROM communications_log ORDER BY created_at DESC LIMIT 250').catch(() => ({ rows: [] })),
+      query("SELECT id, target_run, is_read FROM system_notifications WHERE type = 'COURSE_MESSAGE'").catch(() => ({ rows: [] }))
+    ]);
+
+    const readNotifIds = new Set<string>();
+    const readRuns = new Set<string>();
+    (notifsRes.rows || []).forEach((n: any) => {
+      if (n.is_read === 1 || n.is_read === true) {
+        if (n.id) readNotifIds.add(String(n.id));
+        if (n.target_run) readRuns.add(String(n.target_run).replace(/[^0-9kK]/g, '').toLowerCase());
+      }
+    });
+
+    let items = (logsRes.rows || []).map((row: any) => {
+      let recipientsList: any[] = [];
+      try {
+        if (row.recipients_json) {
+          recipientsList = typeof row.recipients_json === 'string' ? JSON.parse(row.recipients_json) : row.recipients_json;
+        }
+      } catch (_) {}
+
+      let channelsList: string[] = ['platform', 'email'];
+      try {
+        if (row.channels) {
+          channelsList = typeof row.channels === 'string' ? JSON.parse(row.channels) : row.channels;
+        }
+      } catch (_) {}
+
+      let readCount = 0;
+      const rawRecipientsArr = Array.isArray(recipientsList) ? recipientsList : [];
+      const slicedRecipientsArr =
+        String(row.id || '').startsWith('COMM-AUD-') &&
+        row.total_recipients > 0 &&
+        row.total_recipients < rawRecipientsArr.length
+          ? rawRecipientsArr.slice(0, row.total_recipients)
+          : rawRecipientsArr;
+
+      const enrichedRecipients = slicedRecipientsArr.map((r: any) => {
+        const nIds: string[] = Array.isArray(r.notifIds)
+          ? r.notifIds
+          : Array.isArray(r.notificationIds)
+            ? r.notificationIds
+            : [];
+        const cleanR = String(r.run || '').replace(/[^0-9kK]/g, '').toLowerCase();
+        const cleanG = String(r.guardianRun || '').replace(/[^0-9kK]/g, '').toLowerCase();
+        const isRead =
+          Boolean(r.isReadInPlatform) ||
+          Boolean(r.isRead) ||
+          nIds.some(id => readNotifIds.has(id)) ||
+          (cleanR && readRuns.has(cleanR)) ||
+          (cleanG && readRuns.has(cleanG));
+        if (isRead) readCount++;
+        const emailsArr = Array.isArray(r.emails)
+          ? r.emails
+          : r.email
+            ? [r.email]
+            : [];
+        return {
+          ...r,
+          emails: emailsArr,
+          emailSent: r.emailSent !== undefined ? Boolean(r.emailSent) : Boolean(r.hasEmail),
+          platformSent: r.platformSent !== undefined ? Boolean(r.platformSent) : Boolean(r.hasPlatform !== false),
+          notificationIds: nIds,
+          notifIds: nIds,
+          isRead: Boolean(isRead),
+          isReadInPlatform: Boolean(isRead)
+        };
+      });
+
+      const teachersCount = enrichedRecipients.filter((r: any) => r.recipientType === 'teacher' || r.role?.includes('Docente') || r.role?.includes('Profesor')).length;
+      const studentsCount = enrichedRecipients.length - teachersCount;
+      const totalRecCount = enrichedRecipients.length || row.total_recipients || 0;
+      const platCount = row.platform_count || totalRecCount;
+      const emailSentCnt = row.email_sent_count || 0;
+      const emailFailedCnt = row.email_failed_count || 0;
+      const sName = row.sender_name || 'Administración LTP';
+      const sRole = row.sender_role || 'Institucional';
+
+      return {
+        id: row.id,
+        course_name: row.course_name,
+        courseName: row.course_name === 'ALL' ? 'Todos los Cursos (Masivo Liceo)' : row.course_name,
+        rawCourseName: row.course_name,
+        audience: row.audience || 'both',
+        audience_label: row.audience_label || 'Comunidad Escolar',
+        audienceLabel: row.audience_label || 'Comunidad Escolar',
+        channels: channelsList,
+        priority: row.priority || 'normal',
+        category: row.category || 'General',
+        subject: row.subject,
+        message: row.message,
+        sender_id: row.sender_id,
+        senderId: row.sender_id,
+        sender_name: sName,
+        senderName: sName,
+        sender_role: sRole,
+        senderRole: sRole,
+        sender_email: row.sender_email || '',
+        senderEmail: row.sender_email || '',
+        total_recipients: totalRecCount,
+        totalRecipients: totalRecCount,
+        platform_count: platCount,
+        platformCount: platCount,
+        email_sent_count: emailSentCnt,
+        emailSentCount: emailSentCnt,
+        email_failed_count: emailFailedCnt,
+        emailFailedCount: emailFailedCnt,
+        read_count: readCount,
+        readCount,
+        teachersCount,
+        studentsCount,
+        recipients: enrichedRecipients,
+        created_at: row.created_at,
+        createdAt: row.created_at
+      };
+    });
+
+    if (course && String(course) !== 'TODOS' && String(course) !== 'ALL') {
+      const cNorm = normalizeTeacherStr(String(course));
+      items = items.filter((it: any) =>
+        it.rawCourseName === 'ALL' ||
+        normalizeTeacherStr(it.rawCourseName) === cNorm ||
+        normalizeTeacherStr(it.courseName) === cNorm
+      );
+    }
+
+    if (audience && String(audience) !== 'TODOS') {
+      items = items.filter((it: any) => it.audience === audience);
+    }
+
+    if (search && String(search).trim() !== '') {
+      const q = String(search).toLowerCase().trim();
+      items = items.filter((it: any) =>
+        String(it.subject || '').toLowerCase().includes(q) ||
+        String(it.message || '').toLowerCase().includes(q) ||
+        String(it.senderName || '').toLowerCase().includes(q) ||
+        String(it.courseName || '').toLowerCase().includes(q) ||
+        (Array.isArray(it.recipients) && it.recipients.some((r: any) =>
+          String(r.name || '').toLowerCase().includes(q) ||
+          String(r.run || '').toLowerCase().includes(q) ||
+          String(r.guardianName || '').toLowerCase().includes(q) ||
+          String(r.email || '').toLowerCase().includes(q)
+        ))
+      );
+    }
+
+    res.json({
+      success: true,
+      total: items.length,
+      communications: items
+    });
+  } catch (err: any) {
+    console.error('Error en GET /api/communications/history:', err);
+    res.status(500).json({ error: 'Error al consultar el historial de comunicaciones.' });
+  }
+});
+
+router.delete('/communications/history/:id', authMiddleware, checkRoles(['Admin', 'Director', 'Comunicaciones']), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await query('DELETE FROM communications_log WHERE id = $1', [id]);
+    await logAudit(req, 'DELETE_COMMUNICATION_LOG', `Eliminado registro de comunicado ID ${id}`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Error al eliminar registro de comunicación.' });
   }
 });
 

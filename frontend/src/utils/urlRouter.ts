@@ -7,6 +7,7 @@ export type AdminTabId =
   | 'home'
   | 'students'
   | 'apoderados'
+  | 'communications'
   | 'grades'
   | 'overview'
   | 'personality_reports'
@@ -35,6 +36,7 @@ export const ADMIN_TAB_TO_PATH: Record<AdminTabId, string> = {
   home: '/inicio',
   students: '/matricula',
   apoderados: '/apoderados',
+  communications: '/comunicaciones',
   grades: '/calificaciones/planilla',
   overview: '/calificaciones/panorama',
   personality_reports: '/informes-personalidad',
@@ -115,6 +117,7 @@ export const FUNCTION_ID_TO_PATH: Record<string, string> = {
   dashboard: '/inicio',
   enrollment: '/matricula (+5 sub-links de ficha)',
   apoderados: '/apoderados',
+  communications: '/comunicaciones',
   grades: '/calificaciones/planilla',
   overview: '/calificaciones/panorama',
   computer_lab: '/sala-computacion',
@@ -130,7 +133,7 @@ export const FUNCTION_ID_TO_PATH: Record<string, string> = {
   permissions: '/permisos',
   config: '/configuracion (+13 sub-links)',
   audit_logs: '/auditoria',
-  course_messaging: 'Barra Superior (Botón)',
+  course_messaging: 'Barra Superior (Botón) / /comunicaciones',
   multiview: 'Barra Superior (Botón)',
 };
 
@@ -138,6 +141,7 @@ export const ADMIN_TAB_TITLES: Record<AdminTabId, string> = {
   home: 'Dashboard General — Liceo Bicentenario Enrique Kirberg',
   students: 'Matrícula Completa — LTP',
   apoderados: 'Nómina de Apoderados — LTP',
+  communications: 'Centro de Comunicaciones y Registro de Envíos — LTP',
   grades: 'Libro de Calificaciones — LTP',
   overview: 'Panorama de Notas y Jefatura — LTP',
   personality_reports: 'Informes al Hogar y Personalidad (PK a 4°M) — LTP',
@@ -160,6 +164,7 @@ const BASE_PATH_TO_ADMIN_TAB: Record<string, AdminTabId> = {
   '/inicio': 'home',
   '/matricula': 'students',
   '/apoderados': 'apoderados',
+  '/comunicaciones': 'communications',
   '/calificaciones': 'grades',
   '/calificaciones/planilla': 'grades',
   '/calificaciones/panorama': 'overview',

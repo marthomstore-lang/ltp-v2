@@ -124,6 +124,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
     if (low === 'asistente' || low === 'asistente de la educación' || low === 'asistente de la educacion' || low === 'asistente ed.') return 'Asistente';
     if (low === 'administrativo' || low === 'inspector' || low === 'inspector/a' || low === 'secretario/a') return 'Administrativo';
     if (low === 'profesionales' || low === 'profesional pie' || low === 'pie') return 'Profesionales';
+    if (low === 'comunicaciones' || low === 'comunicación' || low === 'comunicacion' || low === 'encargado de comunicaciones' || low === 'mensajería' || low === 'mensajeria') return 'Comunicaciones';
     if (low === 'apoderado') return 'Apoderado';
     if (low === 'visita') return 'Visita';
     return raw;
@@ -4178,7 +4179,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                     <button
                       type="button"
                       onClick={() => {
-                        const allRoleIds = ['Docente', 'Director', 'Entrevistador', 'Asistente', 'Administrativo', 'Profesionales', 'Admin', 'Apoderado'];
+                        const allRoleIds = ['Docente', 'Director', 'Entrevistador', 'Asistente', 'Administrativo', 'Profesionales', 'Comunicaciones', 'Admin', 'Apoderado'];
                         setEditingUser((prev: any) => ({
                           ...prev,
                           roles: allRoleIds,
@@ -4207,6 +4208,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                     { id: 'Asistente', label: 'Asistente Ed.', icon: '🤝' },
                     { id: 'Administrativo', label: 'Administrativo', icon: '📋' },
                     { id: 'Profesionales', label: 'Profesional PIE', icon: '🧠' },
+                    { id: 'Comunicaciones', label: 'Comunicaciones', icon: '📢' },
                     { id: 'Admin', label: 'Administrador', icon: '👑' },
                     { id: 'Apoderado', label: 'Apoderado', icon: '👨‍👩‍👧' }
                   ].map(r => {

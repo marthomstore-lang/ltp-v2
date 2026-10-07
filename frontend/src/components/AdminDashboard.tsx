@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home } from 'lucide-react';
+import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home, Send } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { InstitutionalPlatformsSection } from './InstitutionalPlatformsSection';
 import { SubmitStatementModal, PendingStatementItem } from './SubmitStatementModal';
@@ -67,7 +67,7 @@ export const AdminDashboard: React.FC = () => {
     try {
       localStorage.removeItem('ltp_admin_tab');
       const saved = sessionStorage.getItem('ltp_admin_tab');
-      if (saved && ['home', 'students', 'apoderados', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips'].includes(saved)) {
+      if (saved && ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips'].includes(saved)) {
         return saved as AdminTabId;
       }
     } catch {}
@@ -98,7 +98,7 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     const handleNav = (e: any) => {
-      if (e.detail && ['home', 'students', 'apoderados', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips'].includes(e.detail)) {
+      if (e.detail && ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips'].includes(e.detail)) {
         setActiveTab(prev => {
           if (prev !== e.detail) {
             setTabHistory(hist => [...hist.slice(-15), prev]);
@@ -119,6 +119,7 @@ export const AdminDashboard: React.FC = () => {
     home: 'dashboard',
     students: 'enrollment',
     apoderados: 'apoderados',
+    communications: 'communications',
     grades: 'grades',
     overview: 'overview',
     personality_reports: 'overview',
@@ -140,15 +141,16 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const rolePermissions: Record<string, string[]> = {
-    Admin: ['home', 'students', 'apoderados', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Director: ['home', 'students', 'apoderados', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Docente: ['home', 'students', 'apoderados', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Admin: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Director: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Comunicaciones: ['home', 'communications', 'students', 'apoderados', 'computer_lab', 'pedagogical_trips', 'admin_docs', 'course_messaging', 'multiview'],
     Bibliotecario: ['home', 'computer_lab', 'evaluations_pie', 'library', 'admin_docs', 'multiview'],
-    Entrevistador: ['home', 'students', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging', 'multiview'],
-    Administrativo: ['home', 'students', 'apoderados', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
-    Profesionales: ['home', 'students', 'apoderados', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Asistente: ['home', 'students', 'apoderados', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
-    'Asistente de la Educación': ['home', 'students', 'apoderados', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
+    Entrevistador: ['home', 'students', 'communications', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging', 'multiview'],
+    Administrativo: ['home', 'students', 'apoderados', 'communications', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
+    Profesionales: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Asistente: ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
+    'Asistente de la Educación': ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
     Apoderado: ['home', 'admin_docs'],
     Estudiante: ['home', 'admin_docs'],
     Visita: ['home', 'computer_lab', 'evaluations_pie', 'overview', 'admin_docs']
@@ -182,6 +184,7 @@ export const AdminDashboard: React.FC = () => {
         else if (['Docente', 'Profesor', 'Docente de Aula', 'Docente Jefatura'].includes(currentRole)) roleCol = 'Docente';
         else if (['Asistente', 'Asistente de la Educación', 'PIE', 'Administrativo', 'Bibliotecario'].includes(currentRole)) roleCol = 'Asistente';
         else if (['Profesionales', 'Convivencia Escolar', 'Entrevistador', 'Psicólogo'].includes(currentRole)) roleCol = 'Profesionales';
+        else if (['Comunicaciones', 'Encargado de Comunicaciones'].includes(currentRole)) roleCol = 'Comunicaciones';
         else if ((currentRole as string) === 'Estudiante') roleCol = 'Estudiante';
         else if ((currentRole as string) === 'Apoderado') roleCol = 'Apoderado';
 
@@ -192,7 +195,7 @@ export const AdminDashboard: React.FC = () => {
 
     const fallbackList = rolePermissions[currentRole] || rolePermissions['Admin'];
     if (!fallbackList.includes(tab)) return 'none';
-    if (tab === 'students' && ['Asistente', 'Asistente de la Educación', 'Docente', 'Profesionales'].includes(currentRole)) {
+    if (tab === 'students' && ['Asistente', 'Asistente de la Educación', 'Docente', 'Profesionales', 'Comunicaciones'].includes(currentRole)) {
       return 'view';
     }
     return 'edit';
@@ -210,6 +213,7 @@ export const AdminDashboard: React.FC = () => {
       home: 'Dashboard General & KPIs',
       students: 'Matrícula Completa MINEDUC/FIDE',
       apoderados: 'Nómina & Registro Institucional de Apoderados',
+      communications: 'Centro de Comunicaciones y Registro Oficial de Envíos',
       grades: 'Libro de Calificaciones Ponderadas',
       overview: 'Panorama de Notas & Reporte de Jefatura',
       personality_reports: 'Informes al Hogar e Informes de Personalidad',
@@ -397,7 +401,7 @@ export const AdminDashboard: React.FC = () => {
 
   const loadNotifications = () => {
     if (!token) return;
-    fetch('/api/notifications', { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`/api/notifications?role=${encodeURIComponent(user?.role || '')}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => {
         if (data && Array.isArray(data.notifications)) {
@@ -421,7 +425,7 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const markNotificationsAsRead = () => {
-    fetch('/api/notifications/read-all', {
+    fetch(`/api/notifications/read-all?role=${encodeURIComponent(user?.role || '')}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -487,7 +491,7 @@ export const AdminDashboard: React.FC = () => {
       loadPendingStatements();
     }, 30000);
     return () => clearInterval(interval);
-  }, [token]);
+  }, [token, user?.role]);
 
   useEffect(() => {
     if (activeTab === 'audit') {
@@ -629,6 +633,7 @@ export const AdminDashboard: React.FC = () => {
             },
             { id: 'students', label: 'Matrícula Completa', icon: Users },
             { id: 'apoderados', label: 'Nómina de Apoderados', icon: UserCheck },
+            { id: 'communications', label: 'Comunicaciones & Registro', icon: Send },
             { id: 'grades', label: 'Libro de Calificaciones', icon: ClipboardList },
             { id: 'overview', label: 'Panorama & Jefatura', icon: TrendingUp },
             { id: 'personality_reports', label: 'Informes Hogar y Personalidad', icon: Award },
@@ -1031,11 +1036,12 @@ export const AdminDashboard: React.FC = () => {
               <span style={{
                 fontSize: '0.82rem',
                 fontWeight: 900,
-                color: user?.role === 'Admin' ? '#4338ca' : user?.role === 'Director' ? '#1d4ed8' : user?.role === 'Docente' ? '#15803d' : '#c2410c'
+                color: user?.role === 'Admin' ? '#4338ca' : user?.role === 'Director' ? '#1d4ed8' : user?.role === 'Docente' ? '#15803d' : user?.role === 'Comunicaciones' ? '#0284c7' : '#c2410c'
               }}>
                 {user?.role === 'Admin' ? '👑 Administrador' :
                  user?.role === 'Director' ? '🎓 Directivo' :
                  user?.role === 'Docente' ? '👨‍🏫 Docente' :
+                 user?.role === 'Comunicaciones' ? '📢 Comunicaciones' :
                  user?.role === 'Asistente' ? '🤝 Asistente' :
                  user?.role === 'Administrativo' ? '📋 Administrativo' :
                  user?.role === 'Profesionales' ? '🧠 Profesional PIE' :
@@ -1122,6 +1128,7 @@ export const AdminDashboard: React.FC = () => {
                             <option value="Admin">👑 Administrador (Control Total)</option>
                             <option value="Director">🎓 Directivo / UTP / Inspectoría</option>
                             <option value="Docente">👨‍🏫 Docente de Aula / Jefatura</option>
+                            <option value="Comunicaciones">📢 Comunicaciones (Mensajería y Registro Oficial)</option>
                             <option value="Entrevistador">🗣️ Convivencia Escolar / Entrevistas</option>
                             <option value="Asistente">🤝 Asistente de la Educación / PIE</option>
                             <option value="Administrativo">📋 Administrativo / Matrícula</option>
@@ -1135,6 +1142,7 @@ export const AdminDashboard: React.FC = () => {
                             <option key={r} value={r}>
                               {r === 'Docente' ? '👨‍🏫 Docente de Aula / Jefatura' :
                                r === 'Director' ? '🎓 Directivo / UTP / Inspectoría' :
+                               r === 'Comunicaciones' ? '📢 Comunicaciones (Mensajería y Registro Oficial)' :
                                r === 'Entrevistador' ? '🗣️ Convivencia Escolar / Entrevistas' :
                                r === 'Asistente' ? '🤝 Asistente de la Educación' :
                                r === 'Administrativo' ? '📋 Administrativo / Matrícula' :
@@ -1462,6 +1470,7 @@ export const AdminDashboard: React.FC = () => {
               customSubtitle={
                 currentRole === 'Docente' ? 'Panel Docente • Liceo Pro / LTP v2.0' :
                 currentRole === 'Director' ? 'Panel Directivo • Liceo Pro / LTP v2.0' :
+                currentRole === 'Comunicaciones' ? 'Portal Oficial de Comunicaciones y Registro de Envíos • Liceo Pro / LTP v2.0' :
                 currentRole === 'Asistente' ? 'Portal Asistentes de la Educación • Liceo Pro / LTP v2.0' :
                 currentRole === 'Profesionales' ? 'Portal Profesionales PIE & Convivencia • Liceo Pro / LTP v2.0' :
                 'Panel de Administración • Liceo Pro / LTP v2.0'
@@ -1486,6 +1495,26 @@ export const AdminDashboard: React.FC = () => {
                   <div className="stat-value">{students.length} Alumnos</div>
                   <div className="stat-trend">
                     <CheckCircle2 size={14} /> {students.filter(s => !s.is_retired).length} Vigentes (Ver Nómina →)
+                  </div>
+                </div>
+              )}
+
+              {canAccess('communications') && (
+                <div
+                  className="stat-card"
+                  onClick={() => navigateToTab('communications', 'Centro de Comunicaciones y Registro de Envíos')}
+                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  title="Abrir Centro de Comunicaciones y Registro de a quién se envió cada mensaje"
+                >
+                  <div className="stat-card-header">
+                    <span>Comunicaciones & Registro</span>
+                    <div className="stat-icon-wrapper" style={{ background: '#e0e7ff', color: '#4338ca' }}>
+                      <Send size={22} />
+                    </div>
+                  </div>
+                  <div className="stat-value" style={{ fontSize: '1.35rem', color: '#3730a3' }}>Envíos y Bitácora</div>
+                  <div className="stat-trend" style={{ color: '#4f46e5' }}>
+                    Ver a quién se envió (Abrir →)
                   </div>
                 </div>
               )}
@@ -1568,6 +1597,20 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               ) : null}
             </div>
+
+            {/* PANEL DIRECTO DE COMUNICACIONES Y REGISTRO PARA EL PERFIL DE COMUNICACIONES */}
+            {currentRole === 'Comunicaciones' && (
+              <div style={{ marginTop: '1.75rem' }}>
+                <CourseMessageModal
+                  isOpen={true}
+                  isEmbedded={true}
+                  initialTab="history"
+                  onClose={() => {}}
+                  onMessageSent={loadNotifications}
+                  readOnly={!canEdit('communications')}
+                />
+              </div>
+            )}
 
             {/* SECCIÓN DE CURSOS Y ASIGNATURAS ASIGNADAS PARA EL PERFIL DOCENTE */}
             {['Docente', 'Profesor', 'Docente de Aula', 'Docente Jefatura'].includes(currentRole) && canAccess('grades') && (
@@ -2291,6 +2334,18 @@ export const AdminDashboard: React.FC = () => {
 
         {/* VISTA 2.5: NÓMINA GENERAL DE APODERADOS */}
         {activeTab === 'apoderados' && <GuardiansListModule token={token || ''} />}
+
+        {/* VISTA 2.6: CENTRO DE COMUNICACIONES Y REGISTRO DE ENVÍOS */}
+        {activeTab === 'communications' && (
+          <CourseMessageModal
+            isOpen={true}
+            isEmbedded={true}
+            initialTab="history"
+            onClose={() => navigateToTab('home')}
+            onMessageSent={loadNotifications}
+            readOnly={!canEdit('communications')}
+          />
+        )}
 
         {/* VISTA 8.5: BIBLIOTECA CRA */}
         {activeTab === 'library' && <LibraryCRAModule token={token || ''} />}

@@ -1,5 +1,26 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { X, Send, Users, Mail, Bell, CheckCircle2, Sparkles, GraduationCap, Globe, Search } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  X,
+  Send,
+  Users,
+  Mail,
+  Bell,
+  CheckCircle2,
+  Sparkles,
+  GraduationCap,
+  Globe,
+  Search,
+  ClipboardList,
+  Eye,
+  Printer,
+  Trash2,
+  RefreshCw,
+  Calendar,
+  UserCheck,
+  Clock,
+  FileText,
+  Filter
+} from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext';
 import { sortCoursesList, getStudentCourse } from '../utils/course';
@@ -33,20 +54,67 @@ interface CourseStudent {
   hasEmail: boolean;
 }
 
+export interface CommunicationRecipientLog {
+  recipientType: 'student' | 'teacher';
+  id: string;
+  userId?: string | null;
+  name: string;
+  run?: string;
+  role?: string;
+  courseName?: string;
+  guardianName?: string;
+  guardianRun?: string;
+  emails?: string[];
+  emailSent?: boolean;
+  platformSent?: boolean;
+  notificationIds?: string[];
+  isReadInPlatform?: boolean;
+  readAt?: string | null;
+}
+
+export interface CommunicationHistoryItem {
+  id: string;
+  course_name: string;
+  audience: string;
+  channels: string[];
+  priority: 'normal' | 'importante' | 'urgente' | string;
+  category: string;
+  subject: string;
+  message: string;
+  sender_id?: string;
+  sender_name: string;
+  sender_role: string;
+  recipients: CommunicationRecipientLog[];
+  total_recipients: number;
+  platform_count: number;
+  email_sent_count: number;
+  email_failed_count: number;
+  read_count?: number;
+  created_at: string;
+}
+
 interface CourseMessageModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialCourse?: string;
   onMessageSent?: () => void;
+  isEmbedded?: boolean;
+  initialTab?: 'send' | 'history';
+  readOnly?: boolean;
 }
 
 export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
   isOpen,
   onClose,
   initialCourse = '',
-  onMessageSent
+  onMessageSent,
+  isEmbedded = false,
+  initialTab = 'send',
+  readOnly = false
 }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+
+  const [activeView, setActiveView] = useState<'send' | 'history'>(readOnly ? 'history' : initialTab);
 
   const [coursesList, setCoursesList] = useState<string[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<string>(initialCourse || 'ALL');
@@ -60,16 +128,51 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
   const [loadingRecipients, setLoadingRecipients] = useState<boolean>(false);
   const [sending, setSending] = useState<boolean>(false);
 
-  // Formulario
+  // Formulario de envío
   const [channels, setChannels] = useState<'both' | 'platform' | 'email'>('both');
   const [priority, setPriority] = useState<'normal' | 'importante' | 'urgente'>('normal');
   const [category, setCategory] = useState<string>('General');
   const [subject, setSubject] = useState<string>('');
   const [message, setMessage] = useState<string>('');
 
-  // Cargar lista de cursos disponibles
+  // Estado de Historial / Registro de Comunicados Enviados
+  const [historyList, setHistoryList] = useState<CommunicationHistoryItem[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+  const [historySearch, setHistorySearch] = useState<string>('');
+  const [historyCourseFilter, setHistoryCourseFilter] = useState<string>('ALL_FILTER');
+  const [historyAudienceFilter, setHistoryAudienceFilter] = useState<string>('ALL');
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState<CommunicationHistoryItem | null>(null);
+  const [recipientModalSearch, setRecipientModalSearch] = useState<string>('');
+
+  const fetchHistory = useCallback(() => {
+    if (!token) return;
+    setLoadingHistory(true);
+    fetch('/api/communications/history', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data && Array.isArray(data.communications)) {
+          setHistoryList(data.communications);
+        } else if (Array.isArray(data)) {
+          setHistoryList(data);
+        }
+      })
+      .catch(err => console.error('Error cargando registro de comunicaciones:', err))
+      .finally(() => setLoadingHistory(false));
+  }, [token]);
+
   useEffect(() => {
-    if (!isOpen || !token) return;
+    if (readOnly) {
+      setActiveView('history');
+    }
+  }, [readOnly]);
+
+  // Cargar lista de cursos disponibles e historial inicial
+  useEffect(() => {
+    if ((!isOpen && !isEmbedded) || !token) return;
+
+    fetchHistory();
 
     Promise.all([
       fetch('/api/courses', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => ({ courses: [] })),
@@ -99,11 +202,11 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
         setSelectedCourse('ALL');
       }
     }).catch(err => console.error('Error cargando cursos:', err));
-  }, [isOpen, token, initialCourse]);
+  }, [isOpen, isEmbedded, token, initialCourse, fetchHistory]);
 
   // Cargar docentes y estudiantes asignados al curso seleccionado (o todo el liceo si es 'ALL')
   useEffect(() => {
-    if (!isOpen || !token || !selectedCourse) return;
+    if ((!isOpen && !isEmbedded) || !token || !selectedCourse) return;
 
     setLoadingRecipients(true);
     fetch(`/api/courses/teachers-summary?course=${encodeURIComponent(selectedCourse)}`, {
@@ -143,7 +246,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
         setStudents([]);
       })
       .finally(() => setLoadingRecipients(false));
-  }, [isOpen, token, selectedCourse]);
+  }, [isOpen, isEmbedded, token, selectedCourse]);
 
   const selectedTeachers = useMemo(
     () => (audience === 'teachers' || audience === 'both')
@@ -200,7 +303,82 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
     );
   }, [students, searchQuery]);
 
-  if (!isOpen) return null;
+  // Filtrado del historial de comunicados enviados
+  const filteredHistory = useMemo(() => {
+    return historyList.filter(item => {
+      if (historyCourseFilter !== 'ALL_FILTER') {
+        if (historyCourseFilter === 'MASIVO_ALL') {
+          if (item.course_name !== 'ALL') return false;
+        } else {
+          const matchesCourseDirect = item.course_name === historyCourseFilter;
+          const matchesRecipientCourse = Array.isArray(item.recipients) && item.recipients.some(r => r.courseName === historyCourseFilter);
+          if (!matchesCourseDirect && !matchesRecipientCourse) return false;
+        }
+      }
+
+      if (historyAudienceFilter !== 'ALL' && item.audience !== historyAudienceFilter) {
+        return false;
+      }
+
+      if (!historySearch.trim()) return true;
+      const q = historySearch.toLowerCase().trim();
+      const inBasic =
+        (item.subject || '').toLowerCase().includes(q) ||
+        (item.message || '').toLowerCase().includes(q) ||
+        (item.sender_name || '').toLowerCase().includes(q) ||
+        (item.category || '').toLowerCase().includes(q) ||
+        (item.course_name || '').toLowerCase().includes(q);
+
+      if (inBasic) return true;
+
+      if (Array.isArray(item.recipients)) {
+        return item.recipients.some(r =>
+          (r.name || '').toLowerCase().includes(q) ||
+          (r.run || '').toLowerCase().includes(q) ||
+          (r.guardianName || '').toLowerCase().includes(q) ||
+          (r.guardianRun || '').toLowerCase().includes(q) ||
+          (Array.isArray(r.emails) && r.emails.join(' ').toLowerCase().includes(q))
+        );
+      }
+      return false;
+    });
+  }, [historyList, historyCourseFilter, historyAudienceFilter, historySearch]);
+
+  const historyStats = useMemo(() => {
+    let totalRecipients = 0;
+    let totalPlatform = 0;
+    let totalEmails = 0;
+    let totalReads = 0;
+    historyList.forEach(h => {
+      totalRecipients += Number(h.total_recipients || (Array.isArray(h.recipients) ? h.recipients.length : 0));
+      totalPlatform += Number(h.platform_count || 0);
+      totalEmails += Number(h.email_sent_count || 0);
+      totalReads += Number(h.read_count || 0);
+    });
+    return {
+      totalMessages: historyList.length,
+      totalRecipients,
+      totalPlatform,
+      totalEmails,
+      totalReads
+    };
+  }, [historyList]);
+
+  const filteredModalRecipients = useMemo(() => {
+    if (!selectedHistoryItem || !Array.isArray(selectedHistoryItem.recipients)) return [];
+    if (!recipientModalSearch.trim()) return selectedHistoryItem.recipients;
+    const q = recipientModalSearch.toLowerCase().trim();
+    return selectedHistoryItem.recipients.filter(r =>
+      (r.name || '').toLowerCase().includes(q) ||
+      (r.run || '').toLowerCase().includes(q) ||
+      (r.courseName || '').toLowerCase().includes(q) ||
+      (r.guardianName || '').toLowerCase().includes(q) ||
+      (r.guardianRun || '').toLowerCase().includes(q) ||
+      (Array.isArray(r.emails) && r.emails.join(' ').toLowerCase().includes(q))
+    );
+  }, [selectedHistoryItem, recipientModalSearch]);
+
+  if (!isOpen && !isEmbedded) return null;
 
   const isAllCourses = selectedCourse === 'ALL';
   const scopeDisplay = isAllCourses ? 'Todos los Cursos (Masivo Liceo)' : selectedCourse;
@@ -358,12 +536,16 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
         throw new Error(data?.error || 'Ocurrió un error al despachar el comunicado.');
       }
 
-      await Swal.fire({
-        title: '¡Comunicado Despachado Exitosamente!',
+      fetchHistory();
+      if (onMessageSent) onMessageSent();
+
+      const postResult = await Swal.fire({
+        title: '¡Comunicado Despachado y Registrado!',
         html: `
           <div style="text-align: left; font-size: 0.92rem; line-height: 1.6;">
-            <p style="color: #166534; font-weight: 700;">✅ La comunicación fue entregada a <strong>${scopeDisplay}</strong>.</p>
+            <p style="color: #166534; font-weight: 700;">✅ La comunicación fue entregada a <strong>${scopeDisplay}</strong> y quedó guardada en el Registro Oficial de Comunicaciones.</p>
             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 8px;">
+              <div>👥 <strong>Destinatarios Registrados en Nómina:</strong> ${totalSelectedCount} persona(s)</div>
               <div>📱 <strong>Notificaciones en Plataforma (Portal Docente / Apoderado / Estudiante):</strong> ${data.summary?.platformNotificationsCount || 0} entregadas</div>
               <div>📧 <strong>Correos Electrónicos Oficiales:</strong> ${data.summary?.emailsSentCount || 0} despachados</div>
               ${data.summary?.emailsFailedCount > 0 ? `<div style="color: #dc2626;">⚠️ Correos con incidencia: ${data.summary.emailsFailedCount}</div>` : ''}
@@ -371,13 +553,21 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
           </div>
         `,
         icon: 'success',
-        confirmButtonColor: '#4f46e5'
+        showCancelButton: true,
+        confirmButtonColor: '#4f46e5',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: '📋 Ver en Registro de Enviados',
+        cancelButtonText: isEmbedded ? 'Seguir Aquí' : 'Cerrar Ventana'
       });
 
       setSubject('');
       setMessage('');
-      if (onMessageSent) onMessageSent();
-      onClose();
+
+      if (postResult.isConfirmed) {
+        setActiveView('history');
+      } else if (!isEmbedded) {
+        onClose();
+      }
     } catch (err: any) {
       console.error(err);
       Swal.fire('Error', err.message || 'Error al enviar la comunicación.', 'error');
@@ -386,83 +576,271 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
     }
   };
 
-  return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(15, 23, 42, 0.72)',
-      backdropFilter: 'blur(4px)',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      zIndex: 1050,
-      padding: '1rem'
-    }}>
-      <div style={{
-        background: '#ffffff',
-        borderRadius: '20px',
-        width: '100%',
-        maxWidth: '920px',
-        maxHeight: '94vh',
-        display: 'flex',
-        flexDirection: 'column',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-        border: '1px solid #e2e8f0',
-        overflow: 'hidden'
-      }}>
-        {/* Cabecera */}
-        <div style={{
-          padding: '1.2rem 1.75rem',
-          background: 'linear-gradient(135deg, #4f46e5 0%, #1e1b4b 100%)',
-          color: '#ffffff',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{
-              background: 'rgba(255, 255, 255, 0.2)',
-              borderRadius: '12px',
-              padding: '9px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Send size={22} color="#ffffff" />
-            </div>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, letterSpacing: '-0.3px' }}>
-                Centro de Comunicaciones Masivas y por Curso
-              </h2>
-              <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#e0e7ff' }}>
-                Envíe comunicados oficiales a Estudiantes, Apoderados y/o Docentes (por curso o a todo el Liceo)
-              </p>
-            </div>
+  const handleDeleteHistoryItem = async (item: CommunicationHistoryItem) => {
+    const confirm = await Swal.fire({
+      title: '¿Eliminar registro de comunicado?',
+      text: `Se eliminará del historial el comunicado "${item.subject}".`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar'
+    });
+    if (!confirm.isConfirmed) return;
+
+    try {
+      const res = await fetch(`/api/communications/history/${encodeURIComponent(item.id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'No se pudo eliminar el registro');
+      }
+      setHistoryList(prev => prev.filter(x => x.id !== item.id));
+      if (selectedHistoryItem?.id === item.id) {
+        setSelectedHistoryItem(null);
+      }
+      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Registro eliminado', timer: 1800, showConfirmButton: false });
+    } catch (err: any) {
+      Swal.fire('Error', err.message || 'Error al eliminar registro', 'error');
+    }
+  };
+
+  const handlePrintCommunicationReceipt = (item: CommunicationHistoryItem) => {
+    const win = window.open('', '_blank', 'width=960,height=750');
+    if (!win) {
+      Swal.fire('Atención', 'Por favor habilite las ventanas emergentes para imprimir el comprobante.', 'info');
+      return;
+    }
+
+    const recipients = Array.isArray(item.recipients) ? item.recipients : [];
+    const scopeLabel = item.course_name === 'ALL' ? 'Todos los Cursos (Masivo Establecimiento)' : item.course_name;
+    const audienceLabel =
+      item.audience === 'students'
+        ? 'Estudiantes y Apoderados'
+        : item.audience === 'teachers'
+          ? 'Equipo Docente'
+          : 'Comunidad Completa (Docentes + Estudiantes/Apoderados)';
+
+    const rowsHtml = recipients.map((r, idx) => {
+      const typeLabel = r.recipientType === 'teacher' ? 'Docente' : 'Estudiante / Apoderado';
+      const guardianInfo = r.recipientType === 'student'
+        ? `${r.guardianName || 'Sin registro'}${r.guardianRun ? ` (${r.guardianRun})` : ''}`
+        : '—';
+      const emailsStr = Array.isArray(r.emails) && r.emails.length > 0 ? r.emails.join(', ') : 'Sin correo';
+      const statusStr = r.isReadInPlatform
+        ? `Leído (${r.readAt ? new Date(r.readAt).toLocaleString('es-CL') : 'Confirmado'})`
+        : 'Entregado en Portal';
+
+      return `
+        <tr>
+          <td style="text-align: center;">${idx + 1}</td>
+          <td><strong>${r.name || '-'}</strong><br/><span style="font-size: 11px; color: #555;">RUT: ${r.run || 'S/R'}</span></td>
+          <td>${typeLabel}</td>
+          <td>${r.courseName === 'ALL' ? 'General' : (r.courseName || item.course_name)}</td>
+          <td>${guardianInfo}</td>
+          <td style="font-size: 11px;">${emailsStr}</td>
+          <td>${statusStr}</td>
+        </tr>
+      `;
+    }).join('');
+
+    win.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Comprobante de Comunicado Oficial - ${item.subject}</title>
+        <style>
+          body { font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; margin: 28px; font-size: 13px; }
+          .header { border-bottom: 2px solid #4f46e5; padding-bottom: 12px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; }
+          .title { font-size: 18px; font-weight: 800; color: #1e1b4b; margin: 0; }
+          .subtitle { font-size: 12px; color: #64748b; margin-top: 4px; }
+          .meta-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+          .meta-item { font-size: 12.5px; }
+          .message-box { background: #ffffff; border: 1px solid #cbd5e1; border-left: 4px solid #4f46e5; border-radius: 6px; padding: 12px 16px; margin-bottom: 20px; white-space: pre-line; line-height: 1.5; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+          th { background: #f1f5f9; font-weight: 700; color: #334155; }
+          @media print { .no-print { display: none; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1 class="title">LICEO BICENTENARIO ENRIQUE KIRBERG — REGISTRO OFICIAL DE COMUNICACIONES</h1>
+            <div class="subtitle">Acta de Despacho y Nómina de Destinatarios Notificados</div>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'rgba(255, 255, 255, 0.15)',
-              border: 'none',
-              borderRadius: '50%',
-              width: '34px',
-              height: '34px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#ffffff',
-              cursor: 'pointer'
-            }}
-          >
-            <X size={20} />
-          </button>
+          <button class="no-print" onclick="window.print()" style="background:#4f46e5;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-weight:700;cursor:pointer;">🖨️ Imprimir</button>
         </div>
 
-        {/* Cuerpo del Modal con Scroll */}
-        <form onSubmit={handleSubmit} style={{ overflowY: 'auto', padding: '1.35rem 1.75rem', flex: 1 }}>
+        <div class="meta-grid">
+          <div class="meta-item"><strong>📌 Asunto:</strong> ${item.subject}</div>
+          <div class="meta-item"><strong>📅 Fecha y Hora de Envío:</strong> ${new Date(item.created_at).toLocaleString('es-CL')}</div>
+          <div class="meta-item"><strong>👤 Enviado por:</strong> ${item.sender_name} (${item.sender_role})</div>
+          <div class="meta-item"><strong>🏫 Curso / Alcance:</strong> ${scopeLabel}</div>
+          <div class="meta-item"><strong>🎯 Audiencia:</strong> ${audienceLabel}</div>
+          <div class="meta-item"><strong>📁 Categoría / Prioridad:</strong> ${item.category} (${String(item.priority).toUpperCase()})</div>
+          <div class="meta-item"><strong>👥 Total Destinatarios:</strong> ${recipients.length} persona(s)</div>
+          <div class="meta-item"><strong>📡 Entregas:</strong> ${item.platform_count || 0} en Plataforma / ${item.email_sent_count || 0} Correos</div>
+        </div>
+
+        <div style="font-weight: 700; margin-bottom: 6px; color: #334155;">Contenido del Comunicado:</div>
+        <div class="message-box">${item.message}</div>
+
+        <div style="font-weight: 800; font-size: 14px; margin-bottom: 8px; color: #1e1b4b;">
+          Nómina Detallada de Destinatarios (${recipients.length})
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 34px; text-align: center;">N°</th>
+              <th>Nombre Destinatario (Estudiante / Docente)</th>
+              <th>Rol</th>
+              <th>Curso</th>
+              <th>Apoderado Vinculado</th>
+              <th>Correo(s) Electrónico(s)</th>
+              <th>Estado Plataforma</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml || '<tr><td colspan="7" style="text-align:center;">Sin destinatarios detallados</td></tr>'}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `);
+    win.document.close();
+  };
+
+  const mainContent = (
+    <div style={{
+      background: '#ffffff',
+      borderRadius: isEmbedded ? '16px' : '20px',
+      width: '100%',
+      maxWidth: isEmbedded ? '100%' : '980px',
+      maxHeight: isEmbedded ? 'none' : '94vh',
+      display: 'flex',
+      flexDirection: 'column',
+      boxShadow: isEmbedded ? '0 4px 20px rgba(15, 23, 42, 0.06)' : '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+      border: '1px solid #e2e8f0',
+      overflow: 'hidden'
+    }}>
+      {/* Cabecera */}
+      <div style={{
+        padding: '1.15rem 1.75rem',
+        background: 'linear-gradient(135deg, #4f46e5 0%, #1e1b4b 100%)',
+        color: '#ffffff',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.2)',
+            borderRadius: '12px',
+            padding: '9px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <Send size={22} color="#ffffff" />
+          </div>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, letterSpacing: '-0.3px', color: '#ffffff' }}>
+              Centro de Comunicaciones y Registro Oficial de Envíos
+            </h2>
+            <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#e0e7ff' }}>
+              Envíe comunicados a Cursos, Estudiantes, Apoderados y Docentes con trazabilidad completa de destinatarios
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          {/* Pestañas Superiores: Enviar vs Registro Histórico */}
+          <div style={{
+            display: 'flex',
+            background: 'rgba(15, 23, 42, 0.35)',
+            padding: '4px',
+            borderRadius: '12px',
+            border: '1px solid rgba(255, 255, 255, 0.2)'
+          }}>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => setActiveView('send')}
+                style={{
+                  padding: '0.45rem 0.9rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: activeView === 'send' ? '#ffffff' : 'transparent',
+                  color: activeView === 'send' ? '#1e1b4b' : '#e0e7ff',
+                  fontWeight: 800,
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Send size={14} /> Nuevo Comunicado
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveView('history');
+                fetchHistory();
+              }}
+              style={{
+                padding: '0.45rem 0.9rem',
+                borderRadius: '8px',
+                border: 'none',
+                background: activeView === 'history' ? '#ffffff' : 'transparent',
+                color: activeView === 'history' ? '#1e1b4b' : '#e0e7ff',
+                fontWeight: 800,
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <ClipboardList size={14} /> Registro de Enviados ({historyList.length})
+            </button>
+          </div>
+
+          {!isEmbedded && (
+            <button
+              onClick={onClose}
+              style={{
+                background: 'rgba(255, 255, 255, 0.15)',
+                border: 'none',
+                borderRadius: '50%',
+                width: '34px',
+                height: '34px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff',
+                cursor: 'pointer'
+              }}
+              title="Cerrar ventana"
+            >
+              <X size={20} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* VISTA 1: FORMULARIO DE NUEVO COMUNICADO */}
+      {activeView === 'send' && !readOnly ? (
+        <form onSubmit={handleSubmit} style={{ overflowY: isEmbedded ? 'visible' : 'auto', padding: '1.35rem 1.75rem', flex: 1 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
 
             {/* 1. Selector de Alcance (Curso o Liceo Completo) y Canal */}
@@ -750,7 +1128,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
                 </div>
               ) : (
                 <div style={{
-                  maxHeight: '195px',
+                  maxHeight: '210px',
                   overflowY: 'auto',
                   border: '1px solid #e2e8f0',
                   borderRadius: '12px',
@@ -1009,7 +1387,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
             }}>
               <span>
                 💡 <strong>Resumen de Envío:</strong> {totalSelectedCount} destinatario(s) en <strong>{scopeDisplay}</strong>
-                {channels !== 'platform' && ` (${totalUniqueEmails} correo(s) electrónico(s) + Portal de Apoderados/Docentes)`}.
+                {channels !== 'platform' && ` (${totalUniqueEmails} correo(s) electrónico(s) + Portal de Apoderados/Docentes)`}. Quedará respaldado en el <strong>Registro de Enviados</strong>.
               </span>
               <span style={{ fontWeight: 800, color: '#0284c7' }}>
                 {channels === 'both' ? 'Plataforma + Email' : channels === 'platform' ? 'Solo Plataforma' : 'Solo Email'}
@@ -1022,58 +1400,784 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
           <div style={{
             marginTop: '1.25rem',
             display: 'flex',
-            justifyContent: 'flex-end',
+            justifyContent: 'space-between',
+            alignItems: 'center',
             gap: '0.75rem',
             borderTop: '1px solid #e2e8f0',
-            paddingTop: '1rem'
+            paddingTop: '1rem',
+            flexWrap: 'wrap'
           }}>
             <button
               type="button"
-              onClick={onClose}
-              disabled={sending}
-              style={{
-                background: '#f1f5f9',
-                color: '#475569',
-                border: '1px solid #cbd5e1',
-                borderRadius: '10px',
-                padding: '0.6rem 1.25rem',
-                fontSize: '0.88rem',
-                fontWeight: 700,
-                cursor: 'pointer'
+              onClick={() => {
+                setActiveView('history');
+                fetchHistory();
               }}
-            >
-              Cancelar
-            </button>
-
-            <button
-              type="submit"
-              disabled={sending || totalSelectedCount === 0}
               style={{
-                background: sending ? '#94a3b8' : 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
-                color: '#ffffff',
-                border: 'none',
+                background: '#eef2ff',
+                color: '#4338ca',
+                border: '1px solid #c7d2fe',
                 borderRadius: '10px',
-                padding: '0.6rem 1.4rem',
-                fontSize: '0.88rem',
+                padding: '0.6rem 1.1rem',
+                fontSize: '0.82rem',
                 fontWeight: 800,
-                cursor: sending ? 'not-allowed' : 'pointer',
+                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.5rem',
-                boxShadow: '0 4px 12px rgba(79, 70, 229, 0.3)'
+                gap: '0.4rem'
               }}
             >
-              {sending ? (
-                <>⏳ Despachando Comunicado...</>
-              ) : (
-                <>
-                  <Send size={16} /> Despachar a {totalSelectedCount} Destinatario(s)
-                </>
-              )}
+              <ClipboardList size={16} /> Ver Registro de Comunicados Enviados ({historyList.length})
             </button>
+
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              {!isEmbedded && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={sending}
+                  style={{
+                    background: '#f1f5f9',
+                    color: '#475569',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '10px',
+                    padding: '0.6rem 1.25rem',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancelar
+                </button>
+              )}
+
+              <button
+                type="submit"
+                disabled={sending || totalSelectedCount === 0}
+                style={{
+                  background: sending ? '#94a3b8' : 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '0.6rem 1.4rem',
+                  fontSize: '0.88rem',
+                  fontWeight: 800,
+                  cursor: sending ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  boxShadow: '0 4px 12px rgba(79, 70, 229, 0.3)'
+                }}
+              >
+                {sending ? (
+                  <>⏳ Despachando Comunicado...</>
+                ) : (
+                  <>
+                    <Send size={16} /> Despachar a {totalSelectedCount} Destinatario(s)
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
-      </div>
+      ) : (
+        /* VISTA 2: REGISTRO E HISTORIAL DE COMUNICADOS ENVIADOS (¿A QUIÉN SE ENVIÓ?) */
+        <div style={{ overflowY: isEmbedded ? 'visible' : 'auto', padding: '1.35rem 1.75rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
+          {/* Tarjetas KPI de Trazabilidad */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+            gap: '0.85rem'
+          }}>
+            <div style={{ background: 'linear-gradient(135deg, #ffffff 0%, #eef2ff 100%)', border: '1px solid #c7d2fe', borderRadius: '12px', padding: '0.85rem 1rem' }}>
+              <div style={{ fontSize: '0.73rem', fontWeight: 800, color: '#4338ca', textTransform: 'uppercase' }}>Comunicados Enviados</div>
+              <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#1e1b4b', marginTop: '2px' }}>{historyStats.totalMessages}</div>
+              <div style={{ fontSize: '0.72rem', color: '#6366f1', fontWeight: 600 }}>Respaldados en bitácora oficial</div>
+            </div>
+
+            <div style={{ background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '0.85rem 1rem' }}>
+              <div style={{ fontSize: '0.73rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase' }}>Destinatarios Registrados</div>
+              <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#14532d', marginTop: '2px' }}>{historyStats.totalRecipients}</div>
+              <div style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>Alumnos, apoderados y docentes</div>
+            </div>
+
+            <div style={{ background: 'linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%)', border: '1px solid #bae6fd', borderRadius: '12px', padding: '0.85rem 1rem' }}>
+              <div style={{ fontSize: '0.73rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Entregas en Plataforma</div>
+              <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#0c4a6e', marginTop: '2px' }}>
+                {historyStats.totalPlatform} <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0284c7' }}>({historyStats.totalReads} leídos)</span>
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#0284c7', fontWeight: 600 }}>Portal Apoderado / Docente</div>
+            </div>
+
+            <div style={{ background: 'linear-gradient(135deg, #ffffff 0%, #faf5ff 100%)', border: '1px solid #e9d5ff', borderRadius: '12px', padding: '0.85rem 1rem' }}>
+              <div style={{ fontSize: '0.73rem', fontWeight: 800, color: '#6b21a8', textTransform: 'uppercase' }}>Correos Despachados</div>
+              <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#4c1d95', marginTop: '2px' }}>{historyStats.totalEmails}</div>
+              <div style={{ fontSize: '0.72rem', color: '#7e22ce', fontWeight: 600 }}>Notificaciones vía Email</div>
+            </div>
+          </div>
+
+          {/* Barra de Filtros y Búsqueda */}
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '0.65rem',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: '#f8fafc',
+            padding: '0.85rem 1rem',
+            borderRadius: '12px',
+            border: '1px solid #e2e8f0'
+          }}>
+            <div style={{ position: 'relative', flex: '1 1 260px' }}>
+              <Search size={15} color="#64748b" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="text"
+                value={historySearch}
+                onChange={e => setHistorySearch(e.target.value)}
+                placeholder="Buscar por alumno, RUT, apoderado, docente, asunto o contenido..."
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 0.75rem 0.5rem 2rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Filter size={14} color="#4f46e5" />
+                <select
+                  value={historyCourseFilter}
+                  onChange={e => setHistoryCourseFilter(e.target.value)}
+                  style={{
+                    padding: '0.45rem 0.65rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    background: '#ffffff',
+                    color: '#1e293b',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="ALL_FILTER">🏫 Todos los Cursos</option>
+                  <option value="MASIVO_ALL">📢 Masivo Todo el Liceo</option>
+                  {coursesList.map(c => (
+                    <option key={c} value={c}>Curso: {c}</option>
+                  ))}
+                </select>
+              </div>
+
+              <select
+                value={historyAudienceFilter}
+                onChange={e => setHistoryAudienceFilter(e.target.value)}
+                style={{
+                  padding: '0.45rem 0.65rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  background: '#ffffff',
+                  color: '#1e293b',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="ALL">👥 Todas las Audiencias</option>
+                <option value="students">🎓 Estudiantes / Apoderados</option>
+                <option value="teachers">👨‍🏫 Equipo Docente</option>
+                <option value="both">🌐 Comunidad Completa</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={fetchHistory}
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  padding: '0.45rem 0.75rem',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  color: '#334155',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem'
+                }}
+                title="Actualizar historial de comunicados"
+              >
+                <RefreshCw size={14} /> Actualizar
+              </button>
+
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => setActiveView('send')}
+                  style={{
+                    background: '#4f46e5',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '0.45rem 0.85rem',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    color: '#ffffff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <Send size={13} /> + Redactar Nuevo
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Lista de Comunicados Enviados */}
+          {loadingHistory ? (
+            <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b', fontSize: '0.9rem', background: '#f8fafc', borderRadius: '12px' }}>
+              ⏳ Cargando registro histórico de comunicados enviados y nóminas de destinatarios...
+            </div>
+          ) : filteredHistory.length === 0 ? (
+            <div style={{ padding: '3rem 1.5rem', textAlign: 'center', background: '#f8fafc', borderRadius: '14px', border: '1px dashed #cbd5e1' }}>
+              <ClipboardList size={40} color="#94a3b8" style={{ margin: '0 auto 0.75rem auto', display: 'block' }} />
+              <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1e293b', marginBottom: '0.3rem' }}>
+                No se encontraron comunicados en el registro
+              </div>
+              <p style={{ fontSize: '0.84rem', color: '#64748b', margin: 0 }}>
+                {historySearch ? 'Pruebe con otro término de búsqueda o limpie los filtros.' : 'Todos los mensajes y comunicados que envíe quedarán registrados aquí con el detalle exacto de a quién se enviaron.'}
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {filteredHistory.map(item => {
+                const recipients = Array.isArray(item.recipients) ? item.recipients : [];
+                const isUrgent = item.priority === 'urgente';
+                const isImportant = item.priority === 'importante';
+                const scopeLabel = item.course_name === 'ALL' ? '📢 Todos los Cursos (Liceo Completo)' : `🏫 Curso ${item.course_name}`;
+                const previewRecipients = recipients.slice(0, 5);
+                const remainingCount = Math.max(0, recipients.length - previewRecipients.length);
+
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      background: '#ffffff',
+                      border: isUrgent ? '1.5px solid #fca5a5' : isImportant ? '1.5px solid #fde68a' : '1px solid #e2e8f0',
+                      borderLeft: isUrgent ? '5px solid #dc2626' : isImportant ? '5px solid #d97706' : '5px solid #4f46e5',
+                      borderRadius: '14px',
+                      padding: '1rem 1.25rem',
+                      boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.65rem'
+                    }}
+                  >
+                    {/* Fila Superior: Badges y Fecha */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                        <span style={{
+                          background: item.course_name === 'ALL' ? '#eef2ff' : '#e0f2fe',
+                          color: item.course_name === 'ALL' ? '#3730a3' : '#0369a1',
+                          fontSize: '0.73rem',
+                          fontWeight: 800,
+                          padding: '3px 9px',
+                          borderRadius: '8px',
+                          border: item.course_name === 'ALL' ? '1px solid #c7d2fe' : '1px solid #bae6fd'
+                        }}>
+                          {scopeLabel}
+                        </span>
+
+                        <span style={{
+                          background: item.audience === 'students' ? '#ecfdf5' : item.audience === 'teachers' ? '#f5f3ff' : '#f0f9ff',
+                          color: item.audience === 'students' ? '#065f46' : item.audience === 'teachers' ? '#5b21b6' : '#075985',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '3px 8px',
+                          borderRadius: '8px'
+                        }}>
+                          {item.audience === 'students' ? '🎓 Estudiantes y Apoderados' : item.audience === 'teachers' ? '👨‍🏫 Docentes' : '🌐 Comunidad Completa'}
+                        </span>
+
+                        <span style={{
+                          background: '#f1f5f9',
+                          color: '#475569',
+                          fontSize: '0.71rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '6px'
+                        }}>
+                          📁 {item.category || 'General'}
+                        </span>
+
+                        {isUrgent && (
+                          <span style={{ background: '#fee2e2', color: '#991b1b', fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px' }}>
+                            🚨 URGENTE
+                          </span>
+                        )}
+                        {isImportant && (
+                          <span style={{ background: '#fef3c7', color: '#92400e', fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px' }}>
+                            ⚠️ IMPORTANTE
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                        <Clock size={13} />
+                        <span>{new Date(item.created_at).toLocaleString('es-CL')}</span>
+                      </div>
+                    </div>
+
+                    {/* Asunto y Contenido */}
+                    <div>
+                      <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.25rem' }}>
+                        {item.subject}
+                      </div>
+                      <div style={{
+                        fontSize: '0.84rem',
+                        color: '#334155',
+                        lineHeight: 1.5,
+                        whiteSpace: 'pre-line',
+                        background: '#f8fafc',
+                        padding: '0.65rem 0.9rem',
+                        borderRadius: '8px',
+                        border: '1px solid #f1f5f9',
+                        maxHeight: '110px',
+                        overflowY: 'auto'
+                      }}>
+                        {item.message}
+                      </div>
+                    </div>
+
+                    {/* Vista Rápida de ¿A quién se envió? */}
+                    <div style={{
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '10px',
+                      padding: '0.6rem 0.85rem'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.4rem' }}>
+                        <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <UserCheck size={14} color="#4f46e5" /> ¿A quién se envió este mensaje? ({recipients.length || item.total_recipients} destinatario{recipients.length === 1 ? '' : 's'}):
+                        </span>
+                        <div style={{ display: 'flex', gap: '0.6rem', fontSize: '0.73rem', fontWeight: 700 }}>
+                          <span style={{ color: '#0369a1' }}>
+                            📱 {item.platform_count || 0} en Portal ({item.read_count || 0} leído{(item.read_count || 0) === 1 ? '' : 's'})
+                          </span>
+                          <span style={{ color: '#15803d' }}>
+                            📧 {item.email_sent_count || 0} email(s)
+                          </span>
+                        </div>
+                      </div>
+
+                      {previewRecipients.length > 0 ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                          {previewRecipients.map((r, rIdx) => (
+                            <span
+                              key={rIdx}
+                              style={{
+                                fontSize: '0.72rem',
+                                background: r.recipientType === 'teacher' ? '#eef2ff' : '#f0fdf4',
+                                color: r.recipientType === 'teacher' ? '#3730a3' : '#166534',
+                                border: r.recipientType === 'teacher' ? '1px solid #c7d2fe' : '1px solid #bbf7d0',
+                                padding: '2px 8px',
+                                borderRadius: '999px',
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              {r.recipientType === 'teacher' ? '👨‍🏫' : '🎓'} {r.name}
+                              {r.courseName && r.courseName !== 'ALL' ? ` (${r.courseName})` : ''}
+                              {r.guardianName ? ` • Apod: ${r.guardianName}` : ''}
+                            </span>
+                          ))}
+                          {remainingCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRecipientModalSearch('');
+                                setSelectedHistoryItem(item);
+                              }}
+                              style={{
+                                fontSize: '0.72rem',
+                                background: '#e0e7ff',
+                                color: '#4338ca',
+                                border: '1px solid #a5b4fc',
+                                padding: '2px 9px',
+                                borderRadius: '999px',
+                                fontWeight: 800,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              +{remainingCount} destinatario(s) más... (Ver todos)
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                          Destinatarios registrados en el curso {item.course_name}. Haga clic en "Ver Nómina de Destinatarios" para consultar el detalle.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Pie de tarjeta: Emisor y Botones */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.6rem', paddingTop: '0.2rem' }}>
+                      <div style={{ fontSize: '0.76rem', color: '#475569' }}>
+                        Enviado por: <strong style={{ color: '#0f172a' }}>{item.sender_name || 'Administración'}</strong>{' '}
+                        <span style={{ background: '#f1f5f9', padding: '1px 6px', borderRadius: '5px', fontWeight: 700, fontSize: '0.7rem' }}>
+                          {item.sender_role || 'Institucional'}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRecipientModalSearch('');
+                            setSelectedHistoryItem(item);
+                          }}
+                          style={{
+                            background: '#4f46e5',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '0.42rem 0.85rem',
+                            fontSize: '0.76rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            boxShadow: '0 2px 6px rgba(79, 70, 229, 0.22)'
+                          }}
+                        >
+                          <Eye size={14} /> Ver Nómina de Destinatarios ({recipients.length || item.total_recipients})
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handlePrintCommunicationReceipt(item)}
+                          style={{
+                            background: '#f8fafc',
+                            color: '#334155',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '8px',
+                            padding: '0.42rem 0.75rem',
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem'
+                          }}
+                        >
+                          <Printer size={14} /> Imprimir Comprobante
+                        </button>
+
+                        {(user?.role === 'Admin' || user?.role === 'Director' || user?.role === 'Comunicaciones') && !readOnly && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteHistoryItem(item)}
+                            style={{
+                              background: '#fff1f2',
+                              color: '#be123c',
+                              border: '1px solid #fecdd3',
+                              borderRadius: '8px',
+                              padding: '0.42rem 0.65rem',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem'
+                            }}
+                            title="Eliminar registro"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MODAL DETALLE DE NÓMINA DE DESTINATARIOS DE UN COMUNICADO */}
+      {selectedHistoryItem && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.78)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 2200,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '18px',
+            width: '100%',
+            maxWidth: '940px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+            border: '1px solid #cbd5e1',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              padding: '1rem 1.5rem',
+              background: 'linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%)',
+              color: '#ffffff',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '1rem'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800, color: '#ffffff' }}>
+                  👥 Nómina Oficial de Destinatarios — ¿A quién se envió el comunicado?
+                </h3>
+                <div style={{ fontSize: '0.78rem', color: '#c7d2fe', marginTop: '2px' }}>
+                  📌 <strong>{selectedHistoryItem.subject}</strong> • Enviado el {new Date(selectedHistoryItem.created_at).toLocaleString('es-CL')} por {selectedHistoryItem.sender_name}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedHistoryItem(null)}
+                style={{
+                  background: 'rgba(255,255,255,0.18)',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '32px',
+                  height: '32px',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1rem 1.5rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div style={{ position: 'relative', flex: '1 1 280px' }}>
+                <Search size={14} color="#64748b" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  value={recipientModalSearch}
+                  onChange={e => setRecipientModalSearch(e.target.value)}
+                  placeholder="Filtrar destinatario por nombre de alumno, apoderado, docente, RUT o curso..."
+                  style={{
+                    width: '100%',
+                    padding: '0.48rem 0.75rem 0.48rem 2rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', background: '#e2e8f0', padding: '0.35rem 0.75rem', borderRadius: '8px' }}>
+                  Mostrando {filteredModalRecipients.length} destinatario(s)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handlePrintCommunicationReceipt(selectedHistoryItem)}
+                  style={{
+                    background: '#4f46e5',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '0.45rem 0.9rem',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <Printer size={14} /> Imprimir Nómina
+                </button>
+              </div>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, padding: '1rem 1.5rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                <thead>
+                  <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
+                    <th style={{ padding: '0.6rem 0.5rem', width: '40px', textAlign: 'center' }}>#</th>
+                    <th style={{ padding: '0.6rem 0.75rem' }}>Destinatario (Alumno / Docente)</th>
+                    <th style={{ padding: '0.6rem 0.75rem' }}>Curso</th>
+                    <th style={{ padding: '0.6rem 0.75rem' }}>Apoderado Vinculado</th>
+                    <th style={{ padding: '0.6rem 0.75rem' }}>Correo(s) Notificado(s)</th>
+                    <th style={{ padding: '0.6rem 0.75rem' }}>Estado en Plataforma</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredModalRecipients.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                        No se encontraron destinatarios con ese criterio de búsqueda.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredModalRecipients.map((r, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '0.55rem 0.5rem', textAlign: 'center', fontWeight: 700, color: '#64748b' }}>
+                          {idx + 1}
+                        </td>
+                        <td style={{ padding: '0.55rem 0.75rem' }}>
+                          <div style={{ fontWeight: 800, color: '#0f172a' }}>
+                            {r.recipientType === 'teacher' ? '👨‍🏫 ' : '🎓 '}
+                            {r.name}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                            RUT: {r.run || 'S/R'} • {r.recipientType === 'teacher' ? 'Docente' : 'Estudiante'}
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.55rem 0.75rem' }}>
+                          <span style={{
+                            background: '#e0f2fe',
+                            color: '#0369a1',
+                            fontWeight: 800,
+                            fontSize: '0.72rem',
+                            padding: '2px 7px',
+                            borderRadius: '6px'
+                          }}>
+                            {r.courseName === 'ALL' ? 'General' : (r.courseName || selectedHistoryItem.course_name)}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.55rem 0.75rem' }}>
+                          {r.recipientType === 'student' ? (
+                            <div>
+                              <div style={{ fontWeight: 700, color: '#1e293b' }}>
+                                👨‍👩‍👧 {r.guardianName || 'Sin registro'}
+                              </div>
+                              {r.guardianRun && (
+                                <div style={{ fontSize: '0.71rem', color: '#64748b' }}>
+                                  RUT Apod: {r.guardianRun}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span style={{ color: '#94a3b8' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.55rem 0.75rem', fontSize: '0.74rem' }}>
+                          {Array.isArray(r.emails) && r.emails.length > 0 ? (
+                            <span style={{ color: '#15803d', fontWeight: 600 }}>
+                              📧 {r.emails.join(', ')}
+                            </span>
+                          ) : (
+                            <span style={{ color: '#94a3b8' }}>Solo Plataforma</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.55rem 0.75rem' }}>
+                          {r.isReadInPlatform ? (
+                            <span style={{
+                              background: '#dcfce7',
+                              color: '#166534',
+                              padding: '3px 8px',
+                              borderRadius: '999px',
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              <CheckCircle2 size={12} /> Leído en Portal
+                            </span>
+                          ) : (
+                            <span style={{
+                              background: '#eff6ff',
+                              color: '#1d4ed8',
+                              padding: '3px 8px',
+                              borderRadius: '999px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              📱 Entregado en Portal
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ padding: '0.85rem 1.5rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setSelectedHistoryItem(null)}
+                style={{
+                  background: '#1e293b',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '0.5rem 1.25rem',
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                Cerrar Nómina
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  if (isEmbedded) {
+    return mainContent;
+  }
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(15, 23, 42, 0.72)',
+      backdropFilter: 'blur(4px)',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 1050,
+      padding: '1rem'
+    }}>
+      {mainContent}
     </div>
   );
 };
