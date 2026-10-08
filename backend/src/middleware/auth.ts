@@ -61,6 +61,7 @@ export function checkRoles(allowedRoles: string[]) {
       const lower = String(r || '').toLowerCase().trim();
       if (lower === 'profesor' || lower === 'docente') return 'Docente';
       if (lower === 'admin' || lower === 'administrador') return 'Admin';
+      if (lower === 'encargado cra') return 'EncargadoCRA';
       if (lower === 'asistente' || lower === 'asistente de la educación') return 'Asistente';
       if (lower === 'directivo' || lower === 'director') return 'Director';
       return r;

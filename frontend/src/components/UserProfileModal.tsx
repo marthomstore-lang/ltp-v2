@@ -29,6 +29,7 @@ import {
 } from '../context/AuthContext';
 import { formatRut } from '../utils/rut';
 import Swal from 'sweetalert2';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface UserProfileModalProps {
   onClose: () => void;
@@ -114,7 +115,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose, ini
   const { user, token, updateUser, logout, canCustomizeProfile } = useAuth();
   const allowedToCustomize = canCustomizeProfile && canUserCustomizeAppearance(user?.role);
 
-  const [activeTab, setActiveTab] = useState<'info' | 'customize'>(
+  const [activeTab, setActiveTab] = useState<'info' | 'customize' | 'credential'>(
     allowedToCustomize && initialTab === 'customize' ? 'customize' : 'info'
   );
 

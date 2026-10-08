@@ -467,6 +467,7 @@ CREATE TABLE IF NOT EXISTS "room_reservations" (
     "end_time" TEXT,
     "status" TEXT,
     "rejection_reason" TEXT,
+    "room_name" TEXT DEFAULT 'Sala de Computación',
     "calendar_event_id" TEXT
 );
 

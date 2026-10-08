@@ -20,6 +20,7 @@ import { sortCoursesList } from '../utils/course';
 interface ComputerLabModuleProps {
   token: string;
   user: any;
+  roomName?: string;
 }
 
 interface Reservation {
@@ -72,7 +73,7 @@ function getMondayOfWeek(refDate: Date): Date {
   return d;
 }
 
-export const ComputerLabModule: React.FC<ComputerLabModuleProps> = ({ token, user }) => {
+export const ComputerLabModule: React.FC<ComputerLabModuleProps> = ({ token, user, roomName = "Sala de Computación" }) => {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [coursesList, setCoursesList] = useState<string[]>(DEFAULT_COURSES);
   const [subjectsList, setSubjectsList] = useState<string[]>(DEFAULT_SUBJECTS);
@@ -141,7 +142,7 @@ export const ComputerLabModule: React.FC<ComputerLabModuleProps> = ({ token, use
   const loadReservations = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/room-reservations', {
+      const res = await fetch(`/api/room-reservations?room_name=${encodeURIComponent(roomName)}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include'
       });

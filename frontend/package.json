@@ -9,12 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "sweetalert2-react-content": "^5.0.7",
     "lucide-react": "^0.378.0",
+    "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.23.1",
-    "sweetalert2": "^11.10.8"
+    "sweetalert2": "^11.10.8",
+    "sweetalert2-react-content": "^5.0.7"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",

@@ -145,6 +145,7 @@ export const AdminDashboard: React.FC = () => {
     Director: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
     Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
     Comunicaciones: ['home', 'communications', 'students', 'apoderados', 'computer_lab', 'pedagogical_trips', 'admin_docs', 'course_messaging', 'multiview'],
+    EncargadoCRA: ['home', 'students', 'apoderados', 'communications', 'library', 'inspector_passes', 'admin_docs', 'multiview'],
     Bibliotecario: ['home', 'computer_lab', 'evaluations_pie', 'library', 'admin_docs', 'multiview'],
     Entrevistador: ['home', 'students', 'communications', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging', 'multiview'],
     Administrativo: ['home', 'students', 'apoderados', 'communications', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
@@ -2515,7 +2516,7 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         {/* VISTA 8.5: BIBLIOTECA CRA */}
-        {activeTab === 'library' && <LibraryCRAModule token={token || ''} />}
+        {activeTab === 'library' && <LibraryCRAModule token={token || ''} user={user} />}
 
         {/* VISTA 9: MATRIZ DE PERMISOS POR ROL */}
         {activeTab === 'permissions' && <PermissionsMatrix token={token || ''} />}

@@ -3,13 +3,15 @@ import { BookOpen, Calendar, Clock, AlertTriangle, CheckCircle2, User, Search, P
 import { getStudentCourse, sortCoursesList } from '../utils/course';
 import { getModuleSubTabFromUrl, syncModuleSubUrl } from '../utils/urlRouter';
 import Swal from 'sweetalert2';
+import { ComputerLabModule } from './ComputerLabModule';
 
 interface Props {
   token: string;
+  user: any;
 }
 
-export const LibraryCRAModule: React.FC<Props> = ({ token }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'books' | 'reading_plan' | 'loans' | 'returns' | 'daily_materials' | 'communications' | 'withdrawal_check' | 'reports'>(() =>
+export const LibraryCRAModule: React.FC<Props> = ({ token, user }) => {
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'books' | 'reading_plan' | 'loans' | 'returns' | 'daily_materials' | 'communications' | 'withdrawal_check' | 'reports' | 'reservations'>(() =>
     getModuleSubTabFromUrl('library', 'dashboard') as any
   );
 
@@ -1214,6 +1216,12 @@ export const LibraryCRAModule: React.FC<Props> = ({ token }) => {
       {/* ----------------------------------------------------------------------- */}
       {/* 8. MÓDULO REVISIÓN PARA RETIRO DE ESTUDIANTES                           */}
       {/* ----------------------------------------------------------------------- */}
+      {activeTab === 'reservations' && (
+        <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+          <ComputerLabModule token={token} user={user} roomName="Biblioteca CRA" />
+        </div>
+      )}
+
       {activeTab === 'withdrawal_check' && (
         <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '1.5rem' }}>
           <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '1.35rem', fontWeight: 700, margin: '0 0 0.4rem 0', color: '#0f172a' }}>

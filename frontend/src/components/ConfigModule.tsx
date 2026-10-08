@@ -118,6 +118,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
     const low = raw.toLowerCase();
     if (!raw) return 'Docente';
     if (low === 'admin' || low === 'administrador') return 'Admin';
+    if (low === 'encargado cra') return 'EncargadoCRA';
     if (low === 'director' || low === 'directivo' || low === 'directivo / utp' || low === 'utp') return 'Director';
     if (low === 'docente' || low === 'profesor' || low === 'docente de aula') return 'Docente';
     if (low === 'entrevistador' || low === 'convivencia') return 'Entrevistador';

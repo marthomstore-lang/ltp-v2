@@ -9371,7 +9371,7 @@ router.get('/room-reservations/blocks', authMiddleware, async (_req: Request, re
 // Listar todas las reservas con filtros opcionales
 router.get('/room-reservations', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const { date, month, year, teacher_email } = req.query;
+    const { date, month, year, teacher_email, room_name } = req.query;
     let sql = 'SELECT * FROM room_reservations WHERE 1=1';
     const params: any[] = [];
     let pIdx = 1;
@@ -9388,8 +9388,12 @@ router.get('/room-reservations', authMiddleware, async (req: Request, res: Respo
       params.push(year);
     }
     if (teacher_email) {
-      sql += ` AND teacher_email = $${pIdx++}`;
+      sql += ` AND teacher_email = ${pIdx++}`;
       params.push(teacher_email);
+    }
+    if (room_name) {
+      sql += ` AND room_name = ${pIdx++}`;
+      params.push(room_name);
     }
 
     sql += ' ORDER BY reservation_date DESC, start_time ASC';
@@ -9403,7 +9407,7 @@ router.get('/room-reservations', authMiddleware, async (req: Request, res: Respo
 
 // Procesar reservas multi-fecha
 router.post('/room-reservations', authMiddleware, async (req: Request, res: Response) => {
-  const { course_name, subject_name, activity_detail, dates, block_key, teacher_name, teacher_email, teacher_run } = req.body;
+  const { course_name, subject_name, activity_detail, dates, block_key, teacher_name, teacher_email, teacher_run, room_name } = req.body;
   const user = (req as any).user;
 
   const tEmail = (teacher_email || user?.email || 'docente@liceo.cl').trim();
@@ -9415,6 +9419,7 @@ router.post('/room-reservations', authMiddleware, async (req: Request, res: Resp
   }
 
   const blockInfo = OFFICIAL_BLOCKS[block_key] || { label: block_key, start: '08:30', end: '10:00' };
+  const rName = room_name || 'Sala de Computación';
 
   // Parsear fechas (pueden venir como array o string separado por comas)
   let dateList: string[] = [];
