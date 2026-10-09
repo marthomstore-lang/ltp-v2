@@ -9371,7 +9371,7 @@ router.get('/room-reservations/blocks', authMiddleware, async (_req: Request, re
 // Listar todas las reservas con filtros opcionales
 router.get('/room-reservations', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const { date, month, year, teacher_email, room_name } = req.query;
+    const { date, teacher_email, room_name } = req.query;
     let sql = 'SELECT * FROM room_reservations WHERE 1=1';
     const params: any[] = [];
     let pIdx = 1;
@@ -9380,19 +9380,12 @@ router.get('/room-reservations', authMiddleware, async (req: Request, res: Respo
       sql += ` AND reservation_date = $${pIdx++}`;
       params.push(date);
     }
-    if (month && year) {
-      sql += ` AND MONTH(reservation_date) = $${pIdx++} AND YEAR(reservation_date) = $${pIdx++}`;
-      params.push(month, year);
-    } else if (year) {
-      sql += ` AND YEAR(reservation_date) = $${pIdx++}`;
-      params.push(year);
-    }
     if (teacher_email) {
-      sql += ` AND teacher_email = ${pIdx++}`;
+      sql += ` AND teacher_email = $${pIdx++}`;
       params.push(teacher_email);
     }
     if (room_name) {
-      sql += ` AND room_name = ${pIdx++}`;
+      sql += ` AND room_name = $${pIdx++}`;
       params.push(room_name);
     }
 
@@ -9401,7 +9394,7 @@ router.get('/room-reservations', authMiddleware, async (req: Request, res: Respo
     res.json({ reservations: result.rows });
   } catch (err: any) {
     console.error('Error al listar reservas:', err);
-    res.status(500).json({ error: 'Error al consultar reservas de sala de computación.' });
+    res.status(500).json({ error: 'Error al consultar reservas.' });
   }
 });
 
@@ -9461,16 +9454,16 @@ router.post('/room-reservations', authMiddleware, async (req: Request, res: Resp
         continue;
       }
 
-      // Regla 3: Detección de colisiones atómica en MySQL
+      // Regla 3: Detección de colisiones atómica por recinto
       const conflictCheck = await query(`
         SELECT id, course_name, teacher_name, subject_name 
         FROM room_reservations 
-        WHERE reservation_date = $1 AND block_key = $2 AND status = 'Aprobado'
-      `, [dateStr, block_key]);
+        WHERE reservation_date = $1 AND block_key = $2 AND room_name = $3 AND status = 'Aprobado'
+      `, [dateStr, block_key, rName]);
 
       if (conflictCheck.rows.length > 0) {
         const c = conflictCheck.rows[0];
-        errors.push(`- ${dateStr}: Horario ocupado por ${c.course_name} (${c.subject_name} - ${c.teacher_name}).`);
+        errors.push(`- ${dateStr}: Horario ocupado en ${rName} por ${c.course_name} (${c.subject_name} - ${c.teacher_name}).`);
         continue;
       }
 
@@ -9480,11 +9473,11 @@ router.post('/room-reservations', authMiddleware, async (req: Request, res: Resp
       await query(`
         INSERT INTO room_reservations (
           id, teacher_name, teacher_email, teacher_run, course_name, subject_name,
-          activity_detail, reservation_date, block_key, block_label, start_time, end_time, status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'Aprobado')
+          activity_detail, reservation_date, block_key, block_label, start_time, end_time, status, room_name
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'Aprobado', $13)
       `, [
         resId, tName, tEmail, tRun, course_name, subject_name,
-        activity_detail || null, dateStr, block_key, blockInfo.label, blockInfo.start, blockInfo.end
+        activity_detail || null, dateStr, block_key, blockInfo.label, blockInfo.start, blockInfo.end, rName
       ]);
 
       successCount++;
@@ -9493,7 +9486,8 @@ router.post('/room-reservations', authMiddleware, async (req: Request, res: Resp
         date: dateStr,
         block: blockInfo.label,
         course: course_name,
-        subject: subject_name
+        subject: subject_name,
+        room_name: rName
       });
 
     } catch (dateErr: any) {
@@ -9502,7 +9496,7 @@ router.post('/room-reservations', authMiddleware, async (req: Request, res: Resp
     }
   }
 
-  await logAudit(req, 'ROOM_RESERVATION', `Reserva Sala Computación: ${successCount} de ${dateList.length} fechas agendadas para ${course_name}`);
+  await logAudit(req, 'ROOM_RESERVATION', `Reserva ${rName}: ${successCount} de ${dateList.length} fechas agendadas para ${course_name}`);
 
   if (successCount === dateList.length) {
     return res.json({

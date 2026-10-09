@@ -536,6 +536,25 @@ export const LibraryCRAModule: React.FC<Props> = ({ token, user }) => {
           >
             <Clock size={18} /> + Nuevo Préstamo Diario
           </button>
+          <button
+            onClick={() => setActiveTab('reservations')}
+            style={{
+              background: activeTab === 'reservations' ? '#4338ca' : '#4f46e5',
+              color: '#ffffff',
+              border: 'none',
+              padding: '0.7rem 1.2rem',
+              borderRadius: '10px',
+              fontWeight: 800,
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              boxShadow: '0 4px 12px rgba(79, 70, 229, 0.35)'
+            }}
+          >
+            <Calendar size={18} /> Calendario & Reservas CRA
+          </button>
         </div>
       </div>
 
@@ -553,14 +572,15 @@ export const LibraryCRAModule: React.FC<Props> = ({ token, user }) => {
       }}>
         {[
           { id: 'dashboard', label: '1. Inicio / KPIs', icon: BookOpen },
-          { id: 'books', label: '2. Catálogo & Inventario', icon: FileText },
-          { id: 'reading_plan', label: '3. Plan de Lectura', icon: CheckSquare },
-          { id: 'loans', label: '4. Préstamos Activos', icon: Calendar },
-          { id: 'returns', label: '5. Devoluciones', icon: RefreshCw },
-          { id: 'daily_materials', label: '6. Materiales Diarios', icon: Clock },
-          { id: 'communications', label: '7. Comunicaciones Gmail', icon: Mail },
-          { id: 'withdrawal_check', label: '8. Retiro Estudiantes', icon: ShieldAlert },
-          { id: 'reports', label: '9. Reportes & PDF/Excel', icon: Printer }
+          { id: 'reservations', label: '2. Calendario de Uso CRA', icon: Calendar },
+          { id: 'books', label: '3. Catálogo & Inventario', icon: FileText },
+          { id: 'reading_plan', label: '4. Plan de Lectura', icon: CheckSquare },
+          { id: 'loans', label: '5. Préstamos Activos', icon: BookOpen },
+          { id: 'returns', label: '6. Devoluciones', icon: RefreshCw },
+          { id: 'daily_materials', label: '7. Materiales Diarios', icon: Clock },
+          { id: 'communications', label: '8. Comunicaciones Gmail', icon: Mail },
+          { id: 'withdrawal_check', label: '9. Retiro Estudiantes', icon: ShieldAlert },
+          { id: 'reports', label: '10. Reportes & PDF/Excel', icon: Printer }
         ].map(tab => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -644,6 +664,19 @@ export const LibraryCRAModule: React.FC<Props> = ({ token, user }) => {
               <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Alumnos con Deuda</div>
               <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#4c1d95', marginTop: '0.2rem' }}>{dashboardStats.studentsWithDebt}</div>
               <div style={{ fontSize: '0.75rem', color: '#5b21b6', fontWeight: 600, marginTop: '0.2rem' }}>Bloqueados para retiro</div>
+            </div>
+
+            <div 
+              onClick={() => setActiveTab('reservations')}
+              style={{ background: 'linear-gradient(135deg, #059669 0%, #0d9488 100%)', padding: '1.25rem', borderRadius: '14px', color: '#ffffff', cursor: 'pointer', boxShadow: '0 8px 16px rgba(5, 150, 105, 0.25)', transition: 'transform 0.15s ease' }}
+              title="Ir al Calendario de Uso CRA"
+            >
+              <div style={{ fontSize: '0.75rem', opacity: 0.9, fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Uso Espacio CRA</span>
+                <Calendar size={15} />
+              </div>
+              <div style={{ fontSize: '1.35rem', fontWeight: 800, marginTop: '0.4rem' }}>Ver Calendario</div>
+              <div style={{ fontSize: '0.75rem', opacity: 0.9, fontWeight: 600, marginTop: '0.2rem' }}>Bloques & Reservas →</div>
             </div>
           </div>
 

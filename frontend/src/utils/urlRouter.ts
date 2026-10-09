@@ -78,6 +78,7 @@ export const MODULE_SUBPATHS: Record<string, Record<string, string>> = {
     communications: 'comunicaciones',
     withdrawal_check: 'paz-y-salvo',
     reports: 'reportes',
+    reservations: 'reservas',
   },
   // Pases & Atrasos (Inspectoría)
   inspector_passes: {

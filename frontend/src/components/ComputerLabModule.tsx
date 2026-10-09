@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Swal from 'sweetalert2';
 import {
   Monitor,
+  BookOpen,
   Calendar as CalendarIcon,
   Clock,
   Users,
@@ -74,6 +75,7 @@ function getMondayOfWeek(refDate: Date): Date {
 }
 
 export const ComputerLabModule: React.FC<ComputerLabModuleProps> = ({ token, user, roomName = "Sala de Computación" }) => {
+  const isLibrary = roomName.toLowerCase().includes('biblioteca') || roomName.toLowerCase().includes('cra');
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [coursesList, setCoursesList] = useState<string[]>(DEFAULT_COURSES);
   const [subjectsList, setSubjectsList] = useState<string[]>(DEFAULT_SUBJECTS);
@@ -212,6 +214,7 @@ export const ComputerLabModule: React.FC<ComputerLabModuleProps> = ({ token, use
         body: JSON.stringify({
           ...formData,
           dates: selectedDates,
+          room_name: roomName,
           teacher_name: user?.name || formData.teacher_name || 'Docente',
           teacher_email: user?.email || formData.teacher_email || 'docente@liceocampanario.cl',
           teacher_run: user?.run || ''
@@ -387,14 +390,17 @@ export const ComputerLabModule: React.FC<ComputerLabModuleProps> = ({ token, use
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
             <h2 style={{ fontFamily: 'Outfit, sans-serif', color: '#1e1b4b', margin: 0, fontSize: '1.4rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <Monitor size={26} color="#4f46e5" /> Reserva de Sala de Computación & Laboratorio de Informática
+              {isLibrary ? <BookOpen size={26} color="#059669" /> : <Monitor size={26} color="#4f46e5" />}
+              {isLibrary ? 'Calendario y Reserva de Biblioteca CRA' : 'Reserva de Sala de Computación & Laboratorio de Informática'}
             </h2>
-            <span style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '0.22rem 0.65rem', borderRadius: '9999px', fontSize: '0.73rem', fontWeight: 800 }}>
-              ● Calendario Interno Activo (Sin inicio de sesión externo)
+            <span style={{ background: isLibrary ? '#ecfdf5' : '#eef2ff', color: isLibrary ? '#047857' : '#4338ca', border: `1px solid ${isLibrary ? '#a7f3d0' : '#c7d2fe'}`, padding: '0.22rem 0.65rem', borderRadius: '9999px', fontSize: '0.73rem', fontWeight: 800 }}>
+              ● Calendario Interno Activo — {roomName}
             </span>
           </div>
           <p style={{ margin: '0.35rem 0 0', color: '#64748b', fontSize: '0.85rem' }}>
-            Calendario institucional integrado en la plataforma. Haz clic sobre cualquier bloque disponible para seleccionarlo y reservar inmediatamente.
+            {isLibrary 
+              ? 'Calendario institucional de Biblioteca CRA. Haz clic sobre cualquier bloque disponible para agendar el espacio con tu curso para lectura guiada, investigación o trabajo en equipo.'
+              : 'Calendario institucional integrado en la plataforma. Haz clic sobre cualquier bloque disponible para seleccionarlo y reservar inmediatamente.'}
           </p>
         </div>
 
@@ -419,13 +425,13 @@ export const ComputerLabModule: React.FC<ComputerLabModuleProps> = ({ token, use
         {/* LADO IZQUIERDO: CALENDARIO INTERNO INTERACTIVO POR BLOQUES Y MES */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           
-          {/* TARJETA CALENDARIO INTERNO DE SALA DE COMPUTACIÓN */}
+          {/* TARJETA CALENDARIO INTERNO */}
           <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.35rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
             {/* Cabecera y Selector de Modo (Semanal por Bloques vs Mensual) */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
               <div>
                 <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#1e1b4b', margin: 0, fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                  <CalendarIcon size={19} color="#4f46e5" /> Calendario Interno — Uso Sala de Computación
+                  <CalendarIcon size={19} color={isLibrary ? '#059669' : '#4f46e5'} /> Calendario Interno — Uso {roomName}
                 </h3>
                 <div style={{ fontSize: '0.77rem', color: '#64748b', marginTop: '0.15rem' }}>
                   Haz clic en un bloque <strong>Disponible</strong> para agendar o en uno <strong>Reservado</strong> para ver su detalle
@@ -877,14 +883,25 @@ export const ComputerLabModule: React.FC<ComputerLabModuleProps> = ({ token, use
         <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.5rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', position: 'sticky', top: '1rem' }}>
           
           <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)', color: '#ffffff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '0.5rem', boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)' }}>
-              <Monitor size={24} />
+            <div style={{ 
+              width: '48px', 
+              height: '48px', 
+              borderRadius: '12px', 
+              background: isLibrary ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)' : 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)', 
+              color: '#ffffff', 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              marginBottom: '0.5rem', 
+              boxShadow: isLibrary ? '0 4px 12px rgba(5, 150, 105, 0.3)' : '0 4px 12px rgba(99, 102, 241, 0.3)' 
+            }}>
+              {isLibrary ? <BookOpen size={24} /> : <Monitor size={24} />}
             </div>
             <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#1e1b4b', margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
-              Solicitar Reserva de Sala
+              {isLibrary ? 'Solicitar Reserva de Biblioteca CRA' : 'Solicitar Reserva de Sala'}
             </h3>
             <p style={{ color: '#64748b', fontSize: '0.8rem', margin: '0.25rem 0 0' }}>
-              Selecciona curso, asignatura, bloque y una o varias fechas
+              {isLibrary ? 'Reserva el espacio de biblioteca para clases, lectura o talleres' : 'Selecciona curso, asignatura, bloque y una o varias fechas'}
             </p>
           </div>
 
@@ -948,7 +965,7 @@ export const ComputerLabModule: React.FC<ComputerLabModuleProps> = ({ token, use
                 rows={2}
                 value={formData.activity_detail}
                 onChange={e => setFormData({ ...formData, activity_detail: e.target.value })}
-                placeholder="Ej: Investigación web, uso de procesador de texto, proyecto..."
+                placeholder={isLibrary ? "Ej: Lectura guiada en sala, investigación con libros CRA, trabajo grupal..." : "Ej: Investigación web, uso de procesador de texto, proyecto..."}
                 style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#f8fafc' }}
               />
             </div>
