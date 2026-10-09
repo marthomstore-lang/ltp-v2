@@ -1580,8 +1580,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           </p>
         </div>
       ) : (
-      <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+      <div className="table-responsive-wrapper" style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+        <table className="grades-table-mobile" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
             <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               <th style={{ width: '45px', padding: '0.8rem 0.5rem', textAlign: 'center' }}>N°</th>
