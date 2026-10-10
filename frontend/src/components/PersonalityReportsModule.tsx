@@ -461,11 +461,18 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
   return (
     <div className="personality-module-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <style>{`
+        /* Estilos optimizados de impresion institucional MINEDUC */
         @media print {
+          @page {
+            size: letter portrait;
+            margin: 1.2cm 1.4cm 1.4cm 1.4cm;
+          }
           body, html {
-            background: white !important;
+            background: #ffffff !important;
             height: auto !important;
             overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           .app-sidebar, .sidebar, .header, .nav, .app-header, .no-print, .tab-buttons, .admin-sidebar, .header-container, .top-bar {
             display: none !important;
@@ -487,17 +494,42 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
           .personality-printable-sheet {
             page-break-after: always !important;
             break-after: page !important;
-            margin: 0 0 2rem 0 !important;
+            margin: 0 0 1.5rem 0 !important;
             padding: 0 !important;
             border: none !important;
             box-shadow: none !important;
+            font-size: 11pt !important;
           }
           table {
             page-break-inside: auto !important;
+            border-collapse: collapse !important;
           }
           tr {
             page-break-inside: avoid !important;
             page-break-after: auto !important;
+          }
+          thead {
+            display: table-header-group !important;
+          }
+          .print-badge-cell {
+            display: inline-block !important;
+          }
+          .interactive-select-cell {
+            display: none !important;
+          }
+          .print-observations-box {
+            display: block !important;
+          }
+          .interactive-observations-input {
+            display: none !important;
+          }
+        }
+        @media screen {
+          .print-badge-cell {
+            display: none !important;
+          }
+          .print-observations-box {
+            display: none !important;
           }
         }
       `}</style>
@@ -1506,50 +1538,86 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
                                     {ind.text}
                                   </td>
                                   <td style={{ padding: '0.25rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>
-                                    <select
-                                      value={val1}
-                                      onChange={e => handleSetIndicator(st, 'sem1', ind.id, e.target.value)}
-                                      style={{
-                                        width: '100%',
-                                        textAlign: 'center',
-                                        fontWeight: 800,
-                                        fontSize: '0.76rem',
-                                        padding: '3px 4px',
-                                        borderRadius: '5px',
-                                        border: '1px solid #cbd5e1',
-                                        background: style1.bgColor,
-                                        color: style1.color,
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      {currentTemplate.scale.map(sc => (
-                                        <option key={sc.code} value={sc.code}>{sc.code}</option>
-                                      ))}
-                                      <option value="-">-</option>
-                                    </select>
+                                    <div className="interactive-select-cell">
+                                      <select
+                                        value={val1}
+                                        onChange={e => handleSetIndicator(st, 'sem1', ind.id, e.target.value)}
+                                        style={{
+                                          width: '100%',
+                                          textAlign: 'center',
+                                          fontWeight: 800,
+                                          fontSize: '0.76rem',
+                                          padding: '3px 4px',
+                                          borderRadius: '5px',
+                                          border: '1px solid #cbd5e1',
+                                          background: style1.bgColor,
+                                          color: style1.color,
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        {currentTemplate.scale.map(sc => (
+                                          <option key={sc.code} value={sc.code}>{sc.code}</option>
+                                        ))}
+                                        <option value="-">-</option>
+                                      </select>
+                                    </div>
+                                    <div className="print-badge-cell">
+                                      <span style={{
+                                        display: 'inline-block',
+                                        minWidth: '28px',
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        fontWeight: 900,
+                                        fontSize: '0.78rem',
+                                        background: val1 === '-' ? '#f1f5f9' : style1.bgColor,
+                                        color: val1 === '-' ? '#94a3b8' : style1.color,
+                                        border: `1.5px solid ${val1 === '-' ? '#cbd5e1' : style1.color}`,
+                                        textAlign: 'center'
+                                      }}>
+                                        {val1}
+                                      </span>
+                                    </div>
                                   </td>
                                   <td style={{ padding: '0.25rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>
-                                    <select
-                                      value={val2}
-                                      onChange={e => handleSetIndicator(st, 'sem2', ind.id, e.target.value)}
-                                      style={{
-                                        width: '100%',
-                                        textAlign: 'center',
-                                        fontWeight: 800,
-                                        fontSize: '0.76rem',
-                                        padding: '3px 4px',
-                                        borderRadius: '5px',
-                                        border: '1px solid #cbd5e1',
-                                        background: style2.bgColor,
-                                        color: style2.color,
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      <option value="-">-</option>
-                                      {currentTemplate.scale.map(sc => (
-                                        <option key={sc.code} value={sc.code}>{sc.code}</option>
-                                      ))}
-                                    </select>
+                                    <div className="interactive-select-cell">
+                                      <select
+                                        value={val2}
+                                        onChange={e => handleSetIndicator(st, 'sem2', ind.id, e.target.value)}
+                                        style={{
+                                          width: '100%',
+                                          textAlign: 'center',
+                                          fontWeight: 800,
+                                          fontSize: '0.76rem',
+                                          padding: '3px 4px',
+                                          borderRadius: '5px',
+                                          border: '1px solid #cbd5e1',
+                                          background: style2.bgColor,
+                                          color: style2.color,
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        <option value="-">-</option>
+                                        {currentTemplate.scale.map(sc => (
+                                          <option key={sc.code} value={sc.code}>{sc.code}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div className="print-badge-cell">
+                                      <span style={{
+                                        display: 'inline-block',
+                                        minWidth: '28px',
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        fontWeight: 900,
+                                        fontSize: '0.78rem',
+                                        background: val2 === '-' ? '#f1f5f9' : style2.bgColor,
+                                        color: val2 === '-' ? '#94a3b8' : style2.color,
+                                        border: `1.5px solid ${val2 === '-' ? '#cbd5e1' : style2.color}`,
+                                        textAlign: 'center'
+                                      }}>
+                                        {val2}
+                                      </span>
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -1566,7 +1634,8 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
                   <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
                     Observaciones y Sugerencias al Hogar:
                   </div>
-                  <textarea
+                  <div className="interactive-observations-input">
+                    <textarea
                     value={evalData.observations || ''}
                     onChange={e => handleSetObservations(st, e.target.value)}
                     placeholder="Escriba aquí observaciones cualitativas, fortalezas o compromisos formativos del estudiante..."
@@ -1581,6 +1650,20 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
                       boxSizing: 'border-box'
                     }}
                   />
+                  </div>
+                  <div className="print-observations-box" style={{
+                    minHeight: '48px',
+                    padding: '0.55rem 0.75rem',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    background: '#f8fafc',
+                    fontSize: '0.82rem',
+                    color: '#1e293b',
+                    lineHeight: 1.45,
+                    whiteSpace: 'pre-wrap'
+                  }}>
+                    {evalData.observations || 'Sin observaciones adicionales para el período evaluado.'}
+                  </div>
                 </div>
 
                 {/* FIRMAS OFICIALES */}
