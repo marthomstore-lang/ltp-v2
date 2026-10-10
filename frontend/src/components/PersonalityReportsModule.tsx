@@ -62,6 +62,7 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
   const [selectedCourse, setSelectedCourse] = useState<string>('');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [printMode, setPrintMode] = useState<'single' | 'all'>('single');
+  const [semesterView, setSemesterView] = useState<'all' | 'sem1' | 'sem2'>('all');
 
   // Datos editables de encabezado / firmas
   const [teacherInput, setTeacherInput] = useState<string>('Educador(a) / Profesor(a) Jefe');
@@ -461,11 +462,11 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
   return (
     <div className="personality-module-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <style>{`
-        /* Estilos optimizados de impresion institucional MINEDUC */
+        /* Estilos compactos y optimizados de impresion institucional MINEDUC */
         @media print {
           @page {
             size: letter portrait;
-            margin: 1.2cm 1.4cm 1.4cm 1.4cm;
+            margin: 0.8cm 1cm 0.8cm 1cm;
           }
           body, html {
             background: #ffffff !important;
@@ -494,19 +495,35 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
           .personality-printable-sheet {
             page-break-after: always !important;
             break-after: page !important;
-            margin: 0 0 1.5rem 0 !important;
-            padding: 0 !important;
+            margin: 0 0 1rem 0 !important;
+            padding: 0.5rem !important;
             border: none !important;
             box-shadow: none !important;
-            font-size: 11pt !important;
+            font-size: 10pt !important;
+          }
+          .personality-header-box {
+            margin-bottom: 0.35rem !important;
+          }
+          .personality-student-card {
+            padding: 0.45rem 0.75rem !important;
+            margin-bottom: 0.45rem !important;
+          }
+          .personality-scale-box {
+            padding: 0.35rem 0.65rem !important;
+            margin-bottom: 0.45rem !important;
           }
           table {
             page-break-inside: auto !important;
             border-collapse: collapse !important;
+            margin-bottom: 0.4rem !important;
           }
           tr {
             page-break-inside: avoid !important;
             page-break-after: auto !important;
+          }
+          th, td {
+            padding: 0.22rem 0.45rem !important;
+            font-size: 0.72rem !important;
           }
           thead {
             display: table-header-group !important;
@@ -522,6 +539,12 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
           }
           .interactive-observations-input {
             display: none !important;
+          }
+          .personality-signatures {
+            margin-top: 1.4rem !important;
+          }
+          .personality-signature-line {
+            height: 28px !important;
           }
         }
         @media screen {
@@ -659,6 +682,60 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
                 <Save size={16} /> {saving ? 'Guardando...' : 'Guardar Evaluación'}
               </button>
 
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(0,0,0,0.22)', padding: '0.25rem 0.45rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.18)' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#e0e7ff', textTransform: 'uppercase', marginRight: '2px' }}>
+                  Semestre a Imprimir:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSemesterView('all')}
+                  style={{
+                    padding: '0.35rem 0.65rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: semesterView === 'all' ? '#ffffff' : 'transparent',
+                    color: semesterView === 'all' ? '#1e1b4b' : '#cbd5e1',
+                    fontWeight: 800,
+                    fontSize: '0.76rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Ambos Semestres
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSemesterView('sem1')}
+                  style={{
+                    padding: '0.35rem 0.65rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: semesterView === 'sem1' ? '#4f46e5' : 'transparent',
+                    color: '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '0.76rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Solo 1° Semestre
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSemesterView('sem2')}
+                  style={{
+                    padding: '0.35rem 0.65rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: semesterView === 'sem2' ? '#4f46e5' : 'transparent',
+                    color: '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '0.76rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Solo 2° Semestre
+                </button>
+              </div>
+
               <button
                 type="button"
                 onClick={() => {
@@ -680,7 +757,7 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
                   boxShadow: '0 4px 10px rgba(79, 70, 229, 0.35)'
                 }}
               >
-                <Printer size={16} /> Imprimir Alumno
+                <Printer size={16} /> Imprimir Alumno ({semesterView === 'all' ? 'Ambos' : semesterView === 'sem1' ? '1° Sem' : '2° Sem'})
               </button>
 
               {courseStudents.length > 1 && (
@@ -1375,8 +1452,8 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
                   background: '#ffffff',
                   border: '2px solid #0f172a',
                   borderRadius: '12px',
-                  padding: '2rem',
-                  marginBottom: '2rem',
+                  padding: '1.25rem',
+                  marginBottom: '1.25rem',
                   boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.08)',
                   fontFamily: 'Arial, sans-serif',
                   color: '#0f172a'
@@ -1503,14 +1580,18 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
                       </div>
                     )}
 
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem', marginBottom: '0.65rem' }}>
                       <thead>
                         <tr style={{ background: '#004b87', color: '#ffffff' }}>
-                          <th style={{ padding: '0.45rem 0.7rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>
+                          <th style={{ padding: '0.32rem 0.6rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>
                             {ambito.ambitoTitle ? 'Núcleo / Indicadores de Evaluación' : 'Área / Indicadores de Evaluación'}
                           </th>
-                          <th style={{ padding: '0.45rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '90px' }}>1er Sem</th>
-                          <th style={{ padding: '0.45rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '90px' }}>2do Sem</th>
+                          {(semesterView === 'all' || semesterView === 'sem1') && (
+                            <th style={{ padding: '0.32rem 0.4rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '85px' }}>1er Sem</th>
+                          )}
+                          {(semesterView === 'all' || semesterView === 'sem2') && (
+                            <th style={{ padding: '0.32rem 0.4rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '85px' }}>2do Sem</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -1537,7 +1618,8 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
                                     )}
                                     {ind.text}
                                   </td>
-                                  <td style={{ padding: '0.25rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>
+                                  {(semesterView === 'all' || semesterView === 'sem1') && (
+                                  <td style={{ padding: '0.2rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>
                                     <div className="interactive-select-cell">
                                       <select
                                         value={val1}
@@ -1546,9 +1628,9 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
                                           width: '100%',
                                           textAlign: 'center',
                                           fontWeight: 800,
-                                          fontSize: '0.76rem',
-                                          padding: '3px 4px',
-                                          borderRadius: '5px',
+                                          fontSize: '0.74rem',
+                                          padding: '2px 3px',
+                                          borderRadius: '4px',
                                           border: '1px solid #cbd5e1',
                                           background: style1.bgColor,
                                           color: style1.color,
@@ -1564,21 +1646,23 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
                                     <div className="print-badge-cell">
                                       <span style={{
                                         display: 'inline-block',
-                                        minWidth: '28px',
-                                        padding: '2px 8px',
-                                        borderRadius: '4px',
+                                        minWidth: '26px',
+                                        padding: '1px 6px',
+                                        borderRadius: '3px',
                                         fontWeight: 900,
-                                        fontSize: '0.78rem',
+                                        fontSize: '0.74rem',
                                         background: val1 === '-' ? '#f1f5f9' : style1.bgColor,
                                         color: val1 === '-' ? '#94a3b8' : style1.color,
-                                        border: `1.5px solid ${val1 === '-' ? '#cbd5e1' : style1.color}`,
+                                        border: `1.2px solid ${val1 === '-' ? '#cbd5e1' : style1.color}`,
                                         textAlign: 'center'
                                       }}>
                                         {val1}
                                       </span>
                                     </div>
                                   </td>
-                                  <td style={{ padding: '0.25rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>
+                                  )}
+                                  {(semesterView === 'all' || semesterView === 'sem2') && (
+                                  <td style={{ padding: '0.2rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>
                                     <div className="interactive-select-cell">
                                       <select
                                         value={val2}
@@ -1587,9 +1671,9 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
                                           width: '100%',
                                           textAlign: 'center',
                                           fontWeight: 800,
-                                          fontSize: '0.76rem',
-                                          padding: '3px 4px',
-                                          borderRadius: '5px',
+                                          fontSize: '0.74rem',
+                                          padding: '2px 3px',
+                                          borderRadius: '4px',
                                           border: '1px solid #cbd5e1',
                                           background: style2.bgColor,
                                           color: style2.color,
@@ -1605,20 +1689,21 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
                                     <div className="print-badge-cell">
                                       <span style={{
                                         display: 'inline-block',
-                                        minWidth: '28px',
-                                        padding: '2px 8px',
-                                        borderRadius: '4px',
+                                        minWidth: '26px',
+                                        padding: '1px 6px',
+                                        borderRadius: '3px',
                                         fontWeight: 900,
-                                        fontSize: '0.78rem',
+                                        fontSize: '0.74rem',
                                         background: val2 === '-' ? '#f1f5f9' : style2.bgColor,
                                         color: val2 === '-' ? '#94a3b8' : style2.color,
-                                        border: `1.5px solid ${val2 === '-' ? '#cbd5e1' : style2.color}`,
+                                        border: `1.2px solid ${val2 === '-' ? '#cbd5e1' : style2.color}`,
                                         textAlign: 'center'
                                       }}>
                                         {val2}
                                       </span>
                                     </div>
                                   </td>
+                                  )}
                                 </tr>
                               );
                             })}
