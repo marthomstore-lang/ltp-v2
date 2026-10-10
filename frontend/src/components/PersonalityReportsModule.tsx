@@ -467,7 +467,7 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
             height: auto !important;
             overflow: visible !important;
           }
-          .app-sidebar, .sidebar, .header, .nav, .app-header, .no-print, .tab-buttons, .admin-sidebar, .header-container {
+          .app-sidebar, .sidebar, .header, .nav, .app-header, .no-print, .tab-buttons, .admin-sidebar, .header-container, .top-bar {
             display: none !important;
           }
           #root, .app-container, .main-content, .dashboard-container, .dashboard-layout, .module-wrapper, .admin-layout, .admin-content {
