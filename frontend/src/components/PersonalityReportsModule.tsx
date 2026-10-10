@@ -462,33 +462,42 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
     <div className="personality-module-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <style>{`
         @media print {
-          body * {
-            visibility: hidden !important;
+          body, html {
+            background: white !important;
+            height: auto !important;
+            overflow: visible !important;
           }
-          .personality-print-area,
-          .personality-print-area * {
-            visibility: visible !important;
+          .app-sidebar, .sidebar, .header, .nav, .app-header, .no-print, .tab-buttons, .admin-sidebar, .header-container {
+            display: none !important;
+          }
+          #root, .app-container, .main-content, .dashboard-container, .dashboard-layout, .module-wrapper, .admin-layout, .admin-content {
+            display: block !important;
+            height: auto !important;
+            overflow: visible !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
           }
           .personality-print-area {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            display: block !important;
             width: 100% !important;
-            background: #ffffff !important;
-            padding: 0 !important;
             margin: 0 !important;
-          }
-          .no-print {
-            display: none !important;
+            padding: 0 !important;
           }
           .personality-printable-sheet {
             page-break-after: always !important;
             break-after: page !important;
+            margin: 0 0 2rem 0 !important;
+            padding: 0 !important;
+            border: none !important;
             box-shadow: none !important;
-            border: 1px solid #0f172a !important;
-            margin: 0 !important;
-            padding: 1cm !important;
-            width: 100% !important;
+          }
+          table {
+            page-break-inside: auto !important;
+          }
+          tr {
+            page-break-inside: avoid !important;
+            page-break-after: auto !important;
           }
         }
       `}</style>
