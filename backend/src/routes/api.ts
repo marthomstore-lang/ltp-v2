@@ -4981,7 +4981,9 @@ async function ensureCumulativeTablesExist() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           UNIQUE (student_id, grade_column_id, sub_evaluation_id)
         )
-      `).catch(() => { })
+      `).catch(() => { }),
+      query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_grades_student_column ON grades (student_id, grade_column_id)`).catch(() => { }),
+      query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_cum_sub_grades ON cumulative_sub_grades (student_id, grade_column_id, sub_evaluation_id)`).catch(() => { })
     ]);
   } catch (err) {
     console.error('Error verificando tablas de calificaciones:', err);
