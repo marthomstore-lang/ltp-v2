@@ -713,6 +713,84 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
     }));
   };
 
+  // PEGAR DIRECTO DESDE EXCEL EN LAS CELDAS DE CALIFICACIONES (CTRL + V)
+  const handleCellPaste = (
+    e: React.ClipboardEvent<HTMLInputElement>,
+    startStudentIndex: number,
+    startColIndex: number
+  ) => {
+    const pasteData = e.clipboardData.getData('text');
+    if (!pasteData) return;
+
+    const lines = pasteData.split(/\r\n|\n|\r/).map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) return;
+
+    if (lines.length === 1 && !lines[0].includes('\t')) {
+      return; // Dejar que el input regular procese un pegado de 1 sola celda
+    }
+
+    e.preventDefault();
+
+    const newMap = { ...gradesMapRef.current };
+    let appliedCount = 0;
+
+    lines.forEach((line, lineOffset) => {
+      const targetStudentIdx = startStudentIndex + lineOffset;
+      if (targetStudentIdx >= students.length) return;
+      const targetStudent = students[targetStudentIdx];
+      if (isStudentRetired(targetStudent)) return;
+
+      const cols = line.split('\t');
+      cols.forEach((colVal, colOffset) => {
+        const targetColIdx = startColIndex + colOffset;
+        if (targetColIdx >= evalColumns.length) return;
+        const targetCol = evalColumns[targetColIdx];
+
+        let val = 0;
+        if (isConceptual) {
+          const v = colVal.toUpperCase().replace(/[^MBSI0-9.,]/g, '').slice(0, 2);
+          if (v === 'MB' || v === 'M') val = 7.0;
+          else if (v === 'B') val = 5.5;
+          else if (v === 'S') val = 4.5;
+          else if (v === 'I') val = 3.0;
+        } else {
+          const cleaned = colVal.replace(/[^0-9.,]/g, '');
+          const digitsOnly = cleaned.replace(/[.,]/g, '');
+          let n = parseFloat(cleaned.replace(',', '.'));
+          if (!cleaned.includes(',') && !cleaned.includes('.')) {
+            if (digitsOnly.length === 1) n = parseInt(digitsOnly, 10);
+            else if (digitsOnly.length >= 2) n = parseInt(digitsOnly.slice(0, 2), 10) / 10.0;
+          }
+          if (!isNaN(n) && n > 0) {
+            if (n > 7.0 && n <= 70.0) n = n / 10.0;
+            if (n > 7.0) n = 7.0;
+            val = Math.round(n * 10) / 10;
+          }
+        }
+
+        if (val > 0) {
+          const key = `${targetStudent.id}_${targetCol.id}`;
+          newMap[key] = val;
+          dirtyCellsRef.current.add(key);
+          appliedCount++;
+        }
+      });
+    });
+
+    if (appliedCount > 0) {
+      gradesMapRef.current = newMap;
+      setGradesMap(newMap);
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: `¡${appliedCount} notas pegadas desde Excel! Recuerda presionar "Guardar Calificaciones".`,
+        timer: 3000,
+        showConfirmButton: false
+      });
+    }
+  };
+
   // GUARDAR NOTA EN LA BASE DE DATOS
   const handleSaveGrade = async (studentId: string, columnId: string) => {
     const st = students.find(s => s.id === studentId);
@@ -1703,6 +1781,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                             disabled={isLocked || retired}
                             value={displayVal}
                             onChange={e => handleGradeChange(s.id, col.id, e.target.value)}
+                            onPaste={e => handleCellPaste(e, idx, cIdx)}
                             onBlur={() => handleSaveGrade(s.id, col.id)}
                             onKeyDown={e => handleKeyDown(e, idx, cIdx, s.id, col.id)}
                             onFocus={e => {

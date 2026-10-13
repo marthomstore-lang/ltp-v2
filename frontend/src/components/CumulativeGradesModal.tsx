@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Edit2, Trash2, Save, BarChart2, CheckCircle2 } from 'lucide-react';
+import { X, Plus, Edit2, Trash2, Save, BarChart2, CheckCircle2, Clipboard, Zap, Sparkles, HelpCircle, FileSpreadsheet } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { isStudentRetired, getStudentWithdrawalDate } from '../utils/course';
 
@@ -58,6 +58,31 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [gradeScaleMode, setGradeScaleMode] = useState<'decimal' | 'entera'>('decimal');
+
+  // MODAL ASISTENTE PARA PEGAR DESDE EXCEL
+  const [showPasteModal, setShowPasteModal] = useState<boolean>(false);
+  const [pasteTargetSubId, setPasteTargetSubId] = useState<string>('all');
+  const [pastedRawText, setPastedRawText] = useState<string>('');
+
+  // HELPER UNIVERSAL PARA CONVERTIR TEXTO A NOTA VÁLIDA (1.0 A 7.0)
+  const parseRawGrade = (valStr: string): number => {
+    if (!valStr) return 0;
+    const cleaned = valStr.trim().replace(/[^0-9.,]/g, '');
+    if (!cleaned) return 0;
+    const digitsOnly = cleaned.replace(/[.,]/g, '');
+    let val = parseFloat(cleaned.replace(',', '.'));
+    if (!cleaned.includes(',') && !cleaned.includes('.')) {
+      if (digitsOnly.length === 1) {
+        val = parseInt(digitsOnly, 10);
+      } else if (digitsOnly.length >= 2) {
+        val = parseInt(digitsOnly.slice(0, 2), 10) / 10.0;
+      }
+    }
+    if (isNaN(val) || val <= 0) return 0;
+    if (val > 7.0 && val <= 70.0) val = val / 10.0;
+    if (val > 7.0) val = 7.0;
+    return Math.round(val * 10) / 10;
+  };
 
   // Cargar sub-evaluaciones y sub-notas existentes desde el backend
   useEffect(() => {
@@ -286,6 +311,205 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
     }
   };
 
+  // PEGAR CALIFICACIONES DIRECTO DESDE EXCEL EN LAS CELDAS (CTRL + V)
+  const handleCellPaste = (
+    e: React.ClipboardEvent<HTMLInputElement>,
+    startStudentIndex: number,
+    startSubIndex: number
+  ) => {
+    const pasteData = e.clipboardData.getData('text');
+    if (!pasteData) return;
+
+    const lines = pasteData.split(/\r\n|\n|\r/).map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) return;
+
+    // Si es un solo valor simple sin tabulaciones ni saltos de línea
+    if (lines.length === 1 && !lines[0].includes('\t')) {
+      const singleGrade = parseRawGrade(lines[0]);
+      if (singleGrade > 0) {
+        e.preventDefault();
+        const st = students[startStudentIndex];
+        const sub = subEvaluations[startSubIndex];
+        if (st && sub && !isStudentRetired(st)) {
+          setSubGradesMap(prev => ({ ...prev, [`${st.id}_${sub.id}`]: singleGrade }));
+        }
+      }
+      return;
+    }
+
+    e.preventDefault();
+
+    const newGrades = { ...subGradesMap };
+    let appliedCount = 0;
+
+    lines.forEach((line, lineOffset) => {
+      const targetStudentIdx = startStudentIndex + lineOffset;
+      if (targetStudentIdx >= students.length) return;
+      const targetStudent = students[targetStudentIdx];
+      if (isStudentRetired(targetStudent)) return;
+
+      const cols = line.split('\t');
+      cols.forEach((colVal, colOffset) => {
+        const targetSubIdx = startSubIndex + colOffset;
+        if (targetSubIdx >= subEvaluations.length) return;
+        const targetSub = subEvaluations[targetSubIdx];
+        const parsed = parseRawGrade(colVal);
+        if (parsed > 0) {
+          newGrades[`${targetStudent.id}_${targetSub.id}`] = parsed;
+          appliedCount++;
+        }
+      });
+    });
+
+    if (appliedCount > 0) {
+      setSubGradesMap(newGrades);
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: `¡${appliedCount} notas pegadas desde Excel!`,
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } else {
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'warning',
+        title: 'No se detectaron notas válidas en el texto copiado',
+        timer: 2000,
+        showConfirmButton: false
+      });
+    }
+  };
+
+  // ASIGNACIÓN RÁPIDA MASIVA / RELLENAR NOTA BASE (EJ: 7,0 O NOTA DE GUÍA)
+  const handleBulkFillSubEvaluation = async (sub: SubEvaluation) => {
+    const { value: formValues } = await Swal.fire({
+      title: `⚡ Asignar Nota Masiva: ${sub.title}`,
+      html: `
+        <div style="text-align: left; font-size: 0.88rem; color: #334155; margin-top: 0.5rem;">
+          <label style="font-weight: 700; display: block; margin-bottom: 0.35rem;">Nota a Asignar (1,0 - 7,0):</label>
+          <input id="swal-bulk-grade" type="text" class="swal2-input" placeholder="Ej: 7.0 o 70" value="7.0" style="margin: 0 0 1rem 0; width: 100%; font-size: 1.15rem; font-weight: 800; text-align: center; color: #4338ca;">
+          
+          <label style="font-weight: 700; display: block; margin-bottom: 0.35rem;">¿A quiénes aplicar?:</label>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem; background: #f8fafc; padding: 0.75rem; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="radio" name="bulk-mode" value="empty" checked style="accent-color: #4f46e5;">
+              <span><strong>Solo casillas vacías</strong> (conservar las notas que ya ingresaste)</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="radio" name="bulk-mode" value="all" style="accent-color: #4f46e5;">
+              <span><strong>A todos los estudiantes</strong> activos del curso</span>
+            </label>
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Aplicar Nota',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#4f46e5',
+      preConfirm: () => {
+        const gradeInput = (document.getElementById('swal-bulk-grade') as HTMLInputElement)?.value;
+        const mode = (document.querySelector('input[name="bulk-mode"]:checked') as HTMLInputElement)?.value;
+        const parsed = parseRawGrade(gradeInput || '');
+        if (!parsed || parsed < 1.0 || parsed > 7.0) {
+          Swal.showValidationMessage('Ingresa una calificación válida entre 1,0 y 7,0');
+          return false;
+        }
+        return { grade: parsed, mode };
+      }
+    });
+
+    if (formValues) {
+      const { grade, mode } = formValues;
+      const newGrades = { ...subGradesMap };
+      let updatedCount = 0;
+
+      students.forEach(st => {
+        if (isStudentRetired(st)) return;
+        const key = `${st.id}_${sub.id}`;
+        const current = newGrades[key];
+        if (mode === 'all' || !current || current <= 0) {
+          newGrades[key] = grade;
+          updatedCount++;
+        }
+      });
+
+      setSubGradesMap(newGrades);
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: `Se asignó ${grade.toFixed(1).replace('.', ',')} a ${updatedCount} estudiantes`,
+        timer: 2000,
+        showConfirmButton: false
+      });
+    }
+  };
+
+  // APLICAR NOTAS DESDE EL MODAL ASISTENTE DE EXCEL
+  const handleApplyPastedModalText = () => {
+    if (!pastedRawText || !pastedRawText.trim()) {
+      Swal.fire('Atención', 'Pega primero las notas copiadas de Excel en el cuadro de texto.', 'warning');
+      return;
+    }
+
+    const lines = pastedRawText.split(/\r\n|\n|\r/).map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) {
+      Swal.fire('Atención', 'No se encontraron líneas de texto para procesar.', 'warning');
+      return;
+    }
+
+    const newGrades = { ...subGradesMap };
+    let appliedCount = 0;
+
+    const targetSub = subEvaluations.find(s => s.id === pasteTargetSubId);
+
+    lines.forEach((line, lineOffset) => {
+      if (lineOffset >= students.length) return;
+      const st = students[lineOffset];
+      if (isStudentRetired(st)) return;
+
+      if (targetSub) {
+        // Pegar a una sola columna seleccionada
+        const parts = line.split('\t');
+        const lastPart = parts[parts.length - 1];
+        const parsed = parseRawGrade(lastPart) || parseRawGrade(parts[0]);
+        if (parsed > 0) {
+          newGrades[`${st.id}_${targetSub.id}`] = parsed;
+          appliedCount++;
+        }
+      } else {
+        // Modo 'all': Pegar multicolumna
+        const cols = line.split('\t');
+        cols.forEach((colVal, cIdx) => {
+          if (cIdx >= subEvaluations.length) return;
+          const s = subEvaluations[cIdx];
+          const parsed = parseRawGrade(colVal);
+          if (parsed > 0) {
+            newGrades[`${st.id}_${s.id}`] = parsed;
+            appliedCount++;
+          }
+        });
+      }
+    });
+
+    if (appliedCount > 0) {
+      setSubGradesMap(newGrades);
+      setShowPasteModal(false);
+      setPastedRawText('');
+      Swal.fire({
+        icon: 'success',
+        title: '¡Notas Importadas con Éxito!',
+        text: `Se aplicaron ${appliedCount} calificaciones a los estudiantes del curso. Recuerda hacer clic en "Guardar y Calcular Promedio" para persistir.`,
+        confirmButtonColor: '#4f46e5'
+      });
+    } else {
+      Swal.fire('Atención', 'No se reconocieron notas numéricas válidas en el texto pegado.', 'warning');
+    }
+  };
+
   // Navegación por teclado tipo Excel
   const handleKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement>,
@@ -473,6 +697,32 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
               <Plus size={16} /> + Agregar Sub-Evaluación
             </button>
 
+            <button
+              onClick={() => {
+                setPastedRawText('');
+                setShowPasteModal(true);
+              }}
+              disabled={isLocked}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.5rem 0.95rem',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                borderRadius: '8px',
+                background: '#ede9fe',
+                color: '#4f46e5',
+                border: '1px solid #c7d2fe',
+                cursor: isLocked ? 'not-allowed' : 'pointer',
+                boxShadow: '0 1px 2px rgba(79, 70, 229, 0.1)',
+                transition: 'all 0.15s'
+              }}
+              title="Abrir asistente para importar o pegar columnas de notas desde Excel"
+            >
+              <FileSpreadsheet size={16} /> Pegar desde Excel
+            </button>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>Escala:</span>
               <select
@@ -541,6 +791,13 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
                             {sub.title}
                           </div>
                           <div style={{ display: 'flex', gap: '0.3rem' }}>
+                            <button
+                              onClick={() => handleBulkFillSubEvaluation(sub)}
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#f59e0b', padding: '2px' }}
+                              title="⚡ Asignar nota masiva o rellenar casillas vacías en esta sub-evaluación"
+                            >
+                              <Zap size={13} />
+                            </button>
                             <button
                               onClick={() => handleRenameSubEvaluation(sub)}
                               style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#4f46e5', padding: '2px' }}
@@ -614,6 +871,7 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
                                 disabled={isLocked || retired}
                                 value={displayVal}
                                 onChange={e => handleSubGradeChange(st.id, sub.id, e.target.value)}
+                                onPaste={e => handleCellPaste(e, idx, subIdx)}
                                 onBlur={() => setEditingCell(prev => (prev?.key === key ? null : prev))}
                                 onKeyDown={e => handleKeyDown(e, idx, subIdx)}
                                 onFocus={e => {
@@ -709,6 +967,187 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* MODAL ASISTENTE: PEGAR DESDE EXCEL */}
+      {showPasteModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.75)',
+          zIndex: 5000,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '1.25rem'
+        }}>
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '680px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.3)',
+            border: '1px solid #cbd5e1',
+            overflow: 'hidden'
+          }}>
+            {/* Header */}
+            <div style={{
+              background: '#4338ca',
+              color: '#ffffff',
+              padding: '1rem 1.5rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <FileSpreadsheet size={20} />
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>
+                  Asistente para Pegar desde Excel
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowPasteModal(false)}
+                style={{ background: 'transparent', border: 'none', color: '#ffffff', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '1.25rem 1.5rem', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.85rem', color: '#166534' }}>
+                💡 <strong>Instrucciones sencillas:</strong>
+                <ol style={{ margin: '0.4rem 0 0 1.25rem', padding: 0 }}>
+                  <li>Selecciona la columna de notas en tu archivo Excel o Google Sheets y presiona <code>Ctrl + C</code> (Copiar).</li>
+                  <li>Pega el contenido aquí abajo con <code>Ctrl + V</code>.</li>
+                  <li>El sistema asignará automáticamente cada nota según el orden de lista de los estudiantes.</li>
+                </ol>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                  ¿A qué columna deseas asignar las notas pegadas?:
+                </label>
+                <select
+                  value={pasteTargetSubId}
+                  onChange={e => setPasteTargetSubId(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    color: '#4338ca',
+                    background: '#f8fafc'
+                  }}
+                >
+                  <option value="all">Todas las columnas consecutivas (si copiaste varias columnas)</option>
+                  {subEvaluations.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                  Pega aquí las notas copiadas de Excel (Ctrl + V):
+                </label>
+                <textarea
+                  value={pastedRawText}
+                  onChange={e => setPastedRawText(e.target.value)}
+                  placeholder={`Ejemplo:\n6.5\n5.0\n7.0\n4.2`}
+                  rows={6}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem',
+                    borderRadius: '8px',
+                    border: '1.5px solid #a5b4fc',
+                    fontFamily: 'monospace',
+                    fontSize: '0.9rem',
+                    boxSizing: 'border-box',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              {/* Previsualización en tiempo real */}
+              {pastedRawText.trim() && (
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.75rem' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#4338ca', marginBottom: '0.5rem' }}>
+                    Previsualización de Asignación:
+                  </div>
+                  <div style={{ maxHeight: '160px', overflowY: 'auto' }}>
+                    <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#f1f5f9', color: '#64748b' }}>
+                          <th style={{ padding: '4px 8px', textAlign: 'center', width: '35px' }}>N°</th>
+                          <th style={{ padding: '4px 8px', textAlign: 'left' }}>Estudiante</th>
+                          <th style={{ padding: '4px 8px', textAlign: 'center', width: '90px' }}>Nota Leída</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pastedRawText.split(/\r\n|\n|\r/).filter(l => l.trim().length > 0).slice(0, 15).map((line, lIdx) => {
+                          const st = students[lIdx];
+                          const parts = line.split('\t');
+                          const gradeVal = parseRawGrade(parts[parts.length - 1]) || parseRawGrade(parts[0]);
+                          return (
+                            <tr key={lIdx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                              <td style={{ textAlign: 'center', padding: '3px 6px', fontWeight: 700, color: '#64748b' }}>
+                                {st?.list_number || lIdx + 1}
+                              </td>
+                              <td style={{ padding: '3px 6px', color: st ? (isStudentRetired(st) ? '#dc2626' : '#1e293b') : '#94a3b8' }}>
+                                {st ? st.full_name : `Fila adicional ${lIdx + 1}`}
+                                {st && isStudentRetired(st) ? ' (Retirado - Se omitirá)' : ''}
+                              </td>
+                              <td style={{ textAlign: 'center', padding: '3px 6px', fontWeight: 800, color: gradeVal >= 4 ? '#16a34a' : gradeVal > 0 ? '#ef4444' : '#94a3b8' }}>
+                                {gradeVal > 0 ? gradeVal.toFixed(1).replace('.', ',') : 'Inválida'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              background: '#f8fafc',
+              padding: '0.85rem 1.5rem',
+              borderTop: '1px solid #e2e8f0',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '0.75rem'
+            }}>
+              <button
+                onClick={() => setShowPasteModal(false)}
+                className="btn btn-secondary"
+                style={{ padding: '0.45rem 1rem', fontSize: '0.85rem' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleApplyPastedModalText}
+                disabled={!pastedRawText.trim()}
+                className="btn btn-primary"
+                style={{ padding: '0.45rem 1.25rem', fontSize: '0.85rem', fontWeight: 800 }}
+              >
+                <Sparkles size={15} /> Aplicar Notas a la Planilla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
