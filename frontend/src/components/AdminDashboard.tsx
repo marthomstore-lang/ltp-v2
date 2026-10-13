@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home, Send, RefreshCw, X } from 'lucide-react';
+import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home, Send, RefreshCw, X, PhoneCall } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { InstitutionalPlatformsSection } from './InstitutionalPlatformsSection';
 import { ExecutiveOverviewSection } from './ExecutiveOverviewSection';
@@ -945,6 +945,7 @@ export const AdminDashboard: React.FC = () => {
             { id: 'evaluations_pie', label: 'Evaluaciones & PIE', icon: Puzzle },
             { id: 'mineduc_reports', label: 'Informes PIE', icon: FileCheck2 },
             { id: 'interviews', label: 'Actas y Entrevistas', icon: MessageSquare },
+            { id: 'guardian_calls', label: 'Llamadas a Apoderados', icon: PhoneCall },
             { id: 'observations', label: 'Hoja de Vida', icon: Award },
             { id: 'inspector_passes', label: 'Pases & Atrasos', icon: Clock },
             { id: 'pedagogical_trips', label: 'Salidas Pedagógicas', icon: Compass },
@@ -2755,6 +2756,16 @@ export const AdminDashboard: React.FC = () => {
 
         {/* VISTA 5: ENTREVISTAS */}
         {activeTab === 'interviews' && <InterviewsModule token={token || ''} />}
+
+        {/* VISTA: REGISTRO Y MARCADOR DE LLAMADAS A APODERADOS */}
+        {activeTab === 'guardian_calls' && (
+          <ExecutiveOverviewSection
+            token={token || ''}
+            user={user}
+            students={students}
+            onNavigateTab={navigateToTab}
+          />
+        )}
 
         {/* VISTA 6: HOJA DE VIDA */}
         {activeTab === 'observations' && <ObservationsModule token={token || ''} />}

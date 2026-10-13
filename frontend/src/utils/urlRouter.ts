@@ -23,7 +23,8 @@ export type AdminTabId =
   | 'library'
   | 'permissions'
   | 'config'
-  | 'audit';
+  | 'audit'
+  | 'guardian_calls';
 
 export type TeacherTabId = 'home' | 'my_courses' | 'homeroom' | 'observations' | 'links';
 
@@ -53,6 +54,7 @@ export const ADMIN_TAB_TO_PATH: Record<AdminTabId, string> = {
   permissions: '/permisos',
   config: '/configuracion',
   audit: '/auditoria',
+  guardian_calls: '/llamadas-apoderados',
 };
 
 /**
@@ -136,6 +138,8 @@ export const FUNCTION_ID_TO_PATH: Record<string, string> = {
   audit_logs: '/auditoria',
   course_messaging: 'Barra Superior (Botón) / /comunicaciones',
   multiview: 'Barra Superior (Botón)',
+  guardian_calls: '/llamadas-apoderados',
+  personality_reports: '/informes-personalidad',
 };
 
 export const ADMIN_TAB_TITLES: Record<AdminTabId, string> = {
@@ -159,6 +163,7 @@ export const ADMIN_TAB_TITLES: Record<AdminTabId, string> = {
   permissions: 'Matriz de Permisos — LTP',
   config: 'Configuración del Sistema — LTP',
   audit: 'Auditoría Silent-Watch — LTP',
+  guardian_calls: 'Llamadas a Apoderados — LTP',
 };
 
 const BASE_PATH_TO_ADMIN_TAB: Record<string, AdminTabId> = {
@@ -185,6 +190,8 @@ const BASE_PATH_TO_ADMIN_TAB: Record<string, AdminTabId> = {
   '/permisos': 'permissions',
   '/configuracion': 'config',
   '/auditoria': 'audit',
+  '/llamadas-apoderados': 'guardian_calls',
+  '/bitacora-llamadas': 'guardian_calls',
 };
 
 export const TEACHER_TAB_TO_PATH: Record<TeacherTabId, string> = {
