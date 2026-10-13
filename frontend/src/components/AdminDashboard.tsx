@@ -1,6 +1,6 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, Suspense, lazy, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home, Send } from 'lucide-react';
+import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home, Send, RefreshCw, X } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { InstitutionalPlatformsSection } from './InstitutionalPlatformsSection';
 import { SubmitStatementModal, PendingStatementItem } from './SubmitStatementModal';
@@ -362,6 +362,15 @@ export const AdminDashboard: React.FC = () => {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditCategoryFilter, setAuditCategoryFilter] = useState<'all' | 'courses' | 'teachers' | 'admin'>('all');
+  const [auditCourseFilter, setAuditCourseFilter] = useState<string>('Todos');
+  const [auditTeacherFilter, setAuditTeacherFilter] = useState<string>('Todos');
+  const [auditActionFilter, setAuditActionFilter] = useState<string>('Todas');
+  const [auditSearchTerm, setAuditSearchTerm] = useState<string>('');
+  const [auditLimit, setAuditLimit] = useState<string>('all');
+  const [auditLoading, setAuditLoading] = useState<boolean>(false);
+  const [auditPage, setAuditPage] = useState<number>(1);
+  const [auditPageSize, setAuditPageSize] = useState<number>(50);
   const [searchTerm, setSearchTerm] = useState('');
   const [courseFilter, setCourseFilter] = useState('Todos');
   const [selectedYear, setSelectedYear] = useState<number>(() => {
@@ -520,12 +529,16 @@ export const AdminDashboard: React.FC = () => {
     loadPendingStatements();
   };
 
-  const loadAuditLogs = () => {
+  const loadAuditLogs = (overrideLimit?: string) => {
     if (!token) return;
-    fetch('/api/audit', { headers: { Authorization: `Bearer ${token}` } })
+    setAuditLoading(true);
+    const limitToUse = overrideLimit !== undefined ? overrideLimit : auditLimit;
+    const url = `/api/audit?limit=${encodeURIComponent(limitToUse)}`;
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => setAuditLogs(Array.isArray(data) ? data : []))
-      .catch(err => console.error('Error cargando auditoría:', err));
+      .catch(err => console.error('Error cargando auditoría:', err))
+      .finally(() => setAuditLoading(false));
   };
 
   useEffect(() => {
@@ -572,17 +585,205 @@ export const AdminDashboard: React.FC = () => {
     })
   );
 
-  const filteredAuditLogs = auditLogs.filter((a: any) => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
+  // Mapa para asociar estudiantes con sus cursos
+  const studentCourseMap = useMemo(() => {
+    const map = new Map<string, string>();
+    students.forEach(s => {
+      const course = getStudentCourse(s);
+      if (!course) return;
+      if (s.id) map.set(s.id.toLowerCase(), course);
+      if (s.run) map.set(s.run.toLowerCase().replace(/[^0-9k]/g, ''), course);
+      if (s.full_name) map.set(s.full_name.toLowerCase().trim(), course);
+    });
+    return map;
+  }, [students]);
+
+  // Lista de docentes detectados en auditoría
+  const auditTeachersList = useMemo(() => {
+    const set = new Set<string>();
+    auditLogs.forEach((a: any) => {
+      if ((a.user_role || '').toLowerCase() === 'docente' && a.user_name) {
+        set.add(a.user_name.trim());
+      }
+      const match = (a.details || '').match(/Usuario\s+([A-ZÁÉÍÓÚÑ\s]+)\s+\(Docente\)/i);
+      if (match && match[1]) {
+        set.add(match[1].trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [auditLogs]);
+
+  // Lista de otros usuarios / admins
+  const auditOtherUsersList = useMemo(() => {
+    const set = new Set<string>();
+    auditLogs.forEach((a: any) => {
+      const name = (a.user_name || '').trim();
+      if (name && !auditTeachersList.includes(name)) {
+        set.add(name);
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [auditLogs, auditTeachersList]);
+
+  // Lista de acciones únicas
+  const auditActionsList = useMemo(() => {
+    const set = new Set<string>();
+    auditLogs.forEach((a: any) => {
+      if (a.action) set.add(a.action.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [auditLogs]);
+
+  // Detector de Actividad de Curso
+  const isItemCourseActivity = (a: any): boolean => {
+    if (a.level_id) return true;
+    const act = (a.action || '').toUpperCase();
+    if (
+      act.includes('GRADE') ||
+      act.includes('STUDENT') ||
+      act.includes('PASS') ||
+      act.includes('TRIP') ||
+      act.includes('CRA_LOAN') ||
+      act.includes('COURSE') ||
+      act.includes('HOMEROOM') ||
+      act.includes('ATTENDANCE') ||
+      act.includes('INTERVIEW') ||
+      act.includes('OBSERVATION')
+    ) {
+      return true;
+    }
+    const det = (a.details || '').toLowerCase();
     return (
-      (a.user_name || '').toLowerCase().includes(term) ||
-      (a.action || '').toLowerCase().includes(term) ||
-      (a.details || '').toLowerCase().includes(term) ||
-      (a.ip_address || '').toLowerCase().includes(term) ||
-      (a.user_role || '').toLowerCase().includes(term)
+      det.includes('estudiante') ||
+      det.includes('alumno') ||
+      det.includes('curso') ||
+      det.includes('calificación') ||
+      det.includes('nota') ||
+      det.includes('evaluación') ||
+      det.includes('básico') ||
+      det.includes('medio') ||
+      det.includes('kínder')
     );
-  });
+  };
+
+  // Detector de Actividad de Docente
+  const isItemTeacherActivity = (a: any): boolean => {
+    if ((a.user_role || '').toLowerCase() === 'docente') return true;
+    if ((a.details || '').toLowerCase().includes('(docente)')) return true;
+    const name = (a.user_name || '').trim();
+    if (auditTeachersList.includes(name)) return true;
+    const act = (a.action || '').toUpperCase();
+    return (
+      act.includes('GRADE') ||
+      act.includes('CUMULATIVE') ||
+      act.includes('OBSERVATION') ||
+      act.includes('INTERVIEW')
+    );
+  };
+
+  // Obtener curso vinculado a un log de auditoría
+  const getItemCourse = (a: any): string | null => {
+    const det = a.details || '';
+    for (const c of availableCourses) {
+      if (det.toLowerCase().includes(c.toLowerCase())) return c;
+    }
+    const stuMatch = det.match(/STU-[\w-]+/i);
+    if (stuMatch && studentCourseMap.has(stuMatch[0].toLowerCase())) {
+      return studentCourseMap.get(stuMatch[0].toLowerCase()) || null;
+    }
+    const rutMatch = det.match(/\b\d{1,2}\.\d{3}\.\d{3}-[\dkK]\b/);
+    if (rutMatch) {
+      const clean = rutMatch[0].toLowerCase().replace(/[^0-9k]/g, '');
+      if (studentCourseMap.has(clean)) return studentCourseMap.get(clean) || null;
+    }
+    return null;
+  };
+
+  // Conteo de registros por categoría
+  const auditCategoryCounts = useMemo(() => {
+    let courses = 0;
+    let teachers = 0;
+    let admin = 0;
+    auditLogs.forEach((a: any) => {
+      const isCourse = isItemCourseActivity(a);
+      const isTeacher = isItemTeacherActivity(a);
+      if (isCourse) courses++;
+      if (isTeacher) teachers++;
+      if (!isCourse && !isTeacher) admin++;
+    });
+    return { all: auditLogs.length, courses, teachers, admin };
+  }, [auditLogs, auditTeachersList]);
+
+  // Filtrado final de auditoría
+  const filteredAuditLogs = useMemo(() => {
+    return auditLogs.filter((a: any) => {
+      // 1. Filtro por categoría principal
+      if (auditCategoryFilter === 'courses' && !isItemCourseActivity(a)) return false;
+      if (auditCategoryFilter === 'teachers' && !isItemTeacherActivity(a)) return false;
+      if (auditCategoryFilter === 'admin' && (isItemCourseActivity(a) || isItemTeacherActivity(a))) return false;
+
+      // 2. Filtro por curso
+      if (auditCourseFilter !== 'Todos') {
+        const itemCourse = getItemCourse(a);
+        const matchesCourse = itemCourse === auditCourseFilter || (a.details || '').toLowerCase().includes(auditCourseFilter.toLowerCase());
+        if (!matchesCourse) return false;
+      }
+
+      // 3. Filtro por docente / usuario
+      if (auditTeacherFilter !== 'Todos') {
+        const matchesUser =
+          (a.user_name || '').toLowerCase() === auditTeacherFilter.toLowerCase() ||
+          (a.details || '').toLowerCase().includes(auditTeacherFilter.toLowerCase());
+        if (!matchesUser) return false;
+      }
+
+      // 4. Filtro por acción
+      if (auditActionFilter !== 'Todas') {
+        if (a.action !== auditActionFilter) return false;
+      }
+
+      // 5. Búsqueda de texto (utiliza auditSearchTerm si existe, o el término global searchTerm)
+      const term = (auditSearchTerm || searchTerm).toLowerCase().trim();
+      if (term) {
+        const inUser = (a.user_name || '').toLowerCase().includes(term);
+        const inAction = (a.action || '').toLowerCase().includes(term);
+        const inDetails = (a.details || '').toLowerCase().includes(term);
+        const inIp = (a.ip_address || '').toLowerCase().includes(term);
+        const inRole = (a.user_role || '').toLowerCase().includes(term);
+        if (!inUser && !inAction && !inDetails && !inIp && !inRole) return false;
+      }
+
+      return true;
+    });
+  }, [auditLogs, auditCategoryFilter, auditCourseFilter, auditTeacherFilter, auditActionFilter, auditSearchTerm, searchTerm, availableCourses, studentCourseMap, auditTeachersList]);
+
+  // Paginación
+  const totalAuditPages = auditPageSize === -1 ? 1 : Math.ceil(filteredAuditLogs.length / auditPageSize) || 1;
+  const paginatedAuditLogs = useMemo(() => {
+    if (auditPageSize === -1) return filteredAuditLogs;
+    const start = (auditPage - 1) * auditPageSize;
+    return filteredAuditLogs.slice(start, start + auditPageSize);
+  }, [filteredAuditLogs, auditPage, auditPageSize]);
+
+  const getActionBadgeStyle = (action: string) => {
+    const act = (action || '').toUpperCase();
+    if (act.includes('GRADE') || act.includes('CUMULATIVE')) {
+      return { bg: '#dcfce7', color: '#15803d', border: '#86efac' };
+    }
+    if (act.includes('LOGIN') || act.includes('LOGOUT')) {
+      return { bg: '#e0e7ff', color: '#3730a3', border: '#c7d2fe' };
+    }
+    if (act.includes('DELETE')) {
+      return { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' };
+    }
+    if (act.includes('CREATE') || act.includes('PASS') || act.includes('LOAN') || act.includes('TRIP')) {
+      return { bg: '#fef3c7', color: '#92400e', border: '#fde68a' };
+    }
+    if (act.includes('UPDATE') || act.includes('PROFILE') || act.includes('SWITCH')) {
+      return { bg: '#f3e8ff', color: '#6b21a8', border: '#e9d5ff' };
+    }
+    return { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
+  };
 
   return (
     <div className="app-container">
@@ -2527,68 +2728,506 @@ export const AdminDashboard: React.FC = () => {
         {/* VISTA 11: AUDITORÍA SILENT-WATCH */}
         {activeTab === 'audit' && (
           <div className="table-container" style={{ background: '#ffffff', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+            {/* Header y Control de Carga */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
               <div>
-                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Shield size={20} color="#4f46e5" /> Registro Inalterable de Auditoría "Silent-Watch"
+                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '1.15rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Shield size={22} color="#4f46e5" /> Registro Inalterable de Auditoría "Silent-Watch"
                 </h3>
-                <p style={{ margin: '0.2rem 0 0 0', color: '#64748b', fontSize: '0.82rem' }}>
-                  Mostrando {filteredAuditLogs.length} de {auditLogs.length} eventos registrados en el sistema.
+                <p style={{ margin: '0.2rem 0 0 0', color: '#64748b', fontSize: '0.84rem' }}>
+                  Mostrando <strong>{filteredAuditLogs.length}</strong> de <strong>{auditLogs.length}</strong> eventos registrados en el sistema.
                 </p>
               </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: '#f8fafc', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 700 }}>Cargar:</span>
+                  <select
+                    value={auditLimit}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setAuditLimit(val);
+                      setAuditPage(1);
+                      loadAuditLogs(val);
+                    }}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      color: '#4338ca',
+                      fontWeight: 800,
+                      fontSize: '0.82rem',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="all">Todos los registros ({auditLogs.length > 0 ? auditLogs.length : 'Total'})</option>
+                    <option value="100">Últimos 100</option>
+                    <option value="300">Últimos 300</option>
+                    <option value="500">Últimos 500</option>
+                    <option value="1000">Últimos 1.000</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={() => loadAuditLogs()}
+                  disabled={auditLoading}
+                  className="btn"
+                  style={{
+                    background: '#e0e7ff',
+                    color: '#4338ca',
+                    border: '1px solid #c7d2fe',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    opacity: auditLoading ? 0.7 : 1
+                  }}
+                  title="Recargar eventos desde la base de datos"
+                >
+                  <RefreshCw size={14} style={{ animation: auditLoading ? 'spin 1s linear infinite' : 'none' }} />
+                  {auditLoading ? 'Actualizando...' : 'Actualizar Registro'}
+                </button>
+              </div>
+            </div>
+
+            {/* Pestañas de Filtro Rápido por Categoría */}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
               <button
-                onClick={loadAuditLogs}
-                className="btn"
-                style={{ background: '#e0e7ff', color: '#4338ca', border: '1px solid #c7d2fe', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                onClick={() => { setAuditCategoryFilter('all'); setAuditPage(1); }}
+                style={{
+                  padding: '0.45rem 0.85rem',
+                  borderRadius: '8px',
+                  border: auditCategoryFilter === 'all' ? '1.5px solid #4f46e5' : '1px solid #cbd5e1',
+                  background: auditCategoryFilter === 'all' ? '#eef2ff' : '#ffffff',
+                  color: auditCategoryFilter === 'all' ? '#4338ca' : '#475569',
+                  fontWeight: auditCategoryFilter === 'all' ? 800 : 600,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  boxShadow: auditCategoryFilter === 'all' ? '0 1px 2px rgba(79, 70, 229, 0.15)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
               >
-                🔄 Actualizar Registro
+                <Globe size={15} color={auditCategoryFilter === 'all' ? '#4f46e5' : '#64748b'} />
+                Todos los Eventos ({auditCategoryCounts.all})
+              </button>
+
+              <button
+                onClick={() => { setAuditCategoryFilter('courses'); setAuditPage(1); }}
+                style={{
+                  padding: '0.45rem 0.85rem',
+                  borderRadius: '8px',
+                  border: auditCategoryFilter === 'courses' ? '1.5px solid #2563eb' : '1px solid #cbd5e1',
+                  background: auditCategoryFilter === 'courses' ? '#eff6ff' : '#ffffff',
+                  color: auditCategoryFilter === 'courses' ? '#1d4ed8' : '#475569',
+                  fontWeight: auditCategoryFilter === 'courses' ? 800 : 600,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  boxShadow: auditCategoryFilter === 'courses' ? '0 1px 2px rgba(37, 99, 235, 0.15)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <GraduationCap size={15} color={auditCategoryFilter === 'courses' ? '#2563eb' : '#64748b'} />
+                Actividades de Cursos ({auditCategoryCounts.courses})
+              </button>
+
+              <button
+                onClick={() => { setAuditCategoryFilter('teachers'); setAuditPage(1); }}
+                style={{
+                  padding: '0.45rem 0.85rem',
+                  borderRadius: '8px',
+                  border: auditCategoryFilter === 'teachers' ? '1.5px solid #059669' : '1px solid #cbd5e1',
+                  background: auditCategoryFilter === 'teachers' ? '#ecfdf5' : '#ffffff',
+                  color: auditCategoryFilter === 'teachers' ? '#047857' : '#475569',
+                  fontWeight: auditCategoryFilter === 'teachers' ? 800 : 600,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  boxShadow: auditCategoryFilter === 'teachers' ? '0 1px 2px rgba(5, 150, 105, 0.15)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <UserCheck size={15} color={auditCategoryFilter === 'teachers' ? '#059669' : '#64748b'} />
+                Actividades de Docentes ({auditCategoryCounts.teachers})
+              </button>
+
+              <button
+                onClick={() => { setAuditCategoryFilter('admin'); setAuditPage(1); }}
+                style={{
+                  padding: '0.45rem 0.85rem',
+                  borderRadius: '8px',
+                  border: auditCategoryFilter === 'admin' ? '1.5px solid #7c3aed' : '1px solid #cbd5e1',
+                  background: auditCategoryFilter === 'admin' ? '#faf5ff' : '#ffffff',
+                  color: auditCategoryFilter === 'admin' ? '#6d28d9' : '#475569',
+                  fontWeight: auditCategoryFilter === 'admin' ? 800 : 600,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  boxShadow: auditCategoryFilter === 'admin' ? '0 1px 2px rgba(124, 58, 237, 0.15)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Settings size={15} color={auditCategoryFilter === 'admin' ? '#7c3aed' : '#64748b'} />
+                Sistema & Administración ({auditCategoryCounts.admin})
               </button>
             </div>
 
+            {/* Barra de Filtros Detallados (Búsqueda + Curso + Docente + Acción) */}
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '10px',
+              padding: '0.85rem',
+              marginBottom: '1rem',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              alignItems: 'center'
+            }}>
+              {/* Buscador de texto en vivo */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                padding: '0.45rem 0.75rem',
+                flex: '1 1 240px',
+                minWidth: '220px'
+              }}>
+                <Search size={16} color="#94a3b8" />
+                <input
+                  type="text"
+                  value={auditSearchTerm}
+                  onChange={e => { setAuditSearchTerm(e.target.value); setAuditPage(1); }}
+                  placeholder="Buscar en auditoría (docente, alumno, RUT, IP, detalle)..."
+                  style={{
+                    border: 'none',
+                    outline: 'none',
+                    fontSize: '0.84rem',
+                    width: '100%',
+                    color: '#1e293b'
+                  }}
+                />
+                {auditSearchTerm && (
+                  <button
+                    onClick={() => { setAuditSearchTerm(''); setAuditPage(1); }}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}
+                    title="Borrar búsqueda"
+                  >
+                    <X size={14} color="#94a3b8" />
+                  </button>
+                )}
+              </div>
+
+              {/* Selector de Curso */}
+              <div style={{ flex: '1 1 180px', minWidth: '170px' }}>
+                <select
+                  value={auditCourseFilter}
+                  onChange={e => { setAuditCourseFilter(e.target.value); setAuditPage(1); }}
+                  style={{
+                    width: '100%',
+                    padding: '0.48rem 0.75rem',
+                    borderRadius: '8px',
+                    border: auditCourseFilter !== 'Todos' ? '1.5px solid #2563eb' : '1px solid #cbd5e1',
+                    background: auditCourseFilter !== 'Todos' ? '#eff6ff' : '#ffffff',
+                    color: auditCourseFilter !== 'Todos' ? '#1d4ed8' : '#334155',
+                    fontWeight: auditCourseFilter !== 'Todos' ? 800 : 500,
+                    fontSize: '0.84rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="Todos">🎓 Todos los Cursos</option>
+                  {availableCourses.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Selector de Docente / Usuario */}
+              <div style={{ flex: '1 1 210px', minWidth: '200px' }}>
+                <select
+                  value={auditTeacherFilter}
+                  onChange={e => { setAuditTeacherFilter(e.target.value); setAuditPage(1); }}
+                  style={{
+                    width: '100%',
+                    padding: '0.48rem 0.75rem',
+                    borderRadius: '8px',
+                    border: auditTeacherFilter !== 'Todos' ? '1.5px solid #059669' : '1px solid #cbd5e1',
+                    background: auditTeacherFilter !== 'Todos' ? '#ecfdf5' : '#ffffff',
+                    color: auditTeacherFilter !== 'Todos' ? '#047857' : '#334155',
+                    fontWeight: auditTeacherFilter !== 'Todos' ? 800 : 500,
+                    fontSize: '0.84rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="Todos">👨‍🏫 Todos los Docentes / Usuarios</option>
+                  {auditTeachersList.length > 0 && (
+                    <optgroup label="Docentes del Establecimiento">
+                      {auditTeachersList.map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {auditOtherUsersList.length > 0 && (
+                    <optgroup label="Otros Usuarios / Admins">
+                      {auditOtherUsersList.map(u => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              {/* Selector de Acción Realizada */}
+              <div style={{ flex: '1 1 180px', minWidth: '160px' }}>
+                <select
+                  value={auditActionFilter}
+                  onChange={e => { setAuditActionFilter(e.target.value); setAuditPage(1); }}
+                  style={{
+                    width: '100%',
+                    padding: '0.48rem 0.75rem',
+                    borderRadius: '8px',
+                    border: auditActionFilter !== 'Todas' ? '1.5px solid #7c3aed' : '1px solid #cbd5e1',
+                    background: auditActionFilter !== 'Todas' ? '#faf5ff' : '#ffffff',
+                    color: auditActionFilter !== 'Todas' ? '#6d28d9' : '#334155',
+                    fontWeight: auditActionFilter !== 'Todas' ? 800 : 500,
+                    fontSize: '0.84rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="Todas">⚡ Todas las Acciones ({auditActionsList.length})</option>
+                  {auditActionsList.map(act => (
+                    <option key={act} value={act}>{act}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Botón Limpiar Filtros */}
+              {(auditCategoryFilter !== 'all' || auditCourseFilter !== 'Todos' || auditTeacherFilter !== 'Todos' || auditActionFilter !== 'Todas' || auditSearchTerm !== '') && (
+                <button
+                  onClick={() => {
+                    setAuditCategoryFilter('all');
+                    setAuditCourseFilter('Todos');
+                    setAuditTeacherFilter('Todos');
+                    setAuditActionFilter('Todas');
+                    setAuditSearchTerm('');
+                    setAuditPage(1);
+                  }}
+                  style={{
+                    padding: '0.48rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid #fca5a5',
+                    background: '#fee2e2',
+                    color: '#b91c1c',
+                    fontWeight: 800,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                  title="Restablecer todos los filtros"
+                >
+                  <X size={14} /> Limpiar Filtros
+                </button>
+              )}
+            </div>
+
+            {/* Tabla de Registros o Estado Vacío */}
             {filteredAuditLogs.length === 0 ? (
-              <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
-                <Shield size={48} color="#cbd5e1" style={{ margin: '0 auto 1rem auto' }} />
-                <h4 style={{ fontWeight: 700, color: '#334155', margin: '0 0 0.5rem 0' }}>No se encontraron registros de auditoría</h4>
-                <p style={{ fontSize: '0.85rem', margin: 0 }}>
-                  {searchTerm ? 'No hay eventos que coincidan con la búsqueda actual.' : 'A medida que se realicen acciones en la plataforma, aparecerán aquí registradas automáticamente.'}
+              <div style={{ padding: '3.5rem 1.5rem', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                <Shield size={48} color="#94a3b8" style={{ margin: '0 auto 1rem auto', opacity: 0.6 }} />
+                <h4 style={{ fontWeight: 800, color: '#334155', margin: '0 0 0.5rem 0', fontSize: '1.05rem' }}>
+                  No se encontraron registros de auditoría
+                </h4>
+                <p style={{ fontSize: '0.85rem', margin: '0 0 1rem 0' }}>
+                  {auditSearchTerm || auditCourseFilter !== 'Todos' || auditTeacherFilter !== 'Todos' || auditActionFilter !== 'Todas' || auditCategoryFilter !== 'all'
+                    ? 'No hay eventos que coincidan con la combinación de filtros seleccionada.'
+                    : 'A medida que se realicen acciones en la plataforma, aparecerán aquí registradas automáticamente.'}
                 </p>
+                {(auditCategoryFilter !== 'all' || auditCourseFilter !== 'Todos' || auditTeacherFilter !== 'Todos' || auditActionFilter !== 'Todas' || auditSearchTerm !== '') && (
+                  <button
+                    onClick={() => {
+                      setAuditCategoryFilter('all');
+                      setAuditCourseFilter('Todos');
+                      setAuditTeacherFilter('Todos');
+                      setAuditActionFilter('Todas');
+                      setAuditSearchTerm('');
+                      setAuditPage(1);
+                    }}
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.82rem', fontWeight: 700 }}
+                  >
+                    Restablecer Filtros
+                  </button>
+                )}
               </div>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Fecha / Hora</th>
-                    <th>Usuario</th>
-                    <th>Acción Realizada</th>
-                    <th>Detalles del Registro</th>
-                    <th>Dirección IP</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAuditLogs.map((a: any) => (
-                    <tr key={a.id}>
-                      <td style={{ fontSize: '0.85rem', color: '#64748b', whiteSpace: 'nowrap' }}>
-                        {new Date(a.created_at).toLocaleString('es-CL')}
-                      </td>
-                      <td>
-                        <strong>{a.user_name || 'Sistema'}</strong>
-                        {a.user_role && (
-                          <span style={{ marginLeft: '6px', fontSize: '0.72rem', background: '#e0e7ff', color: '#4338ca', padding: '0.15rem 0.45rem', borderRadius: '6px', fontWeight: 700 }}>
-                            {a.user_role}
-                          </span>
-                        )}
-                      </td>
-                      <td>
-                        <span className="status-chip info" style={{ fontWeight: 700, fontSize: '0.78rem' }}>
-                          {a.action}
-                        </span>
-                      </td>
-                      <td style={{ fontSize: '0.88rem', color: '#334155' }}>{a.details}</td>
-                      <td style={{ color: '#64748b', fontSize: '0.82rem', fontFamily: 'monospace' }}>{a.ip_address || '127.0.0.1'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <>
+                <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        <th style={{ padding: '0.75rem 0.85rem', textAlign: 'left', whiteSpace: 'nowrap', width: '170px' }}>Fecha / Hora</th>
+                        <th style={{ padding: '0.75rem 0.85rem', textAlign: 'left', minWidth: '190px' }}>Usuario</th>
+                        <th style={{ padding: '0.75rem 0.85rem', textAlign: 'left', width: '210px' }}>Acción Realizada</th>
+                        <th style={{ padding: '0.75rem 0.85rem', textAlign: 'left' }}>Detalles del Registro</th>
+                        <th style={{ padding: '0.75rem 0.85rem', textAlign: 'center', width: '130px' }}>Dirección IP</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedAuditLogs.map((a: any) => {
+                        const badgeStyle = getActionBadgeStyle(a.action);
+                        const itemCourse = getItemCourse(a);
+                        return (
+                          <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.15s' }}>
+                            <td style={{ fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', padding: '0.7rem 0.85rem' }}>
+                              {new Date(a.created_at).toLocaleString('es-CL')}
+                            </td>
+                            <td style={{ padding: '0.7rem 0.85rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                <strong style={{ color: '#0f172a' }}>{a.user_name || 'Sistema'}</strong>
+                                {a.user_role && (
+                                  <span style={{
+                                    fontSize: '0.7rem',
+                                    background: a.user_role === 'Docente' ? '#dcfce7' : a.user_role === 'Admin' ? '#e0e7ff' : '#f1f5f9',
+                                    color: a.user_role === 'Docente' ? '#15803d' : a.user_role === 'Admin' ? '#4338ca' : '#475569',
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: '6px',
+                                    fontWeight: 800
+                                  }}>
+                                    {a.user_role}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td style={{ padding: '0.7rem 0.85rem' }}>
+                              <span style={{
+                                display: 'inline-block',
+                                fontWeight: 800,
+                                fontSize: '0.75rem',
+                                padding: '0.2rem 0.55rem',
+                                borderRadius: '6px',
+                                background: badgeStyle.bg,
+                                color: badgeStyle.color,
+                                border: `1px solid ${badgeStyle.border}`
+                              }}>
+                                {a.action}
+                              </span>
+                            </td>
+                            <td style={{ fontSize: '0.86rem', color: '#334155', padding: '0.7rem 0.85rem', lineHeight: 1.45 }}>
+                              {itemCourse && (
+                                <span style={{
+                                  display: 'inline-block',
+                                  marginRight: '6px',
+                                  padding: '0.12rem 0.45rem',
+                                  borderRadius: '5px',
+                                  background: '#eff6ff',
+                                  color: '#1d4ed8',
+                                  border: '1px solid #bfdbfe',
+                                  fontWeight: 800,
+                                  fontSize: '0.74rem'
+                                }}>
+                                  🎓 {itemCourse}
+                                </span>
+                              )}
+                              {a.details}
+                            </td>
+                            <td style={{ color: '#64748b', fontSize: '0.8rem', fontFamily: 'monospace', textAlign: 'center', padding: '0.7rem 0.85rem' }}>
+                              {a.ip_address || '127.0.0.1'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Controles de Paginación */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginTop: '1rem',
+                  paddingTop: '0.85rem',
+                  borderTop: '1px solid #e2e8f0',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.83rem', color: '#64748b', flexWrap: 'wrap' }}>
+                    <span>
+                      Página <strong>{auditPage}</strong> de <strong>{totalAuditPages}</strong> ({filteredAuditLogs.length} eventos filtrados)
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span>Mostrar por página:</span>
+                      <select
+                        value={auditPageSize}
+                        onChange={e => { setAuditPageSize(Number(e.target.value)); setAuditPage(1); }}
+                        style={{ padding: '0.25rem 0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', fontWeight: 700, color: '#334155' }}
+                      >
+                        <option value={50}>50 registros</option>
+                        <option value={100}>100 registros</option>
+                        <option value={200}>200 registros</option>
+                        <option value={-1}>Ver todos sin paginar</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {totalAuditPages > 1 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <button
+                        onClick={() => setAuditPage(1)}
+                        disabled={auditPage === 1}
+                        className="btn"
+                        style={{ padding: '0.35rem 0.65rem', fontSize: '0.78rem', opacity: auditPage === 1 ? 0.4 : 1, cursor: auditPage === 1 ? 'not-allowed' : 'pointer' }}
+                        title="Primera página"
+                      >
+                        «
+                      </button>
+                      <button
+                        onClick={() => setAuditPage(prev => Math.max(prev - 1, 1))}
+                        disabled={auditPage === 1}
+                        className="btn"
+                        style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', opacity: auditPage === 1 ? 0.4 : 1, cursor: auditPage === 1 ? 'not-allowed' : 'pointer' }}
+                      >
+                        <ChevronLeft size={14} /> Anterior
+                      </button>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#4338ca', padding: '0 0.4rem' }}>
+                        {auditPage} / {totalAuditPages}
+                      </span>
+                      <button
+                        onClick={() => setAuditPage(prev => Math.min(prev + 1, totalAuditPages))}
+                        disabled={auditPage === totalAuditPages}
+                        className="btn"
+                        style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', opacity: auditPage === totalAuditPages ? 0.4 : 1, cursor: auditPage === totalAuditPages ? 'not-allowed' : 'pointer' }}
+                      >
+                        Siguiente <ChevronRight size={14} />
+                      </button>
+                      <button
+                        onClick={() => setAuditPage(totalAuditPages)}
+                        disabled={auditPage === totalAuditPages}
+                        className="btn"
+                        style={{ padding: '0.35rem 0.65rem', fontSize: '0.78rem', opacity: auditPage === totalAuditPages ? 0.4 : 1, cursor: auditPage === totalAuditPages ? 'not-allowed' : 'pointer' }}
+                        title="Última página"
+                      >
+                        »
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         )}

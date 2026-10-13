@@ -8454,7 +8454,15 @@ router.delete('/admin/documents/:id', authMiddleware, checkRoles(['Admin']), asy
 // -----------------------------------------------------------------------------
 router.get(['/audit', '/audit-logs'], authMiddleware, checkMatrixPermission('audit_logs'), async (req: Request, res: Response) => {
   try {
-    const result = await query('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 300');
+    const limitParam = req.query.limit as string;
+    let limitClause = 'LIMIT 10000'; // Permite ver todos los registros del sistema
+    if (limitParam && limitParam !== 'all' && limitParam !== 'todos') {
+      const parsed = parseInt(limitParam, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        limitClause = `LIMIT ${parsed}`;
+      }
+    }
+    const result = await query(`SELECT * FROM audit_logs ORDER BY created_at DESC ${limitClause}`);
     res.json(result.rows);
   } catch (err) {
     console.error('Error al consultar auditoría:', err);
