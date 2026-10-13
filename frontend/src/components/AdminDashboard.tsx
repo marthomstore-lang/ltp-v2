@@ -56,6 +56,62 @@ const ModuleLoader: React.FC = () => (
   </div>
 );
 
+// DICCIONARIO DE TRADUCCIÓN DE ACCIONES DE AUDITORÍA A ESPAÑOL CLARO
+export const AUDIT_ACTION_TRANSLATIONS: Record<string, string> = {
+  ADD_COURSE_SUPPORT: 'Acompañamiento de Curso',
+  CREATE_ASSIGNMENT: 'Asignar Asignatura / Docente',
+  CREATE_CRA_LOAN: 'Préstamo CRA (Biblioteca)',
+  CREATE_EVALUATION: 'Crear Evaluación',
+  CREATE_GRADE_COLUMN: 'Crear Columna de Notas',
+  CREATE_INTERVIEW: 'Registrar Entrevista',
+  CREATE_OBSERVATION: 'Registrar Observación',
+  CREATE_PEDAGOGICAL_TRIP: 'Registrar Salida Pedagógica',
+  CREATE_STUDENT: 'Matricular / Crear Estudiante',
+  CREATE_STUDENT_PASS: 'Emitir Pase de Salida',
+  DELETE_ASSIGNMENT: 'Eliminar Asignación Docente',
+  DELETE_GRADE: 'Eliminar Calificación',
+  DELETE_PEDAGOGICAL_TRIP: 'Eliminar Salida Pedagógica',
+  DELETE_STUDENT: 'Eliminar Ficha de Estudiante',
+  DELETE_STUDENT_PASS: 'Anular Pase de Salida',
+  JUSTIFY_STUDENT_PASS: 'Justificar Pase de Salida',
+  LOGIN_SUCCESS: 'Inicio de Sesión Exitoso',
+  PASSWORD_RESET_REQUEST: 'Solicitud Restablecer Contraseña',
+  PASSWORD_RESET_SUCCESS: 'Contraseña Restablecida con Éxito',
+  RENAME_GRADE_COLUMN: 'Renombrar Columna de Evaluación',
+  REORDER_STUDENTS: 'Reordenar Lista de Estudiantes',
+  RETURN_CRA_LOAN: 'Devolución Libro CRA',
+  SAVE_CUMULATIVE_GRADES: 'Guardar Notas Acumulativas',
+  SAVE_GRADE: 'Guardar Calificación',
+  SAVE_GRADES_BATCH: 'Guardado Masivo de Calificaciones',
+  SAVE_MINEDUC_REPORT: 'Guardar Informe MINEDUC',
+  SEND_COURSE_MESSAGE: 'Enviar Mensaje Masivo a Curso',
+  STUDENT_ENROLLMENT_CHECKLIST: 'Checklist de Matrícula',
+  SWITCH_ROLE: 'Cambio de Rol / Vista',
+  TEST_ACTION: 'Prueba del Sistema',
+  UPDATE_ASSIGNMENT: 'Modificar Asignación Docente',
+  UPDATE_CHECKLIST_TEMPLATES: 'Actualizar Plantilla Checklist',
+  UPDATE_COURSE_HOMEROOM: 'Asignar Profesor Jefe de Curso',
+  UPDATE_HOMEROOM_TEACHER: 'Actualizar Profesor Jefe',
+  UPDATE_INSTITUTIONAL_CONFIG: 'Actualizar Configuración Institucional',
+  UPDATE_PERMISSIONS_MATRIX: 'Modificar Matriz de Permisos',
+  UPDATE_PIE_COURSE_PERMISSIONS: 'Permisos de Curso Programa PIE',
+  UPDATE_PROFILE: 'Actualizar Perfil de Usuario',
+  UPDATE_STUDENT: 'Actualizar Ficha de Estudiante',
+  UPDATE_USER: 'Modificar Cuenta de Usuario'
+};
+
+export const formatAuditAction = (action: string): string => {
+  if (!action) return 'Acción General';
+  if (AUDIT_ACTION_TRANSLATIONS[action]) {
+    return AUDIT_ACTION_TRANSLATIONS[action];
+  }
+  return action
+    .toLowerCase()
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
 export const AdminDashboard: React.FC = () => {
   const { user, token, logout, switchRole, restoreOriginalRole, isSuperAdmin, isImpersonating, canCustomizeProfile } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminTabId>(() => {
@@ -625,13 +681,13 @@ export const AdminDashboard: React.FC = () => {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [auditLogs, auditTeachersList]);
 
-  // Lista de acciones únicas
+  // Lista de acciones únicas ordenadas alfabéticamente en español
   const auditActionsList = useMemo(() => {
     const set = new Set<string>();
     auditLogs.forEach((a: any) => {
       if (a.action) set.add(a.action.trim());
     });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    return Array.from(set).sort((a, b) => formatAuditAction(a).localeCompare(formatAuditAction(b)));
   }, [auditLogs]);
 
   // Detector de Actividad de Curso
@@ -746,7 +802,8 @@ export const AdminDashboard: React.FC = () => {
       const term = (auditSearchTerm || searchTerm).toLowerCase().trim();
       if (term) {
         const inUser = (a.user_name || '').toLowerCase().includes(term);
-        const inAction = (a.action || '').toLowerCase().includes(term);
+        const actionSpanish = formatAuditAction(a.action).toLowerCase();
+        const inAction = (a.action || '').toLowerCase().includes(term) || actionSpanish.includes(term);
         const inDetails = (a.details || '').toLowerCase().includes(term);
         const inIp = (a.ip_address || '').toLowerCase().includes(term);
         const inRole = (a.user_role || '').toLowerCase().includes(term);
@@ -3009,7 +3066,7 @@ export const AdminDashboard: React.FC = () => {
                 >
                   <option value="Todas">⚡ Todas las Acciones ({auditActionsList.length})</option>
                   {auditActionsList.map(act => (
-                    <option key={act} value={act}>{act}</option>
+                    <option key={act} value={act}>{formatAuditAction(act)}</option>
                   ))}
                 </select>
               </div>
@@ -3123,8 +3180,10 @@ export const AdminDashboard: React.FC = () => {
                                 background: badgeStyle.bg,
                                 color: badgeStyle.color,
                                 border: `1px solid ${badgeStyle.border}`
-                              }}>
-                                {a.action}
+                              }}
+                              title={`Acción técnica: ${a.action}`}
+                              >
+                                {formatAuditAction(a.action)}
                               </span>
                             </td>
                             <td style={{ fontSize: '0.86rem', color: '#334155', padding: '0.7rem 0.85rem', lineHeight: 1.45 }}>
