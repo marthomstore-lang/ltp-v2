@@ -284,6 +284,28 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS guardian_calls (
+        id TEXT PRIMARY KEY,
+        folio SERIAL,
+        student_id TEXT,
+        student_run TEXT,
+        student_name TEXT,
+        course_name TEXT,
+        guardian_name TEXT,
+        guardian_phone TEXT,
+        caller_name TEXT,
+        caller_id TEXT,
+        call_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        reason TEXT NOT NULL,
+        status TEXT NOT NULL,
+        notes TEXT,
+        commitment TEXT,
+        academic_year INTEGER DEFAULT 2026,
+        period TEXT DEFAULT '1er Semestre',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE TABLE IF NOT EXISTS secure_file_vault (
         id TEXT PRIMARY KEY,
         file_id TEXT NOT NULL,
@@ -8249,6 +8271,290 @@ router.delete('/interviews/:id', authMiddleware, checkRoles(['Admin']), async (r
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Error al eliminar entrevista.' });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// PANORAMA INSTITUCIONAL EJECUTIVO & REGISTRO DE LLAMADAS A APODERADOS
+// -----------------------------------------------------------------------------
+router.get('/dashboard/executive-overview', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const [gradesRes, obsRes, craRes, passesRes, interviewsRes, callsRes, topCalledRes] = await Promise.all([
+      query(`
+        SELECT 
+          COUNT(*) as total, 
+          ROUND(AVG(grade_value)::numeric, 1) as avg, 
+          COUNT(*) FILTER (WHERE grade_value >= 4.0) as approved, 
+          COUNT(*) FILTER (WHERE grade_value < 4.0) as failed 
+        FROM grades
+      `).catch(() => ({ rows: [{ total: '0', avg: '0', approved: '0', failed: '0' }] })),
+
+      query(`
+        SELECT 
+          COUNT(*) as total, 
+          COUNT(*) FILTER (WHERE type ILIKE '%positiv%') as positive, 
+          COUNT(*) FILTER (WHERE type ILIKE '%negativ%') as negative 
+        FROM observations
+      `).catch(() => ({ rows: [{ total: '0', positive: '0', negative: '0' }] })),
+
+      query(`
+        SELECT 
+          COUNT(*) as total, 
+          COUNT(*) FILTER (WHERE status ILIKE '%activo%') as active, 
+          COUNT(*) FILTER (WHERE status ILIKE '%devuelto%') as returned 
+        FROM cra_loans
+      `).catch(() => ({ rows: [{ total: '0', active: '0', returned: '0' }] })),
+
+      query(`
+        SELECT 
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE pass_date = CURRENT_DATE) as today
+        FROM student_passes
+      `).catch(() => ({ rows: [{ total: '0', today: '0' }] })),
+
+      query(`
+        SELECT COUNT(*) as total FROM interviews
+      `).catch(() => ({ rows: [{ total: '0' }] })),
+
+      query(`
+        SELECT 
+          COUNT(*) as total, 
+          COUNT(*) FILTER (WHERE status IN ('Contestada', 'Aceptada', 'Exitosa', 'Compromiso acordado')) as accepted, 
+          COUNT(*) FILTER (WHERE status IN ('No contesta', 'Rechazada', 'Ocupado / Buzón', 'Número equivocado')) as rejected 
+        FROM guardian_calls
+      `).catch(() => ({ rows: [{ total: '0', accepted: '0', rejected: '0' }] })),
+
+      query(`
+        SELECT 
+          student_id,
+          student_name,
+          student_run,
+          course_name,
+          guardian_name,
+          guardian_phone,
+          COUNT(*) as total_calls,
+          COUNT(*) FILTER (WHERE status IN ('Contestada', 'Aceptada', 'Exitosa', 'Compromiso acordado')) as accepted_calls,
+          COUNT(*) FILTER (WHERE status IN ('No contesta', 'Rechazada', 'Ocupado / Buzón', 'Número equivocado')) as rejected_calls,
+          MAX(call_date) as last_call_date,
+          (ARRAY_AGG(reason ORDER BY call_date DESC))[1] as last_reason,
+          (ARRAY_AGG(status ORDER BY call_date DESC))[1] as last_status
+        FROM guardian_calls
+        WHERE student_name IS NOT NULL AND student_name != ''
+        GROUP BY student_id, student_name, student_run, course_name, guardian_name, guardian_phone
+        ORDER BY total_calls DESC
+        LIMIT 10
+      `).catch(() => ({ rows: [] }))
+    ]);
+
+    const g = gradesRes.rows[0] || {};
+    const o = obsRes.rows[0] || {};
+    const c = craRes.rows[0] || {};
+    const p = passesRes.rows[0] || {};
+    const i = interviewsRes.rows[0] || {};
+    const cl = callsRes.rows[0] || {};
+
+    const gradesTotal = parseInt(g.total || '0', 10);
+    const approvedTotal = parseInt(g.approved || '0', 10);
+    const passRate = gradesTotal > 0 ? Number(((approvedTotal / gradesTotal) * 100).toFixed(1)) : 0;
+
+    const callsTotal = parseInt(cl.total || '0', 10);
+    const callsAccepted = parseInt(cl.accepted || '0', 10);
+    const contactRate = callsTotal > 0 ? Number(((callsAccepted / callsTotal) * 100).toFixed(1)) : 0;
+
+    res.json({
+      grades: {
+        total: gradesTotal,
+        avg: parseFloat(g.avg || '0') || 0,
+        approved: approvedTotal,
+        failed: parseInt(g.failed || '0', 10),
+        passRate
+      },
+      observations: {
+        total: parseInt(o.total || '0', 10),
+        positive: parseInt(o.positive || '0', 10),
+        negative: parseInt(o.negative || '0', 10)
+      },
+      cra: {
+        total: parseInt(c.total || '0', 10),
+        active: parseInt(c.active || '0', 10),
+        returned: parseInt(c.returned || '0', 10)
+      },
+      passes: {
+        total: parseInt(p.total || '0', 10),
+        today: parseInt(p.today || '0', 10)
+      },
+      interviews: {
+        total: parseInt(i.total || '0', 10)
+      },
+      calls: {
+        total: callsTotal,
+        accepted: callsAccepted,
+        rejected: parseInt(cl.rejected || '0', 10),
+        contactRate
+      },
+      topCalledStudents: topCalledRes.rows || []
+    });
+  } catch (err: any) {
+    console.error('Error fetching executive overview:', err);
+    res.status(500).json({ error: 'Error al consultar panorama ejecutivo institucional.' });
+  }
+});
+
+router.get('/guardian-calls', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { student_id, course_name, status, reason, limit } = req.query;
+    const whereClauses: string[] = [];
+    const params: any[] = [];
+
+    if (student_id) {
+      params.push(student_id);
+      whereClauses.push(`student_id = $${params.length}`);
+    }
+    if (course_name) {
+      params.push(course_name);
+      whereClauses.push(`course_name = $${params.length}`);
+    }
+    if (status) {
+      params.push(status);
+      whereClauses.push(`status = $${params.length}`);
+    }
+    if (reason) {
+      params.push(reason);
+      whereClauses.push(`reason = $${params.length}`);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const limitNum = Math.min(parseInt(String(limit || '100'), 10) || 100, 500);
+
+    const callsRes = await query(
+      `SELECT * FROM guardian_calls ${whereSql} ORDER BY call_date DESC, created_at DESC LIMIT ${limitNum}`,
+      params
+    );
+
+    const statsRes = await query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE status IN ('Contestada', 'Aceptada', 'Exitosa', 'Compromiso acordado')) as accepted,
+        COUNT(*) FILTER (WHERE status IN ('No contesta', 'Rechazada', 'Ocupado / Buzón', 'Número equivocado')) as rejected
+      FROM guardian_calls ${whereSql}
+    `, params);
+
+    const reasonsRes = await query(`
+      SELECT reason, COUNT(*) as count 
+      FROM guardian_calls ${whereSql}
+      GROUP BY reason 
+      ORDER BY count DESC 
+      LIMIT 6
+    `, params);
+
+    const total = parseInt(statsRes.rows[0]?.total || '0', 10);
+    const accepted = parseInt(statsRes.rows[0]?.accepted || '0', 10);
+    const rejected = parseInt(statsRes.rows[0]?.rejected || '0', 10);
+    const contactRate = total > 0 ? Number(((accepted / total) * 100).toFixed(1)) : 0;
+
+    res.json({
+      calls: callsRes.rows || [],
+      summary: {
+        total,
+        accepted,
+        rejected,
+        contactRate,
+        topReasons: reasonsRes.rows || []
+      }
+    });
+  } catch (err: any) {
+    console.error('Error fetching guardian calls:', err);
+    res.status(500).json({ error: 'Error al consultar registro de llamadas a apoderados.' });
+  }
+});
+
+router.post('/guardian-calls', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const {
+      student_id,
+      student_run,
+      student_name,
+      course_name,
+      guardian_name,
+      guardian_phone,
+      call_date,
+      reason,
+      status,
+      notes,
+      commitment,
+      academic_year,
+      period
+    } = req.body;
+
+    if (!student_name || !reason || !status) {
+      return res.status(400).json({ error: 'Debe ingresar el estudiante, motivo y resultado de la llamada.' });
+    }
+
+    const callerName = req.user?.name || (req.user as any)?.username || 'Funcionario';
+    const callerId = req.user?.id || 'USR-0';
+    const id = `CALL-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const callDateVal = call_date ? new Date(call_date) : new Date();
+
+    const insertRes = await query(
+      `INSERT INTO guardian_calls (
+        id, student_id, student_run, student_name, course_name,
+        guardian_name, guardian_phone, caller_name, caller_id,
+        call_date, reason, status, notes, commitment,
+        academic_year, period
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      RETURNING *`,
+      [
+        id,
+        student_id || null,
+        student_run || null,
+        student_name,
+        course_name || null,
+        guardian_name || null,
+        guardian_phone || null,
+        callerName,
+        callerId,
+        callDateVal,
+        reason,
+        status,
+        notes || null,
+        commitment || null,
+        academic_year || 2026,
+        period || '1er Semestre'
+      ]
+    );
+
+    await logAudit(
+      req,
+      'CREATE_GUARDIAN_CALL',
+      `Llamada registrada para ${student_name} (${course_name || 'Sin curso'}): ${reason} - Resultado: ${status}`
+    );
+
+    res.json({ success: true, call: insertRes.rows[0] });
+  } catch (err: any) {
+    console.error('Error inserting guardian call:', err);
+    res.status(500).json({ error: 'Error al registrar llamada a apoderado.' });
+  }
+});
+
+router.delete('/guardian-calls/:id', authMiddleware, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const existing = await query('SELECT * FROM guardian_calls WHERE id = $1', [id]);
+    if (!existing.rows || existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Registro de llamada no encontrado.' });
+    }
+
+    await query('DELETE FROM guardian_calls WHERE id = $1', [id]);
+    await logAudit(
+      req,
+      'DELETE_GUARDIAN_CALL',
+      `Registro de llamada ${id} a apoderado de ${existing.rows[0]?.student_name || 'estudiante'} eliminado`
+    );
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Error deleting guardian call:', err);
+    res.status(500).json({ error: 'Error al eliminar registro de llamada.' });
   }
 });
 

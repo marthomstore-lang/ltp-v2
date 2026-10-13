@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home, Send, RefreshCw, X } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { InstitutionalPlatformsSection } from './InstitutionalPlatformsSection';
+import { ExecutiveOverviewSection } from './ExecutiveOverviewSection';
 import { SubmitStatementModal, PendingStatementItem } from './SubmitStatementModal';
 import { getStudentCourse, isStudentRetired, getStudentWithdrawalDate, sortCoursesList, sortStudentsList, getStudentYear } from '../utils/course';
 import { AdminTabId, getAdminTabFromUrl, syncAdminUrl, AccessLevel, normalizeAccessLevel } from '../utils/urlRouter';
@@ -1889,19 +1890,15 @@ export const AdminDashboard: React.FC = () => {
         {/* VISTA 1: DASHBOARD GENERAL CON BANNER Y PLATAFORMAS DE INTERÉS */}
         {activeTab === 'home' && (
           <div>
-            <InstitutionalPlatformsSection
-              token={token || ''}
-              userName={user?.name}
-              userRole={user?.role}
-              customSubtitle={
-                currentRole === 'Docente' ? 'Panel Docente • Liceo Pro / LTP v2.0' :
-                currentRole === 'Director' ? 'Panel Directivo • Liceo Pro / LTP v2.0' :
-                currentRole === 'Comunicaciones' ? 'Portal Oficial de Comunicaciones y Registro de Envíos • Liceo Pro / LTP v2.0' :
-                currentRole === 'Asistente' ? 'Portal Asistentes de la Educación • Liceo Pro / LTP v2.0' :
-                currentRole === 'Profesionales' ? 'Portal Profesionales PIE & Convivencia • Liceo Pro / LTP v2.0' :
-                'Panel de Administración • Liceo Pro / LTP v2.0'
-              }
-            />
+            {/* PANORAMA INSTITUCIONAL EJECUTIVO & REGISTRO DE LLAMADAS (ADMIN / DIRECTOR) */}
+            {(currentRole === 'Admin' || currentRole === 'Director') && (
+              <ExecutiveOverviewSection
+                token={token || ''}
+                user={user}
+                students={students}
+                onNavigateTab={navigateToTab}
+              />
+            )}
 
             {/* TARJETAS ESTADÍSTICAS KPI CON NAVEGACIÓN DIRECTA SEGÚN PERMISOS DEL PERFIL */}
             <div className="card-grid">
@@ -2050,6 +2047,22 @@ export const AdminDashboard: React.FC = () => {
                 />
               </div>
             )}
+            {/* SECCIÓN DE PLATAFORMAS INSTITUCIONALES (UBICADA MÁS ABAJO) */}
+            <div style={{ marginTop: '2.5rem' }}>
+              <InstitutionalPlatformsSection
+                token={token || ''}
+                userName={user?.name}
+                userRole={user?.role}
+                customSubtitle={
+                  currentRole === 'Docente' ? 'Panel Docente • Liceo Pro / LTP v2.0' :
+                  currentRole === 'Director' ? 'Panel Directivo • Liceo Pro / LTP v2.0' :
+                  currentRole === 'Comunicaciones' ? 'Portal Oficial de Comunicaciones y Registro de Envíos • Liceo Pro / LTP v2.0' :
+                  currentRole === 'Asistente' ? 'Portal Asistentes de la Educación • Liceo Pro / LTP v2.0' :
+                  currentRole === 'Profesionales' ? 'Portal Profesionales PIE & Convivencia • Liceo Pro / LTP v2.0' :
+                  'Panel de Administración • Liceo Pro / LTP v2.0'
+                }
+              />
+            </div>
           </div>
         )}
 
