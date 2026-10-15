@@ -434,6 +434,7 @@ export const AdminDashboard: React.FC = () => {
   const [profileModalTab, setProfileModalTab] = useState<'info' | 'customize'>('info');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarSearch, setSidebarSearch] = useState('');
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [auditCategoryFilter, setAuditCategoryFilter] = useState<'all' | 'courses' | 'teachers' | 'admin'>('all');
   const [auditCourseFilter, setAuditCourseFilter] = useState<string>('Todos');
@@ -944,80 +945,190 @@ export const AdminDashboard: React.FC = () => {
           </button>
         </div>
 
-        <nav className="nav-menu" style={{ padding: sidebarCollapsed ? '0.75rem 0.35rem' : '0.75rem 0.65rem' }}>
-          {[
-            { 
-              id: 'home', 
-              label: currentRole === 'Apoderado' ? 'Portal Familia y Notas' : (currentRole === 'Estudiante' ? 'Portal Estudiante' : 'Dashboard General'), 
-              icon: currentRole === 'Apoderado' ? UserCheck : GraduationCap 
-            },
-            { id: 'students', label: 'Matrícula Completa', icon: Users },
-            { id: 'apoderados', label: 'Nómina de Apoderados', icon: UserCheck },
-            { id: 'communications', label: 'Comunicaciones & Registro', icon: Send },
-            { id: 'grades', label: 'Libro de Calificaciones', icon: ClipboardList },
-            { id: 'overview', label: 'Panorama & Jefatura', icon: TrendingUp },
-            { id: 'personality_reports', label: 'Informes Hogar y Personalidad', icon: Award },
-            { id: 'computer_lab', label: 'Sala de Computación', icon: Monitor },
-            { id: 'evaluations_pie', label: 'Evaluaciones & PIE', icon: Puzzle },
-            { id: 'mineduc_reports', label: 'Informes PIE', icon: FileCheck2 },
-            { id: 'curriculum_plans', label: 'Planificaciones & IA (Borrador Local)', icon: CalendarDays },
-            { id: 'interviews', label: 'Actas y Entrevistas', icon: MessageSquare },
-            { id: 'guardian_calls', label: 'Llamadas a Apoderados', icon: PhoneCall },
-            { id: 'observations', label: 'Hoja de Vida', icon: Award },
-            { id: 'inspector_passes', label: 'Pases & Atrasos', icon: Clock },
-            { id: 'pedagogical_trips', label: 'Salidas Pedagógicas', icon: Compass },
-            { id: 'staff', label: 'Recursos Humanos', icon: Briefcase },
-            { id: 'admin_docs', label: 'Documentos & Protocolos', icon: FolderOpen },
-            { id: 'library', label: 'Biblioteca CRA', icon: BookOpen },
-            { id: 'permissions', label: 'Matriz de Permisos', icon: Shield },
-            { id: 'config', label: 'Configuración', icon: Settings },
-            { id: 'audit', label: 'Auditoría "Silent-Watch"', icon: Lock },
-          ]
-            .filter(item => canAccess(item.id))
-            .map(item => {
-              const isActive = activeTab === item.id;
-              const accessLevel = getAccessLevel(item.id);
-              const isViewOnly = accessLevel === 'view' && item.id !== 'home' && item.id !== 'audit';
-              return (
-                <div
-                  key={item.id}
-                  className={`nav-item ${isActive ? 'active' : ''}`}
-                  onClick={() => navigateToTab(item.id, item.label)}
-                  title={sidebarCollapsed ? `${item.label}${isViewOnly ? ' (Solo Vista)' : ''}` : undefined}
+        {/* BUSCADOR RÁPIDO DE MÓDULOS EN EL SIDEBAR */}
+        {!sidebarCollapsed && (
+          <div style={{ padding: '0.5rem 0.75rem 0.35rem', flexShrink: 0 }}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Search size={14} style={{ position: 'absolute', left: '10px', color: '#94a3b8', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                placeholder="Buscar módulo o función..."
+                value={sidebarSearch}
+                onChange={e => setSidebarSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.4rem 1.8rem 0.4rem 2rem',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '8px',
+                  color: '#ffffff',
+                  fontSize: '0.76rem',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              {sidebarSearch && (
+                <button
+                  type="button"
+                  onClick={() => setSidebarSearch('')}
                   style={{
-                    justifyContent: sidebarCollapsed ? 'center' : 'space-between',
-                    cursor: 'pointer'
+                    position: 'absolute',
+                    right: '6px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#94a3b8',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '2px'
                   }}
+                  title="Limpiar búsqueda"
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', overflow: 'hidden', flex: 1 }}>
-                    <item.icon size={19} style={{ flexShrink: 0 }} />
-                    {!sidebarCollapsed && (
-                      <span style={{ fontWeight: isActive ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {item.label}
-                      </span>
-                    )}
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <nav className="nav-menu" style={{ padding: sidebarCollapsed ? '0.5rem 0.35rem' : '0.4rem 0.6rem' }}>
+          {[
+            {
+              category: 'General',
+              items: [
+                { 
+                  id: 'home', 
+                  label: currentRole === 'Apoderado' ? 'Portal Familia y Notas' : (currentRole === 'Estudiante' ? 'Portal Estudiante' : 'Dashboard General'), 
+                  icon: currentRole === 'Apoderado' ? UserCheck : GraduationCap 
+                }
+              ]
+            },
+            {
+              category: 'Gestión Académica & Aula',
+              items: [
+                { id: 'grades', label: 'Libro de Calificaciones', icon: ClipboardList },
+                { id: 'overview', label: 'Panorama & Jefatura', icon: TrendingUp },
+                { id: 'evaluations_pie', label: 'Evaluaciones & PIE', icon: Puzzle },
+                { id: 'mineduc_reports', label: 'Informes PIE (Dec. 170)', icon: FileCheck2 },
+                { id: 'curriculum_plans', label: 'Planificaciones & IA (Local)', icon: CalendarDays }
+              ]
+            },
+            {
+              category: 'Estudiantes & Familias',
+              items: [
+                { id: 'students', label: 'Matrícula Completa', icon: Users },
+                { id: 'apoderados', label: 'Nómina de Apoderados', icon: UserCheck },
+                { id: 'personality_reports', label: 'Informes Hogar y Personalidad', icon: Award },
+                { id: 'communications', label: 'Comunicaciones & Registro', icon: Send },
+                { id: 'guardian_calls', label: 'Llamadas a Apoderados', icon: PhoneCall }
+              ]
+            },
+            {
+              category: 'Convivencia & Inspectoría',
+              items: [
+                { id: 'observations', label: 'Hoja de Vida', icon: Award },
+                { id: 'interviews', label: 'Actas y Entrevistas', icon: MessageSquare },
+                { id: 'inspector_passes', label: 'Pases & Atrasos', icon: Clock },
+                { id: 'pedagogical_trips', label: 'Salidas Pedagógicas', icon: Compass }
+              ]
+            },
+            {
+              category: 'Recursos & Soporte',
+              items: [
+                { id: 'library', label: 'Biblioteca CRA', icon: BookOpen },
+                { id: 'computer_lab', label: 'Sala de Computación', icon: Monitor },
+                { id: 'staff', label: 'Recursos Humanos', icon: Briefcase },
+                { id: 'admin_docs', label: 'Documentos & Protocolos', icon: FolderOpen }
+              ]
+            },
+            {
+              category: 'Administración & Control',
+              items: [
+                { id: 'permissions', label: 'Matriz de Permisos', icon: Shield },
+                { id: 'config', label: 'Configuración', icon: Settings },
+                { id: 'audit', label: 'Auditoría "Silent-Watch"', icon: Lock }
+              ]
+            }
+          ].map((group, groupIdx) => {
+            const accessibleItems = group.items.filter(item => {
+              if (!canAccess(item.id)) return false;
+              if (!sidebarSearch.trim()) return true;
+              const q = sidebarSearch.toLowerCase();
+              return item.label.toLowerCase().includes(q) || group.category.toLowerCase().includes(q);
+            });
+
+            if (accessibleItems.length === 0) return null;
+
+            return (
+              <div key={group.category || groupIdx} style={{ marginBottom: sidebarCollapsed ? '0.35rem' : '0.45rem' }}>
+                {!sidebarCollapsed && !sidebarSearch && group.category !== 'General' && (
+                  <div style={{
+                    fontSize: '0.64rem',
+                    fontWeight: 800,
+                    letterSpacing: '0.07em',
+                    textTransform: 'uppercase',
+                    color: '#64748b',
+                    padding: '0.45rem 0.5rem 0.15rem',
+                    userSelect: 'none'
+                  }}>
+                    {group.category}
                   </div>
-                  {!sidebarCollapsed && isViewOnly && (
-                    <span
-                      title="Modo Solo Vista configurado en la Matriz de Permisos"
-                      style={{
-                        fontSize: '0.64rem',
-                        fontWeight: 800,
-                        background: isActive ? 'rgba(255,255,255,0.22)' : 'rgba(59, 130, 246, 0.22)',
-                        color: isActive ? '#ffffff' : '#93c5fd',
-                        padding: '1px 6px',
-                        borderRadius: '9999px',
-                        flexShrink: 0,
-                        marginLeft: '4px',
-                        letterSpacing: '0.2px'
-                      }}
-                    >
-                      Vista
-                    </span>
-                  )}
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.12rem' }}>
+                  {accessibleItems.map(item => {
+                    const isActive = activeTab === item.id;
+                    const accessLevel = getAccessLevel(item.id);
+                    const isViewOnly = accessLevel === 'view' && item.id !== 'home' && item.id !== 'audit';
+                    return (
+                      <div
+                        key={item.id}
+                        className={`nav-item ${isActive ? 'active' : ''}`}
+                        onClick={() => navigateToTab(item.id, item.label)}
+                        title={`${item.label}${isViewOnly ? ' (Solo Vista)' : ''}`}
+                        style={{
+                          justifyContent: sidebarCollapsed ? 'center' : 'space-between',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflow: 'hidden', flex: 1 }}>
+                          <item.icon size={18} style={{ flexShrink: 0 }} />
+                          {!sidebarCollapsed && (
+                            <span style={{
+                              fontWeight: isActive ? 700 : 500,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              fontSize: '0.82rem'
+                            }}>
+                              {item.label}
+                            </span>
+                          )}
+                        </div>
+                        {!sidebarCollapsed && isViewOnly && (
+                          <span
+                            title="Modo Solo Vista configurado en la Matriz de Permisos"
+                            style={{
+                              fontSize: '0.64rem',
+                              fontWeight: 800,
+                              background: isActive ? 'rgba(255,255,255,0.22)' : 'rgba(59, 130, 246, 0.22)',
+                              color: isActive ? '#ffffff' : '#93c5fd',
+                              padding: '1px 6px',
+                              borderRadius: '9999px',
+                              flexShrink: 0,
+                              marginLeft: '4px',
+                              letterSpacing: '0.2px'
+                            }}
+                          >
+                            Vista
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </div>
+            );
+          })}
         </nav>
 
         {/* ACCESO RÁPIDO A MI PERFIL Y BOTÓN CERRAR SESIÓN EN LA PARTE INFERIOR DEL MENÚ SIDEBAR */}
