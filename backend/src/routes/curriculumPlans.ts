@@ -41,7 +41,7 @@ router.get('/learning-goals', authMiddleware, async (req: Request, res: Response
 });
 
 // POST /api/curriculum/learning-goals - Registrar o importar nuevos OAs
-router.post('/learning-goals', authMiddleware, checkRoles(['Admin', 'Director', 'Docente']), async (req: Request, res: Response) => {
+router.post('/learning-goals', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
   try {
     const { grade_level, subject, oa_code, oa_title, description, axis, is_prioritized = true } = req.body;
     if (!grade_level || !subject || !oa_code || !oa_title) {
@@ -142,7 +142,7 @@ router.get('/annual-plans/:id', authMiddleware, async (req: Request, res: Respon
 });
 
 // POST /api/curriculum/annual-plans - Crear planificación anual con sus unidades
-router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director', 'Docente']), async (req: Request, res: Response) => {
+router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
   try {
     const {
       academic_year = 2026,
@@ -221,7 +221,7 @@ router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director', 'D
 });
 
 // PUT /api/curriculum/annual-plans/:id - Actualizar planificación anual y reemplazar unidades
-router.put('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director', 'Docente']), async (req: Request, res: Response) => {
+router.put('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const {
@@ -306,7 +306,7 @@ router.put('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director',
 });
 
 // DELETE /api/curriculum/annual-plans/:id - Eliminar planificación anual
-router.delete('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director', 'Docente']), async (req: Request, res: Response) => {
+router.delete('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     await query('DELETE FROM annual_curriculum_plans WHERE id = $1', [id]);
@@ -360,7 +360,7 @@ router.get('/lesson-plans', authMiddleware, async (req: Request, res: Response) 
 });
 
 // POST /api/curriculum/lesson-plans - Crear planificación de clase
-router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director', 'Docente']), async (req: Request, res: Response) => {
+router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
   try {
     const {
       annual_plan_id,
@@ -422,7 +422,7 @@ router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director', 'D
 });
 
 // PUT /api/curriculum/lesson-plans/:id - Actualizar planificación de clase
-router.put('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Director', 'Docente']), async (req: Request, res: Response) => {
+router.put('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const {
@@ -477,7 +477,7 @@ router.put('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Director',
 });
 
 // DELETE /api/curriculum/lesson-plans/:id - Eliminar clase
-router.delete('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Director', 'Docente']), async (req: Request, res: Response) => {
+router.delete('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     await query('DELETE FROM lesson_plans WHERE id = $1', [id]);

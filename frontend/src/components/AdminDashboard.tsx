@@ -202,13 +202,13 @@ export const AdminDashboard: React.FC = () => {
   const rolePermissions: Record<string, string[]> = {
     Admin: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
     Director: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
     Comunicaciones: ['home', 'communications', 'students', 'apoderados', 'computer_lab', 'pedagogical_trips', 'admin_docs', 'course_messaging', 'multiview'],
     EncargadoCRA: ['home', 'students', 'apoderados', 'communications', 'library', 'inspector_passes', 'admin_docs', 'multiview'],
     Bibliotecario: ['home', 'computer_lab', 'evaluations_pie', 'library', 'admin_docs', 'multiview'],
     Entrevistador: ['home', 'students', 'communications', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging', 'multiview'],
-    Administrativo: ['home', 'students', 'apoderados', 'communications', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
-    Profesionales: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Administrativo: ['home', 'students', 'apoderados', 'communications', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
+    Profesionales: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
     Asistente: ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
     'Asistente de la Educación': ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
     Apoderado: ['home', 'admin_docs'],
@@ -222,6 +222,19 @@ export const AdminDashboard: React.FC = () => {
     // Protección vital: Todo usuario autenticado siempre tiene acceso a 'home' (Dashboard / Portal Apoderado / Portal Estudiante)
     if (tab === 'home') {
       return (currentRole === 'Apoderado' || currentRole === 'Estudiante' || currentRole === 'Visita') ? 'view' : 'edit';
+    }
+
+    // Protección de entorno y rol: El módulo de planificaciones curriculares está en desarrollo exclusivo local
+    if (tab === 'curriculum_plans') {
+      const isLocalHost = typeof window !== 'undefined' && (
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.port === '3000'
+      );
+      if (!isLocalHost) return 'none'; // En producción (Vercel) está 100% deshabilitado y oculto
+      if (!['Admin', 'Administrador', 'Director'].includes(currentRole) && !isSuperAdmin) {
+        return 'none'; // Aún no disponible para Docentes ni otros roles
+      }
     }
 
     // Protección vital: El Administrador siempre tiene Edición en la Matriz de Permisos
@@ -947,7 +960,7 @@ export const AdminDashboard: React.FC = () => {
             { id: 'computer_lab', label: 'Sala de Computación', icon: Monitor },
             { id: 'evaluations_pie', label: 'Evaluaciones & PIE', icon: Puzzle },
             { id: 'mineduc_reports', label: 'Informes PIE', icon: FileCheck2 },
-            { id: 'curriculum_plans', label: 'Planificaciones & IA', icon: CalendarDays },
+            { id: 'curriculum_plans', label: 'Planificaciones & IA (Borrador Local)', icon: CalendarDays },
             { id: 'interviews', label: 'Actas y Entrevistas', icon: MessageSquare },
             { id: 'guardian_calls', label: 'Llamadas a Apoderados', icon: PhoneCall },
             { id: 'observations', label: 'Hoja de Vida', icon: Award },
