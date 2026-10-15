@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home, Send, RefreshCw, X, PhoneCall } from 'lucide-react';
+import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home, Send, RefreshCw, X, PhoneCall, CalendarDays, Sparkles } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { InstitutionalPlatformsSection } from './InstitutionalPlatformsSection';
 import { ExecutiveOverviewSection } from './ExecutiveOverviewSection';
@@ -32,6 +32,7 @@ const PersonalityReportsModule = lazy(() => import('./PersonalityReportsModule')
 const CourseMessageModal = lazy(() => import('./CourseMessageModal').then(m => ({ default: m.CourseMessageModal })));
 const PedagogicalTripsModule = lazy(() => import('./PedagogicalTripsModule').then(m => ({ default: m.PedagogicalTripsModule })));
 const TeacherCoursesGrid = lazy(() => import('./TeacherCoursesGrid').then(m => ({ default: m.TeacherCoursesGrid })));
+const CurriculumPlansModule = lazy(() => import('./CurriculumPlansModule').then(m => ({ default: m.CurriculumPlansModule })));
 import { DEFAULT_PERMISSIONS_MATRIX } from './PermissionsMatrix';
 
 const ModuleLoader: React.FC = () => (
@@ -194,19 +195,20 @@ export const AdminDashboard: React.FC = () => {
     mineduc_reports: 'mineduc_reports',
     pedagogical_trips: 'pedagogical_trips',
     course_messaging: 'course_messaging',
-    multiview: 'multiview'
+    multiview: 'multiview',
+    curriculum_plans: 'curriculum_plans'
   };
 
   const rolePermissions: Record<string, string[]> = {
-    Admin: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Director: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Admin: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Director: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
     Comunicaciones: ['home', 'communications', 'students', 'apoderados', 'computer_lab', 'pedagogical_trips', 'admin_docs', 'course_messaging', 'multiview'],
     EncargadoCRA: ['home', 'students', 'apoderados', 'communications', 'library', 'inspector_passes', 'admin_docs', 'multiview'],
     Bibliotecario: ['home', 'computer_lab', 'evaluations_pie', 'library', 'admin_docs', 'multiview'],
     Entrevistador: ['home', 'students', 'communications', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging', 'multiview'],
-    Administrativo: ['home', 'students', 'apoderados', 'communications', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
-    Profesionales: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
+    Administrativo: ['home', 'students', 'apoderados', 'communications', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
+    Profesionales: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
     Asistente: ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
     'Asistente de la Educación': ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
     Apoderado: ['home', 'admin_docs'],
@@ -278,6 +280,7 @@ export const AdminDashboard: React.FC = () => {
       computer_lab: 'Reserva Sala de Computación & Horarios',
       evaluations_pie: 'Portal de Evaluaciones & Integración PIE',
       mineduc_reports: 'Informes PIE & Formularios Oficiales MINEDUC (Dec. 170)',
+      curriculum_plans: 'Planificaciones Curriculares & Asistente IA',
       interviews: 'Actas de Entrevistas & Compromisos',
       observations: 'Hoja de Vida & Anotaciones RICE',
       inspector_passes: 'Control de Atrasos & Pases de Inspectoría',
@@ -944,6 +947,7 @@ export const AdminDashboard: React.FC = () => {
             { id: 'computer_lab', label: 'Sala de Computación', icon: Monitor },
             { id: 'evaluations_pie', label: 'Evaluaciones & PIE', icon: Puzzle },
             { id: 'mineduc_reports', label: 'Informes PIE', icon: FileCheck2 },
+            { id: 'curriculum_plans', label: 'Planificaciones & IA', icon: CalendarDays },
             { id: 'interviews', label: 'Actas y Entrevistas', icon: MessageSquare },
             { id: 'guardian_calls', label: 'Llamadas a Apoderados', icon: PhoneCall },
             { id: 'observations', label: 'Hoja de Vida', icon: Award },
@@ -2752,6 +2756,11 @@ export const AdminDashboard: React.FC = () => {
             selectedYear={selectedYear}
             onOpenStudentProfile={(s) => setSelectedStudent(s)}
           />
+        )}
+
+        {/* VISTA: PLANIFICACIONES CURRICULARES & ASISTENTE IA */}
+        {activeTab === 'curriculum_plans' && (
+          <CurriculumPlansModule token={token || ''} user={user} />
         )}
 
         {/* VISTA 5: ENTREVISTAS */}

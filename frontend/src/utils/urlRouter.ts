@@ -24,7 +24,8 @@ export type AdminTabId =
   | 'permissions'
   | 'config'
   | 'audit'
-  | 'guardian_calls';
+  | 'guardian_calls'
+  | 'curriculum_plans';
 
 export type TeacherTabId = 'home' | 'my_courses' | 'homeroom' | 'observations' | 'links';
 
@@ -44,6 +45,7 @@ export const ADMIN_TAB_TO_PATH: Record<AdminTabId, string> = {
   computer_lab: '/sala-computacion',
   evaluations_pie: '/evaluaciones-pie',
   mineduc_reports: '/informes-pie',
+  curriculum_plans: '/planificaciones-docentes',
   interviews: '/entrevistas',
   observations: '/hoja-de-vida',
   inspector_passes: '/pases-atrasos',
@@ -164,6 +166,7 @@ export const ADMIN_TAB_TITLES: Record<AdminTabId, string> = {
   config: 'Configuración del Sistema — LTP',
   audit: 'Auditoría Silent-Watch — LTP',
   guardian_calls: 'Llamadas a Apoderados — LTP',
+  curriculum_plans: 'Planificaciones Docentes & Asistente IA — LTP',
 };
 
 const BASE_PATH_TO_ADMIN_TAB: Record<string, AdminTabId> = {
@@ -180,6 +183,8 @@ const BASE_PATH_TO_ADMIN_TAB: Record<string, AdminTabId> = {
   '/sala-computacion': 'computer_lab',
   '/evaluaciones-pie': 'evaluations_pie',
   '/informes-pie': 'mineduc_reports',
+  '/planificaciones-docentes': 'curriculum_plans',
+  '/planificaciones': 'curriculum_plans',
   '/entrevistas': 'interviews',
   '/hoja-de-vida': 'observations',
   '/pases-atrasos': 'inspector_passes',

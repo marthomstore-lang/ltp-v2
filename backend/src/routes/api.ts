@@ -9,6 +9,7 @@ import { query, isMysql, checkDbConnection } from '../config/db';
 import { authMiddleware, checkRoles, logAudit } from '../middleware/auth';
 import { sendPasswordResetEmail, sendTeacherWelcomeEmail, sendCourseBroadcastEmail } from '../utils/mailer';
 import mineducReportsRouter from './mineducReports';
+import curriculumPlansRouter from './curriculumPlans';
 
 const router = Router();
 
@@ -13002,6 +13003,9 @@ router.delete('/pedagogical-trips/:id', authMiddleware, checkRoles(['Admin', 'Di
 
 // Rutas de Informes Oficiales MINEDUC (Decreto 170)
 router.use('/mineduc-reports', mineducReportsRouter);
+
+// Rutas de Planificación Curricular y Asistente IA Docente (Anual y Clase a Clase)
+router.use('/curriculum', curriculumPlansRouter);
 
 export default router;
 
