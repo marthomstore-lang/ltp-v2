@@ -8321,8 +8321,8 @@ router.get('/dashboard/executive-overview', authMiddleware, async (req: Request,
       query(`
         SELECT 
           COUNT(*) as total, 
-          COUNT(*) FILTER (WHERE status IN ('Contestada', 'Aceptada', 'Exitosa', 'Compromiso acordado')) as accepted, 
-          COUNT(*) FILTER (WHERE status IN ('No contesta', 'Rechazada', 'Ocupado / Buzón', 'Número equivocado')) as rejected 
+          COUNT(*) FILTER (WHERE status ILIKE '%contest%' OR status ILIKE '%aceptad%' OR status ILIKE '%acordado%' OR status ILIKE '%exitosa%') as accepted, 
+          COUNT(*) FILTER (WHERE status ILIKE '%no contesta%' OR status ILIKE '%rechaz%' OR status ILIKE '%cort%' OR status ILIKE '%ocupado%' OR status ILIKE '%buz%' OR status ILIKE '%equivocado%' OR status ILIKE '%erróneo%') as rejected 
         FROM guardian_calls
       `).catch(() => ({ rows: [{ total: '0', accepted: '0', rejected: '0' }] })),
 
@@ -8335,8 +8335,8 @@ router.get('/dashboard/executive-overview', authMiddleware, async (req: Request,
           guardian_name,
           guardian_phone,
           COUNT(*) as total_calls,
-          COUNT(*) FILTER (WHERE status IN ('Contestada', 'Aceptada', 'Exitosa', 'Compromiso acordado')) as accepted_calls,
-          COUNT(*) FILTER (WHERE status IN ('No contesta', 'Rechazada', 'Ocupado / Buzón', 'Número equivocado')) as rejected_calls,
+          COUNT(*) FILTER (WHERE status ILIKE '%contest%' OR status ILIKE '%aceptad%' OR status ILIKE '%acordado%' OR status ILIKE '%exitosa%') as accepted_calls,
+          COUNT(*) FILTER (WHERE status ILIKE '%no contesta%' OR status ILIKE '%rechaz%' OR status ILIKE '%cort%' OR status ILIKE '%ocupado%' OR status ILIKE '%buz%' OR status ILIKE '%equivocado%' OR status ILIKE '%erróneo%') as rejected_calls,
           MAX(call_date) as last_call_date,
           (ARRAY_AGG(reason ORDER BY call_date DESC))[1] as last_reason,
           (ARRAY_AGG(status ORDER BY call_date DESC))[1] as last_status
@@ -8426,7 +8426,7 @@ router.get('/guardian-calls', authMiddleware, async (req: Request, res: Response
     }
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-    const limitNum = Math.min(parseInt(String(limit || '100'), 10) || 100, 500);
+    const limitNum = Math.min(parseInt(String(limit || '100'), 10) || 100, 1000);
 
     const callsRes = await query(
       `SELECT * FROM guardian_calls ${whereSql} ORDER BY call_date DESC, created_at DESC LIMIT ${limitNum}`,
@@ -8436,8 +8436,8 @@ router.get('/guardian-calls', authMiddleware, async (req: Request, res: Response
     const statsRes = await query(`
       SELECT 
         COUNT(*) as total,
-        COUNT(*) FILTER (WHERE status IN ('Contestada', 'Aceptada', 'Exitosa', 'Compromiso acordado')) as accepted,
-        COUNT(*) FILTER (WHERE status IN ('No contesta', 'Rechazada', 'Ocupado / Buzón', 'Número equivocado')) as rejected
+        COUNT(*) FILTER (WHERE status ILIKE '%contest%' OR status ILIKE '%aceptad%' OR status ILIKE '%acordado%' OR status ILIKE '%exitosa%') as accepted,
+        COUNT(*) FILTER (WHERE status ILIKE '%no contesta%' OR status ILIKE '%rechaz%' OR status ILIKE '%cort%' OR status ILIKE '%ocupado%' OR status ILIKE '%buz%' OR status ILIKE '%equivocado%' OR status ILIKE '%erróneo%') as rejected
       FROM guardian_calls ${whereSql}
     `, params);
 
@@ -8446,7 +8446,22 @@ router.get('/guardian-calls', authMiddleware, async (req: Request, res: Response
       FROM guardian_calls ${whereSql}
       GROUP BY reason 
       ORDER BY count DESC 
-      LIMIT 6
+      LIMIT 10
+    `, params);
+
+    const statusesRes = await query(`
+      SELECT status, COUNT(*) as count 
+      FROM guardian_calls ${whereSql}
+      GROUP BY status 
+      ORDER BY count DESC
+    `, params);
+
+    const coursesRes = await query(`
+      SELECT COALESCE(course_name, 'Sin Curso') as course_name, COUNT(*) as count 
+      FROM guardian_calls ${whereSql}
+      GROUP BY course_name 
+      ORDER BY count DESC 
+      LIMIT 10
     `, params);
 
     const total = parseInt(statsRes.rows[0]?.total || '0', 10);
@@ -8461,7 +8476,9 @@ router.get('/guardian-calls', authMiddleware, async (req: Request, res: Response
         accepted,
         rejected,
         contactRate,
-        topReasons: reasonsRes.rows || []
+        topReasons: reasonsRes.rows || [],
+        statusesBreakdown: statusesRes.rows || [],
+        coursesBreakdown: coursesRes.rows || []
       }
     });
   } catch (err: any) {
