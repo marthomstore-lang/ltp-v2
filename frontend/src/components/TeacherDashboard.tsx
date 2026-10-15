@@ -820,30 +820,11 @@ export const TeacherDashboard: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
               <button
                 type="button"
-                onClick={handleTeacherGoBack}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  padding: '0.45rem 0.95rem',
-                  borderRadius: '8px',
-                  border: '1.5px solid #4f46e5',
-                  background: '#eef2ff',
-                  color: '#312e81',
-                  fontWeight: 800,
-                  fontSize: '0.82rem',
-                  cursor: 'pointer'
-                }}
-              >
-                <ArrowLeft size={16} /> Volver Atrás
-              </button>
-
-              <button
-                type="button"
                 onClick={() => {
                   navigateTeacherTab('home');
                   setSelectedCourseSubject(null);
                 }}
+                title="Ir a la pantalla principal"
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',

@@ -571,36 +571,29 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
         boxShadow: '0 10px 25px -5px rgba(30, 27, 75, 0.25)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => {
-              if (activeMode === 'edit_template') {
-                setActiveMode('evaluate');
-              } else if (onBack) {
-                onBack();
-              } else {
-                window.dispatchEvent(new CustomEvent('ltp_navigate_tab', { detail: 'home' }));
-              }
-            }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.5rem 0.95rem',
-              borderRadius: '10px',
-              border: '1.5px solid rgba(255,255,255,0.35)',
-              background: 'rgba(255,255,255,0.14)',
-              color: '#ffffff',
-              fontWeight: 800,
-              fontSize: '0.82rem',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-            title={activeMode === 'edit_template' ? 'Volver a la vista de Evaluar e Imprimir' : 'Volver a la pantalla anterior'}
-          >
-            <ArrowLeft size={16} />
-            {activeMode === 'edit_template' ? 'Volver a Evaluar' : 'Volver Atrás'}
-          </button>
+          {activeMode === 'edit_template' && (
+            <button
+              type="button"
+              onClick={() => setActiveMode('evaluate')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.5rem 0.95rem',
+                borderRadius: '10px',
+                border: '1.5px solid rgba(255,255,255,0.35)',
+                background: 'rgba(255,255,255,0.14)',
+                color: '#ffffff',
+                fontWeight: 800,
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              title="Volver a la vista de Evaluar e Imprimir"
+            >
+              <ArrowLeft size={16} /> Volver a Evaluar
+            </button>
+          )}
 
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
