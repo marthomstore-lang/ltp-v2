@@ -8321,7 +8321,7 @@ router.get('/dashboard/executive-overview', authMiddleware, async (req: Request,
       query(`
         SELECT 
           COUNT(*) as total, 
-          COUNT(*) FILTER (WHERE status ILIKE '%contest%' OR status ILIKE '%aceptad%' OR status ILIKE '%acordado%' OR status ILIKE '%exitosa%') as accepted, 
+          COUNT(*) FILTER (WHERE (status ILIKE '%contestad%' OR status ILIKE '%aceptad%' OR status ILIKE '%acordado%' OR status ILIKE '%exitosa%') AND status NOT ILIKE '%no contesta%') as accepted, 
           COUNT(*) FILTER (WHERE status ILIKE '%no contesta%' OR status ILIKE '%rechaz%' OR status ILIKE '%cort%' OR status ILIKE '%ocupado%' OR status ILIKE '%buz%' OR status ILIKE '%equivocado%' OR status ILIKE '%erróneo%') as rejected 
         FROM guardian_calls
       `).catch(() => ({ rows: [{ total: '0', accepted: '0', rejected: '0' }] })),
@@ -8335,7 +8335,7 @@ router.get('/dashboard/executive-overview', authMiddleware, async (req: Request,
           guardian_name,
           guardian_phone,
           COUNT(*) as total_calls,
-          COUNT(*) FILTER (WHERE status ILIKE '%contest%' OR status ILIKE '%aceptad%' OR status ILIKE '%acordado%' OR status ILIKE '%exitosa%') as accepted_calls,
+          COUNT(*) FILTER (WHERE (status ILIKE '%contestad%' OR status ILIKE '%aceptad%' OR status ILIKE '%acordado%' OR status ILIKE '%exitosa%') AND status NOT ILIKE '%no contesta%') as accepted_calls,
           COUNT(*) FILTER (WHERE status ILIKE '%no contesta%' OR status ILIKE '%rechaz%' OR status ILIKE '%cort%' OR status ILIKE '%ocupado%' OR status ILIKE '%buz%' OR status ILIKE '%equivocado%' OR status ILIKE '%erróneo%') as rejected_calls,
           MAX(call_date) as last_call_date,
           (ARRAY_AGG(reason ORDER BY call_date DESC))[1] as last_reason,
@@ -8436,7 +8436,7 @@ router.get('/guardian-calls', authMiddleware, async (req: Request, res: Response
     const statsRes = await query(`
       SELECT 
         COUNT(*) as total,
-        COUNT(*) FILTER (WHERE status ILIKE '%contest%' OR status ILIKE '%aceptad%' OR status ILIKE '%acordado%' OR status ILIKE '%exitosa%') as accepted,
+        COUNT(*) FILTER (WHERE (status ILIKE '%contestad%' OR status ILIKE '%aceptad%' OR status ILIKE '%acordado%' OR status ILIKE '%exitosa%') AND status NOT ILIKE '%no contesta%') as accepted,
         COUNT(*) FILTER (WHERE status ILIKE '%no contesta%' OR status ILIKE '%rechaz%' OR status ILIKE '%cort%' OR status ILIKE '%ocupado%' OR status ILIKE '%buz%' OR status ILIKE '%equivocado%' OR status ILIKE '%erróneo%') as rejected
       FROM guardian_calls ${whereSql}
     `, params);

@@ -26,7 +26,8 @@ import {
   PieChart,
   FileText,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  AlertTriangle
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { getStudentCourse } from '../utils/course';
@@ -36,6 +37,7 @@ import {
   CallsSummaryStats,
   isCallAccepted,
   isCallRejected,
+  checkWeeklyUnansweredAlert,
   printStudentCallReport,
   printConsolidatedCallReport
 } from '../utils/printGuardianCalls';
@@ -140,13 +142,14 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
   const [includeChartsInReport, setIncludeChartsInReport] = useState<boolean>(true);
   const [includeRankingInReport, setIncludeRankingInReport] = useState<boolean>(true);
   const [includeRecordsInReport, setIncludeRecordsInReport] = useState<boolean>(true);
-  const [includeSignaturesInReport, setIncludeSignaturesInReport] = useState<boolean>(true);
+  const [includeSignaturesInReport, setIncludeSignaturesInReport] = useState<boolean>(false);
 
   // Filtros de bitácora
   const [searchFilter, setSearchFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [reasonFilter, setReasonFilter] = useState<string>('all');
   const [courseFilter, setCourseFilter] = useState<string>('all');
+  const [filterOnlyAlerts, setFilterOnlyAlerts] = useState<boolean>(false);
 
   // Formulario de nueva llamada
   const [studentSearch, setStudentSearch] = useState<string>('');
@@ -331,9 +334,59 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
       .slice(0, 8);
   }, [calls]);
 
+  // Detección de estudiantes con alertas de incontactabilidad semanal (>= 3 llamadas no contestadas en 7 días)
+  const studentsInWeeklyAlert = useMemo(() => {
+    const studentCallsMap: Record<string, { student: StudentReportTarget; calls: GuardianCallRecord[] }> = {};
+
+    calls.forEach((c) => {
+      const key = (c.student_name || 'Desconocido').trim();
+      if (!studentCallsMap[key]) {
+        studentCallsMap[key] = {
+          student: {
+            name: key,
+            run: c.student_run,
+            course: c.course_name,
+            guardianName: c.guardian_name,
+            guardianPhone: c.guardian_phone
+          },
+          calls: []
+        };
+      }
+      studentCallsMap[key].calls.push(c);
+    });
+
+    const alerts: Array<{
+      student: StudentReportTarget;
+      unansweredCount: number;
+      periodText: string;
+      calls: GuardianCallRecord[];
+    }> = [];
+
+    Object.values(studentCallsMap).forEach((entry) => {
+      const check = checkWeeklyUnansweredAlert(entry.calls);
+      if (check.isAlert) {
+        alerts.push({
+          student: entry.student,
+          unansweredCount: check.unansweredCount,
+          periodText: check.periodText || 'en una semana',
+          calls: entry.calls
+        });
+      }
+    });
+
+    return alerts.sort((a, b) => b.unansweredCount - a.unansweredCount);
+  }, [calls]);
+
+  const alertStudentNames = useMemo(() => {
+    return new Set(studentsInWeeklyAlert.map((a) => a.student.name.trim().toLowerCase()));
+  }, [studentsInWeeklyAlert]);
+
   // Filtrado de las llamadas en la bitácora
   const filteredCalls = useMemo(() => {
     return calls.filter((c) => {
+      if (filterOnlyAlerts && !alertStudentNames.has((c.student_name || '').trim().toLowerCase())) {
+        return false;
+      }
       if (statusFilter !== 'all') {
         if (statusFilter === 'accepted' && !isCallAccepted(c.status)) {
           return false;
@@ -371,7 +424,7 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
       }
       return true;
     });
-  }, [calls, statusFilter, reasonFilter, courseFilter, searchFilter]);
+  }, [calls, filterOnlyAlerts, alertStudentNames, statusFilter, reasonFilter, courseFilter, searchFilter]);
 
   // Lista de estudiantes para selector de reporte individual
   const studentReportCandidates = useMemo(() => {
@@ -575,7 +628,12 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
     });
   }, [calls, selectedReportStudent]);
 
-  // Ejecutar impresión del reporte de estudiante
+  // Alerta del estudiante actualmente seleccionado
+  const selectedStudentWeeklyAlert = useMemo(() => {
+    return checkWeeklyUnansweredAlert(targetStudentCalls);
+  }, [targetStudentCalls]);
+
+  // Ejecutar impresión del reporte de estudiante (sin firmas por instrucción de dirección)
   const triggerPrintStudentReport = () => {
     if (!selectedReportStudent) return;
     printStudentCallReport(selectedReportStudent, targetStudentCalls, {
@@ -1039,6 +1097,123 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
           </div>
         </div>
 
+        {/* 3.0. ALERTA CRÍTICA: ESTUDIANTES CON MÁS DE 3 LLAMADAS SIN CONTESTAR EN UNA SEMANA */}
+        {studentsInWeeklyAlert.length > 0 && (
+          <div
+            style={{
+              backgroundColor: '#fef2f2',
+              border: '1.5px solid #f87171',
+              borderRadius: '12px',
+              padding: '1.1rem 1.5rem',
+              margin: '1.25rem 1.75rem 0',
+              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.08)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertTriangle size={22} color="#dc2626" />
+                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 900, color: '#991b1b' }}>
+                  🚨 Alerta Institucional: {studentsInWeeklyAlert.length} {studentsInWeeklyAlert.length === 1 ? 'Estudiante' : 'Estudiantes'} con 3 o más llamadas sin contestar en una semana
+                </h4>
+              </div>
+              <button
+                onClick={() => setFilterOnlyAlerts(!filterOnlyAlerts)}
+                style={{
+                  backgroundColor: filterOnlyAlerts ? '#dc2626' : '#ffffff',
+                  color: filterOnlyAlerts ? '#ffffff' : '#dc2626',
+                  border: '1px solid #dc2626',
+                  borderRadius: '6px',
+                  padding: '4px 10px',
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                {filterOnlyAlerts ? 'Ver todas las llamadas' : 'Filtrar solo llamadas en alerta'}
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                gap: '0.75rem'
+              }}
+            >
+              {studentsInWeeklyAlert.map((al, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #fecaca',
+                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#991b1b' }}>
+                      {al.student.name}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      {al.student.course || 'Sin curso'} • {al.student.guardianPhone ? `Tel: ${al.student.guardianPhone}` : 'Sin teléfono'}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 700, marginTop: '2px' }}>
+                      ⚠️ {al.unansweredCount} llamadas no contestadas ({al.periodText})
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <button
+                      onClick={() => handleOpenStudentReport(al.student)}
+                      style={{
+                        backgroundColor: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        color: '#1d4ed8',
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      Ver Ficha
+                    </button>
+                    <button
+                      onClick={() =>
+                        handleOpenModal({
+                          full_name: al.student.name,
+                          run: al.student.run,
+                          desc_grado: al.student.course,
+                          guardian_name: al.student.guardianName,
+                          guardian_phone: al.student.guardianPhone
+                        })
+                      }
+                      style={{
+                        backgroundColor: '#dc2626',
+                        border: 'none',
+                        color: '#ffffff',
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      Reintentar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Marcador Analítico (Scoreboard de Contacto) */}
         <div
           style={{
@@ -1197,7 +1372,7 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* 3.1. PANEL DE ANÁLISIS GRÁFICO INTEGRADO ("y que los graficos, con los registros") */}
+        {/* 3.1. PANEL DE ANÁLISIS GRÁFICO INTEGRADO */}
         {showCharts && calls.length > 0 && (
           <div
             style={{
@@ -1409,15 +1584,16 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
                 const total = top.total_calls;
                 const accepted = top.accepted_calls;
                 const rate = total > 0 ? Math.round((accepted / total) * 100) : 0;
+                const hasWeeklyAlert = alertStudentNames.has(top.student_name.trim().toLowerCase());
 
                 return (
                   <div
                     key={index}
                     style={{
-                      border: '1px solid #e2e8f0',
+                      border: hasWeeklyAlert ? '1.5px solid #f87171' : '1px solid #e2e8f0',
                       borderRadius: '10px',
                       padding: '0.85rem 1rem',
-                      backgroundColor: '#ffffff',
+                      backgroundColor: hasWeeklyAlert ? '#fffafb' : '#ffffff',
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'space-between',
@@ -1427,7 +1603,7 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
                   >
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           <span
                             style={{
                               backgroundColor: index === 0 ? '#fef08a' : index === 1 ? '#e2e8f0' : '#fed7aa',
@@ -1443,6 +1619,22 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
                           <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>
                             {top.student_name}
                           </span>
+                          {hasWeeklyAlert && (
+                            <span
+                              style={{
+                                backgroundColor: '#fef2f2',
+                                color: '#dc2626',
+                                border: '1px solid #fecaca',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                fontSize: '0.68rem',
+                                fontWeight: 800
+                              }}
+                              title="Alerta: 3 o más llamadas sin contestar en 7 días"
+                            >
+                              🚨 3+ sin contestar
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
                           {top.course_name || 'Sin curso'} {top.guardian_phone ? `• Tel: ${top.guardian_phone}` : ''}
@@ -1577,6 +1769,30 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {/* Botón Filtro Rápido Alertas Semanales */}
+            {studentsInWeeklyAlert.length > 0 && (
+              <button
+                onClick={() => setFilterOnlyAlerts(!filterOnlyAlerts)}
+                style={{
+                  padding: '0.45rem 0.75rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 800,
+                  border: '1px solid #ef4444',
+                  borderRadius: '8px',
+                  backgroundColor: filterOnlyAlerts ? '#dc2626' : '#fef2f2',
+                  color: filterOnlyAlerts ? '#ffffff' : '#b91c1c',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+                title="Filtrar estudiantes con 3 o más llamadas no contestadas en 7 días"
+              >
+                <AlertTriangle size={14} />
+                {filterOnlyAlerts ? 'Ver Todos' : `En Alerta (${studentsInWeeklyAlert.length})`}
+              </button>
+            )}
+
             {/* Filtro por Curso */}
             {availableCourses.length > 0 && (
               <select
@@ -1639,13 +1855,14 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
               ))}
             </select>
 
-            {(searchFilter || statusFilter !== 'all' || reasonFilter !== 'all' || courseFilter !== 'all') && (
+            {(searchFilter || statusFilter !== 'all' || reasonFilter !== 'all' || courseFilter !== 'all' || filterOnlyAlerts) && (
               <button
                 onClick={() => {
                   setSearchFilter('');
                   setStatusFilter('all');
                   setReasonFilter('all');
                   setCourseFilter('all');
+                  setFilterOnlyAlerts(false);
                 }}
                 style={{
                   padding: '0.45rem 0.75rem',
@@ -1722,12 +1939,14 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
                     hour: '2-digit',
                     minute: '2-digit'
                   });
+                  const isStudentAlert = alertStudentNames.has((c.student_name || '').trim().toLowerCase());
 
                   return (
                     <tr
                       key={c.id}
                       style={{
                         borderBottom: '1px solid #f1f5f9',
+                        backgroundColor: isStudentAlert ? '#fffafb' : 'transparent',
                         transition: 'background 0.15s ease'
                       }}
                     >
@@ -1739,7 +1958,25 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
                       </td>
 
                       <td style={{ padding: '0.65rem 1rem' }}>
-                        <div style={{ fontWeight: 700, color: '#1e293b' }}>{c.student_name}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 700, color: '#1e293b' }}>{c.student_name}</span>
+                          {isStudentAlert && (
+                            <span
+                              style={{
+                                backgroundColor: '#fef2f2',
+                                color: '#dc2626',
+                                border: '1px solid #fecaca',
+                                padding: '1px 5px',
+                                borderRadius: '4px',
+                                fontSize: '0.65rem',
+                                fontWeight: 800
+                              }}
+                              title="Alerta: 3 o más llamadas no contestadas en 7 días"
+                            >
+                              🚨 3+ sin contestar
+                            </span>
+                          )}
+                        </div>
                         <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
                           {c.course_name || 'Sin curso'} {c.student_run ? `• ${c.student_run}` : ''}
                         </div>
@@ -2437,7 +2674,33 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
                     </div>
                   </div>
 
-                  {/* KPIs del Alumno */}
+                  {/* Alerta Semanal en Vista Previa si aplica */}
+                  {selectedStudentWeeklyAlert.isAlert && (
+                    <div
+                      style={{
+                        backgroundColor: '#fef2f2',
+                        border: '1.5px solid #f87171',
+                        borderRadius: '8px',
+                        padding: '10px 14px',
+                        marginBottom: '14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px'
+                      }}
+                    >
+                      <AlertTriangle size={22} color="#dc2626" style={{ flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontWeight: 900, fontSize: '0.85rem', color: '#991b1b' }}>
+                          🚨 ALERTA CRÍTICA DE CONTACTABILIDAD ({selectedStudentWeeklyAlert.unansweredCount} llamadas sin contestar {selectedStudentWeeklyAlert.periodText})
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: '#b91c1c', marginTop: '2px' }}>
+                          El apoderado no ha respondido a 3 o más llamadas telefónicas en el transcurso de una semana. Se sugiere activar protocolo institucional de citación presencial formal por Inspectoría o visita domiciliaria.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* KPIs del Alumno (Cálculo exacto: Contestadas + No Contesta = Total) */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
                     <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
                       <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>TOTAL LLAMADOS</div>
@@ -2805,4 +3068,3 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
     </div>
   );
 };
-

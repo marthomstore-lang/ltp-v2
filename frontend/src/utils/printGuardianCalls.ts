@@ -43,13 +43,8 @@ export interface CallsSummaryStats {
   reasonBreakdown: Array<{ reason: string; count: number; percentage: number }>;
 }
 
-export const isCallAccepted = (status: string = ''): boolean => {
-  const s = status.toLowerCase();
-  return s.includes('contest') || s.includes('aceptad') || s.includes('acordado') || s.includes('exitosa');
-};
-
 export const isCallRejected = (status: string = ''): boolean => {
-  const s = status.toLowerCase();
+  const s = status.toLowerCase().trim();
   return (
     s.includes('no contesta') ||
     s.includes('rechaz') ||
@@ -59,6 +54,68 @@ export const isCallRejected = (status: string = ''): boolean => {
     s.includes('equivocado') ||
     s.includes('erróneo')
   );
+};
+
+export const isCallAccepted = (status: string = ''): boolean => {
+  const s = status.toLowerCase().trim();
+  if (isCallRejected(s)) return false;
+  return s.includes('contestad') || s.includes('aceptad') || s.includes('acordado') || s.includes('exitosa') || s === 'contestada';
+};
+
+export interface WeeklyAlertInfo {
+  isAlert: boolean;
+  unansweredCount: number;
+  periodText?: string;
+}
+
+/**
+ * Evalúa si un estudiante tiene una alerta de incontactabilidad:
+ * Se considera alerta cuando el estudiante registra 3 o más llamadas no contestadas/rechazadas en una semana (7 días).
+ */
+export const checkWeeklyUnansweredAlert = (calls: GuardianCallRecord[]): WeeklyAlertInfo => {
+  const rejectedCalls = calls
+    .filter((c) => isCallRejected(c.status))
+    .sort((a, b) => new Date(b.call_date).getTime() - new Date(a.call_date).getTime());
+
+  if (rejectedCalls.length < 3) {
+    return { isAlert: false, unansweredCount: rejectedCalls.length };
+  }
+
+  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = new Date().getTime();
+
+  // Caso 1: En los últimos 7 días respecto a la fecha actual
+  const recentRejected = rejectedCalls.filter((c) => {
+    const t = new Date(c.call_date).getTime();
+    return !isNaN(t) && (now - t) <= ONE_WEEK_MS;
+  });
+
+  if (recentRejected.length >= 3) {
+    return {
+      isAlert: true,
+      unansweredCount: recentRejected.length,
+      periodText: 'en los últimos 7 días'
+    };
+  }
+
+  // Caso 2: Ventana deslizante de 7 días sobre el historial de llamadas
+  for (let i = 0; i < rejectedCalls.length; i++) {
+    const baseTime = new Date(rejectedCalls[i].call_date).getTime();
+    if (isNaN(baseTime)) continue;
+    const windowCalls = rejectedCalls.filter((c) => {
+      const t = new Date(c.call_date).getTime();
+      return !isNaN(t) && Math.abs(baseTime - t) <= ONE_WEEK_MS;
+    });
+    if (windowCalls.length >= 3) {
+      return {
+        isAlert: true,
+        unansweredCount: windowCalls.length,
+        periodText: 'en un lapso de 7 días'
+      };
+    }
+  }
+
+  return { isAlert: false, unansweredCount: rejectedCalls.length };
 };
 
 const getStatusColor = (status: string = ''): string => {
@@ -101,7 +158,9 @@ export const printStudentCallReport = (
     return;
   }
 
-  const callsRowsHtml =
+    const weeklyAlert = checkWeeklyUnansweredAlert(calls);
+
+    const callsRowsHtml =
     calls.length === 0
       ? `<tr><td colspan="7" style="text-align:center; padding: 24px; color: #64748b;">No existen llamadas registradas para este estudiante.</td></tr>`
       : calls
@@ -353,6 +412,21 @@ export const printStudentCallReport = (
     </div>
   </div>
 
+  ${
+    weeklyAlert.isAlert
+      ? `
+    <div style="border: 2px solid #ef4444; background: #fef2f2; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px;">
+      <div style="font-weight: 900; font-size: 11.5px; color: #b91c1c; display: flex; align-items: center; gap: 6px;">
+        🚨 ALERTA CRÍTICA DE INCONTACTABILIDAD (${weeklyAlert.unansweredCount} llamadas sin contestar ${weeklyAlert.periodText})
+      </div>
+      <div style="font-size: 10.5px; color: #991b1b; margin-top: 3px; line-height: 1.35;">
+        Este estudiante registra 3 o más llamadas telefónicas no contestadas o rechazadas en el transcurso de una semana. Se sugiere activar protocolo institucional de citación presencial formal por Inspectoría General o visita domiciliaria.
+      </div>
+    </div>
+    `
+      : ''
+  }
+
   <!-- Métricas Rápidas del Estudiante -->
   <div class="grid-4" style="margin-bottom: 14px;">
     <div class="kpi-box">
@@ -410,21 +484,6 @@ export const printStudentCallReport = (
     `
       : ''
   }
-
-  <div class="signatures">
-    <div>
-      <div class="sig-line">Funcionario Responsable</div>
-      <div class="sig-sub">Registro y Trazabilidad Institucional</div>
-    </div>
-    <div>
-      <div class="sig-line">Inspectoría General / Convivencia</div>
-      <div class="sig-sub">Validación y Seguimiento Escolar</div>
-    </div>
-    <div>
-      <div class="sig-line">Firma Apoderado(a)</div>
-      <div class="sig-sub">Toma de Conocimiento (Citación / Entrevista)</div>
-    </div>
-  </div>
 
   <div class="footer-note">
     <span>Documento generado oficialmente por el Sistema de Gestión Institucional LTP v2.0.</span>
