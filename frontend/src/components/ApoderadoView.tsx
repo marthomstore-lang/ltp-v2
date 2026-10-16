@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserCheck, Award, BookOpen, MessageSquare, ChevronRight, ChevronDown, User, Search, Clock, PenTool, AlertTriangle, AlertCircle, ShieldAlert, FileText, Printer, CheckCircle2 } from 'lucide-react';
+import { UserCheck, Award, BookOpen, MessageSquare, ChevronRight, ChevronDown, User, Search, Clock, PenTool, AlertTriangle, AlertCircle, ShieldAlert, FileText, Printer, CheckCircle2, CalendarDays, MapPin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { UserProfileModal } from './UserProfileModal';
 import { SubmitStatementModal, PendingStatementItem } from './SubmitStatementModal';
@@ -107,7 +107,7 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
   const [pupilos, setPupilos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPupiloId, setSelectedPupiloId] = useState<string>('');
-  const [activeSubTab, setActiveSubTab] = useState<'grades' | 'personality' | 'observations' | 'interviews' | 'lates' | 'communications'>('grades');
+  const [activeSubTab, setActiveSubTab] = useState<'grades' | 'personality' | 'observations' | 'interviews' | 'lates' | 'communications' | 'schedule'>('grades');
   const [selectedSemester, setSelectedSemester] = useState<'all' | 1 | 2>('all');
   const [previewPass, setPreviewPass] = useState<ThermalPassData | null>(null);
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
@@ -115,6 +115,11 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
   const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
   const [sendingReplyId, setSendingReplyId] = useState<string | null>(null);
   const [replyFeedback, setReplyFeedback] = useState<Record<string, string>>({});
+
+  // Estados de Horario Escolar del Pupilo
+  const [courseSchedule, setCourseSchedule] = useState<any[]>([]);
+  const [schoolPeriods, setSchoolPeriods] = useState<any[]>([]);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
 
   const fetchPendingStatements = () => {
     if (!token) return;
@@ -273,6 +278,178 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
   const justifiedLatesCount = React.useMemo(() => {
     return uniquePasses.filter((p: any) => String(p.pass_type || '').toLowerCase().includes('atraso') && String(p.status || '').toLowerCase().includes('justificado')).length;
   }, [uniquePasses]);
+
+  const fetchPupiloSchedule = async (courseName: string) => {
+    if (!token || !courseName) return;
+    setLoadingSchedule(true);
+    try {
+      const [periodsRes, schedRes] = await Promise.all([
+        fetch('/api/schedules/periods', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => ({ periods: [] })),
+        fetch(`/api/schedules?course_name=${encodeURIComponent(courseName)}&academic_year=2026`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => ({ schedules: [] }))
+      ]);
+      setSchoolPeriods(periodsRes.periods || []);
+      setCourseSchedule(schedRes.schedules || []);
+    } catch (err) {
+      console.error('Error al cargar horario del curso:', err);
+    } finally {
+      setLoadingSchedule(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'schedule' && currentPupilo?.levelName) {
+      fetchPupiloSchedule(currentPupilo.levelName);
+    }
+  }, [activeSubTab, currentPupilo?.levelName, token]);
+
+  const handlePrintCourseSchedule = () => {
+    if (!currentPupilo) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const days = [
+      { num: 1, name: 'Lunes' },
+      { num: 2, name: 'Martes' },
+      { num: 3, name: 'Miércoles' },
+      { num: 4, name: 'Jueves' },
+      { num: 5, name: 'Viernes' }
+    ];
+
+    const sortedPeriods = (schoolPeriods.length > 0 ? schoolPeriods : [
+      { id: 'p1', period_number: 1, period_name: 'Bloque 1', start_time: '08:00', end_time: '09:30', is_break: false, sort_order: 1 },
+      { id: 'r1', period_number: 0, period_name: 'Recreo Mañana', start_time: '09:30', end_time: '09:45', is_break: true, sort_order: 2 },
+      { id: 'p2', period_number: 2, period_name: 'Bloque 2', start_time: '09:45', end_time: '11:15', is_break: false, sort_order: 3 },
+      { id: 'r2', period_number: 0, period_name: 'Recreo', start_time: '11:15', end_time: '11:30', is_break: true, sort_order: 4 },
+      { id: 'p3', period_number: 3, period_name: 'Bloque 3', start_time: '11:30', end_time: '13:00', is_break: false, sort_order: 5 },
+      { id: 'al', period_number: 0, period_name: 'Almuerzo', start_time: '13:00', end_time: '13:45', is_break: true, sort_order: 6 },
+      { id: 'p4', period_number: 4, period_name: 'Bloque 4', start_time: '13:45', end_time: '15:15', is_break: false, sort_order: 7 },
+      { id: 'r3', period_number: 0, period_name: 'Recreo Tarde', start_time: '15:15', end_time: '15:25', is_break: true, sort_order: 8 },
+      { id: 'p5', period_number: 5, period_name: 'Bloque 5', start_time: '15:25', end_time: '16:55', is_break: false, sort_order: 9 }
+    ]).sort((a, b) => (a.sort_order || a.period_number) - (b.sort_order || b.period_number));
+
+    let rowsHtml = '';
+    sortedPeriods.forEach(p => {
+      if (p.is_break) {
+        rowsHtml += `
+          <tr style="background: #f8fafc; font-style: italic;">
+            <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold; font-size: 10px;">
+              ${p.period_name}<br><span style="font-size: 9px; font-weight: normal;">${p.start_time} - ${p.end_time}</span>
+            </td>
+            <td colspan="5" style="border: 1px solid #000; padding: 5px; text-align: center; font-size: 10px; color: #475569; letter-spacing: 0.5px;">
+              ☕ ${p.period_name.toUpperCase()} (${p.start_time} - ${p.end_time})
+            </td>
+          </tr>
+        `;
+      } else {
+        let cells = '';
+        days.forEach(d => {
+          const match = courseSchedule.find(s => s.day_of_week === d.num && (s.period_number === p.period_number || s.start_time === p.start_time));
+          if (match && match.subject_name) {
+            cells += `
+              <td style="border: 1px solid #000; padding: 6px 8px; vertical-align: top;">
+                <div style="font-weight: bold; font-size: 11px; color: #000; line-height: 1.25;">${match.subject_name}</div>
+                <div style="font-size: 9.5px; color: #333; margin-top: 3px;">Prof: ${match.teacher_name || 'Sin asignar'}</div>
+                ${match.classroom ? `<div style="font-size: 9px; color: #555; margin-top: 2px;">📍 ${match.classroom}</div>` : ''}
+              </td>
+            `;
+          } else {
+            cells += `<td style="border: 1px solid #000; padding: 6px; text-align: center; color: #94a3b8; font-size: 10px;">-</td>`;
+          }
+        });
+
+        rowsHtml += `
+          <tr>
+            <td style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold; font-size: 10.5px; background: #fafafa;">
+              Bloque ${p.period_number}<br>
+              <span style="font-size: 9px; font-weight: normal; color: #444;">${p.start_time} - ${p.end_time}</span>
+            </td>
+            ${cells}
+          </tr>
+        `;
+      }
+    });
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>HORARIO OFICIAL 2026 — ${currentPupilo.levelName} — ${currentPupilo.fullName}</title>
+        <style>
+          @page { size: landscape; margin: 12mm; }
+          body { font-family: 'Arial', sans-serif; font-size: 11px; color: #000; margin: 0; padding: 10px; }
+          .header { text-align: center; margin-bottom: 12px; border-bottom: 2px solid #000; padding-bottom: 8px; }
+          .header h2 { margin: 0; font-size: 16px; font-weight: bold; text-transform: uppercase; }
+          .header p { margin: 3px 0 0; font-size: 11px; color: #333; }
+          table.info { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+          table.info td { border: 1px solid #000; padding: 5px 8px; font-size: 10.5px; }
+          table.info td.lbl { font-weight: bold; background: #f4f4f4; width: 140px; }
+          table.schedule { width: 100%; border-collapse: collapse; margin-top: 5px; }
+          table.schedule th { border: 1.5px solid #000; background: #e2e8f0; padding: 6px; font-size: 11px; text-transform: uppercase; text-align: center; }
+          .footer-signatures { display: flex; justify-content: space-between; margin-top: 35px; page-break-inside: avoid; }
+          .sig-box { width: 28%; text-align: center; border-top: 1px solid #000; padding-top: 5px; font-size: 10px; }
+          @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h2>LICEO TÉCNICO PROFESIONAL CAMPANARIO</h2>
+          <p>HORARIO OFICIAL DE CLASES Y DISTRIBUCIÓN HORARIA — AÑO ACADÉMICO 2026</p>
+        </div>
+
+        <table class="info">
+          <tr>
+            <td class="lbl">Curso:</td>
+            <td><strong>${currentPupilo.levelName}</strong></td>
+            <td class="lbl">Estudiante:</td>
+            <td><strong>${currentPupilo.fullName}</strong> (RUN: ${currentPupilo.run})</td>
+          </tr>
+          <tr>
+            <td class="lbl">Profesor(a) Jefe:</td>
+            <td>${currentPupilo.profesorJefe || 'No asignado'}</td>
+            <td class="lbl">Apoderado:</td>
+            <td>${currentPupilo.relacion} — ${user?.name || ''}</td>
+          </tr>
+        </table>
+
+        <table class="schedule">
+          <thead>
+            <tr>
+              <th style="width: 110px;">Período / Hora</th>
+              <th style="width: 18%;">Lunes</th>
+              <th style="width: 18%;">Martes</th>
+              <th style="width: 18%;">Miércoles</th>
+              <th style="width: 18%;">Jueves</th>
+              <th style="width: 18%;">Viernes</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+
+        <div class="footer-signatures">
+          <div class="sig-box">
+            <strong>Dirección / UTP</strong><br>
+            Liceo TP Campanario
+          </div>
+          <div class="sig-box">
+            <strong>Profesor(a) Jefe</strong><br>
+            ${currentPupilo.profesorJefe || 'Jefatura de Curso'}
+          </div>
+          <div class="sig-box">
+            <strong>Firma Apoderado</strong><br>
+            ${user?.name || 'Apoderado Titular'}
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 400);
+  };
 
   const toggleSubject = (name: string) => {
     setExpandedSubjects(prev => ({ ...prev, [name]: !prev[name] }));
@@ -660,6 +837,24 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                 }}
               >
                 📢 Comunicados Oficiales ({(currentPupilo.communications || []).length})
+              </button>
+              <button
+                onClick={() => setActiveSubTab('schedule')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.6rem 1.1rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  background: activeSubTab === 'schedule' ? '#4f46e5' : '#f1f5f9',
+                  color: activeSubTab === 'schedule' ? '#ffffff' : '#64748b'
+                }}
+              >
+                <CalendarDays size={16} /> Horario de Clases
               </button>
             </div>
 
@@ -1452,6 +1647,160 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* CONTENIDO TAB 7: HORARIO DE CLASES DEL CURSO */}
+            {activeSubTab === 'schedule' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <CalendarDays size={20} color="#4f46e5" />
+                      Horario de Clases 2026 — {currentPupilo.levelName}
+                    </h3>
+                    <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                      Estudiante: <strong>{currentPupilo.fullName}</strong> • Profesor(a) Jefe: <strong>{currentPupilo.profesorJefe || 'No asignado'}</strong>
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handlePrintCourseSchedule}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                      background: '#0f172a',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '0.55rem 1rem',
+                      fontSize: '0.82rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(15, 23, 42, 0.2)'
+                    }}
+                  >
+                    <Printer size={15} /> Imprimir Horario Oficial
+                  </button>
+                </div>
+
+                {loadingSchedule ? (
+                  <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b', fontSize: '0.88rem' }}>
+                    <div style={{ width: '28px', height: '28px', border: '3px solid #e2e8f0', borderTopColor: '#4f46e5', borderRadius: '50%', margin: '0 auto 0.75rem', animation: 'spin 0.7s linear infinite' }} />
+                    Cargando horario escolar de {currentPupilo.levelName}...
+                  </div>
+                ) : courseSchedule.length === 0 ? (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '3.5rem 1.5rem',
+                    background: '#f8fafc',
+                    borderRadius: '14px',
+                    border: '1.5px dashed #cbd5e1'
+                  }}>
+                    <CalendarDays size={44} color="#94a3b8" style={{ marginBottom: '0.75rem' }} />
+                    <h4 style={{ margin: '0 0 0.35rem', color: '#1e293b', fontSize: '1.05rem', fontWeight: 800 }}>
+                      Horario de Clases en Preparación
+                    </h4>
+                    <p style={{ margin: '0 auto', color: '#64748b', fontSize: '0.85rem', maxWidth: '520px', lineHeight: 1.5 }}>
+                      La distribución semanal de asignaturas y bloques para <strong>{currentPupilo.levelName}</strong> está siendo programada por el equipo directivo y UTP. Estará disponible aquí tan pronto sea publicada.
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      border: '1.5px solid #000000',
+                      borderRadius: '8px',
+                      overflow: 'hidden'
+                    }}>
+                      <thead>
+                        <tr style={{ background: '#f1f5f9' }}>
+                          <th style={{ border: '1px solid #000000', padding: '10px 8px', fontSize: '0.82rem', fontWeight: 900, textTransform: 'uppercase', width: '130px', textAlign: 'center' }}>
+                            Período / Hora
+                          </th>
+                          {[
+                            { num: 1, name: 'Lunes' },
+                            { num: 2, name: 'Martes' },
+                            { num: 3, name: 'Miércoles' },
+                            { num: 4, name: 'Jueves' },
+                            { num: 5, name: 'Viernes' }
+                          ].map(d => (
+                            <th key={d.num} style={{ border: '1px solid #000000', padding: '10px 8px', fontSize: '0.85rem', fontWeight: 900, textTransform: 'uppercase', width: '17%', textAlign: 'center' }}>
+                              {d.name}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(schoolPeriods.length > 0 ? schoolPeriods : [
+                          { id: 'p1', period_number: 1, period_name: 'Bloque 1', start_time: '08:00', end_time: '09:30', is_break: false, sort_order: 1 },
+                          { id: 'r1', period_number: 0, period_name: 'Recreo Mañana', start_time: '09:30', end_time: '09:45', is_break: true, sort_order: 2 },
+                          { id: 'p2', period_number: 2, period_name: 'Bloque 2', start_time: '09:45', end_time: '11:15', is_break: false, sort_order: 3 },
+                          { id: 'r2', period_number: 0, period_name: 'Recreo', start_time: '11:15', end_time: '11:30', is_break: true, sort_order: 4 },
+                          { id: 'p3', period_number: 3, period_name: 'Bloque 3', start_time: '11:30', end_time: '13:00', is_break: false, sort_order: 5 },
+                          { id: 'al', period_number: 0, period_name: 'Almuerzo', start_time: '13:00', end_time: '13:45', is_break: true, sort_order: 6 },
+                          { id: 'p4', period_number: 4, period_name: 'Bloque 4', start_time: '13:45', end_time: '15:15', is_break: false, sort_order: 7 },
+                          { id: 'r3', period_number: 0, period_name: 'Recreo Tarde', start_time: '15:15', end_time: '15:25', is_break: true, sort_order: 8 },
+                          { id: 'p5', period_number: 5, period_name: 'Bloque 5', start_time: '15:25', end_time: '16:55', is_break: false, sort_order: 9 }
+                        ]).sort((a, b) => (a.sort_order || a.period_number) - (b.sort_order || b.period_number)).map((period, pIdx) => {
+                          if (period.is_break) {
+                            return (
+                              <tr key={period.id || pIdx} style={{ background: '#f8fafc' }}>
+                                <td style={{ border: '1px solid #000000', padding: '6px', textAlign: 'center', fontWeight: 800, fontSize: '0.75rem', color: '#475569' }}>
+                                  {period.period_name}
+                                  <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748b' }}>
+                                    {period.start_time} - {period.end_time}
+                                  </div>
+                                </td>
+                                <td colSpan={5} style={{ border: '1px solid #000000', padding: '6px', textAlign: 'center', fontSize: '0.76rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.5px' }}>
+                                  ☕ {period.period_name.toUpperCase()} ({period.start_time} - {period.end_time})
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return (
+                            <tr key={period.id || pIdx}>
+                              <td style={{ border: '1px solid #000000', padding: '8px', textAlign: 'center', fontWeight: 800, fontSize: '0.78rem', background: '#fafafa' }}>
+                                Bloque {period.period_number}
+                                <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#475569' }}>
+                                  {period.start_time} - {period.end_time}
+                                </div>
+                              </td>
+                              {[1, 2, 3, 4, 5].map(dayNum => {
+                                const slot = courseSchedule.find(s => s.day_of_week === dayNum && (s.period_number === period.period_number || s.start_time === period.start_time));
+                                return (
+                                  <td key={dayNum} style={{ border: '1px solid #000000', padding: '8px', verticalAlign: 'top', background: slot ? '#ffffff' : '#fcfcfc' }}>
+                                    {slot ? (
+                                      <div>
+                                        <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0f172a', lineHeight: 1.25 }}>
+                                          {slot.subject_name}
+                                        </div>
+                                        <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                          <User size={11} color="#64748b" /> {slot.teacher_name || 'Profesor asignado'}
+                                        </div>
+                                        {slot.classroom && (
+                                          <div style={{ fontSize: '0.7rem', color: '#0369a1', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 700 }}>
+                                            <MapPin size={10} color="#0284c7" /> {slot.classroom}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div style={{ textAlign: 'center', color: '#cbd5e1', fontSize: '0.85rem' }}>-</div>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
