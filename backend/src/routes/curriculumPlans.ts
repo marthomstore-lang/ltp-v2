@@ -142,7 +142,7 @@ router.get('/annual-plans/:id', authMiddleware, async (req: Request, res: Respon
 });
 
 // POST /api/curriculum/annual-plans - Crear planificación anual con sus unidades
-router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
+router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'Profesor', 'Profesor Jefe', 'Inspector General', 'Jefe UTP', 'Coordinador']), async (req: Request, res: Response) => {
   try {
     const {
       academic_year = 2026,
@@ -157,13 +157,14 @@ router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director']), 
       units = []
     } = req.body;
 
-    if (!course_name || !subject_name || !teacher_name) {
+    const effectiveTeacher = teacher_name || (req as any).user?.name;
+    if (!course_name || !subject_name || !effectiveTeacher) {
       return res.status(400).json({ error: 'Curso, asignatura y profesor son campos obligatorios.' });
     }
 
     const planId = `PLAN-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const userEmail = (req as any).user?.email || teacher_email || '';
-    const userName = (req as any).user?.name || teacher_name;
+    const userName = (req as any).user?.name || effectiveTeacher;
 
     await query(`
       INSERT INTO annual_curriculum_plans (
@@ -176,7 +177,7 @@ router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director']), 
       semester,
       course_name,
       subject_name,
-      teacher_name,
+      effectiveTeacher,
       userEmail,
       parseInt(String(total_hours || 4), 10),
       description || '',
@@ -210,7 +211,7 @@ router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director']), 
     await logAudit(
       req,
       'CREATE_ANNUAL_PLAN',
-      `Creada Planificación Anual ${academic_year} para ${course_name} - ${subject_name} (${teacher_name}).`
+      `Creada Planificación Anual ${academic_year} para ${course_name} - ${subject_name} (${effectiveTeacher}).`
     );
 
     res.json({ success: true, message: 'Planificación Anual creada exitosamente.', planId });
@@ -221,7 +222,7 @@ router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director']), 
 });
 
 // PUT /api/curriculum/annual-plans/:id - Actualizar planificación anual y reemplazar unidades
-router.put('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
+router.put('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'Profesor', 'Profesor Jefe', 'Inspector General', 'Jefe UTP', 'Coordinador']), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const {
@@ -306,7 +307,7 @@ router.put('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director']
 });
 
 // DELETE /api/curriculum/annual-plans/:id - Eliminar planificación anual
-router.delete('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
+router.delete('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'Profesor', 'Profesor Jefe', 'Inspector General', 'Jefe UTP', 'Coordinador']), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     await query('DELETE FROM annual_curriculum_plans WHERE id = $1', [id]);
@@ -360,7 +361,7 @@ router.get('/lesson-plans', authMiddleware, async (req: Request, res: Response) 
 });
 
 // POST /api/curriculum/lesson-plans - Crear planificación de clase
-router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
+router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'Profesor', 'Profesor Jefe', 'Inspector General', 'Jefe UTP', 'Coordinador']), async (req: Request, res: Response) => {
   try {
     const {
       annual_plan_id,
@@ -371,6 +372,9 @@ router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director']), 
       class_number = 1,
       class_date,
       class_goal,
+      status = 'por_realizar',
+      oa_codes = '',
+      ticket_salida = '',
       moment_start,
       moment_development,
       moment_closing,
@@ -391,9 +395,10 @@ router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director']), 
     await query(`
       INSERT INTO lesson_plans (
         id, annual_plan_id, unit_id, course_name, subject_name, teacher_name,
-        class_number, class_date, class_goal, moment_start, moment_development, moment_closing,
+        class_number, class_date, class_goal, status, oa_codes, ticket_salida,
+        moment_start, moment_development, moment_closing,
         pedagogical_resources, evaluation_indicators, dua_accommodations, homework, reflection_notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
     `, [
       id,
       annual_plan_id || null,
@@ -404,6 +409,9 @@ router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director']), 
       parseInt(String(class_number || 1), 10),
       class_date || null,
       class_goal,
+      status || 'por_realizar',
+      oa_codes || '',
+      ticket_salida || '',
       moment_start || '',
       moment_development || '',
       moment_closing || '',
@@ -422,13 +430,16 @@ router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director']), 
 });
 
 // PUT /api/curriculum/lesson-plans/:id - Actualizar planificación de clase
-router.put('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
+router.put('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'Profesor', 'Profesor Jefe', 'Inspector General', 'Jefe UTP', 'Coordinador']), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const {
       class_number,
       class_date,
       class_goal,
+      status,
+      oa_codes,
+      ticket_salida,
       moment_start,
       moment_development,
       moment_closing,
@@ -444,20 +455,26 @@ router.put('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Director']
         class_number = COALESCE($1, class_number),
         class_date = COALESCE($2, class_date),
         class_goal = COALESCE($3, class_goal),
-        moment_start = COALESCE($4, moment_start),
-        moment_development = COALESCE($5, moment_development),
-        moment_closing = COALESCE($6, moment_closing),
-        pedagogical_resources = COALESCE($7, pedagogical_resources),
-        evaluation_indicators = COALESCE($8, evaluation_indicators),
-        dua_accommodations = COALESCE($9, dua_accommodations),
-        homework = COALESCE($10, homework),
-        reflection_notes = COALESCE($11, reflection_notes),
+        status = COALESCE($4, status),
+        oa_codes = COALESCE($5, oa_codes),
+        ticket_salida = COALESCE($6, ticket_salida),
+        moment_start = COALESCE($7, moment_start),
+        moment_development = COALESCE($8, moment_development),
+        moment_closing = COALESCE($9, moment_closing),
+        pedagogical_resources = COALESCE($10, pedagogical_resources),
+        evaluation_indicators = COALESCE($11, evaluation_indicators),
+        dua_accommodations = COALESCE($12, dua_accommodations),
+        homework = COALESCE($13, homework),
+        reflection_notes = COALESCE($14, reflection_notes),
         updated_at = NOW()
-      WHERE id = $12
+      WHERE id = $15
     `, [
       class_number ? parseInt(String(class_number), 10) : null,
       class_date || null,
       class_goal,
+      status,
+      oa_codes,
+      ticket_salida,
       moment_start,
       moment_development,
       moment_closing,
@@ -476,8 +493,38 @@ router.put('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Director']
   }
 });
 
+// PATCH /api/curriculum/lesson-plans/:id/status - Cambiar estado rápido de clase (por_realizar / realizada)
+router.patch('/lesson-plans/:id/status', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'Profesor', 'Profesor Jefe', 'Inspector General', 'Jefe UTP', 'Coordinador']), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['por_realizar', 'realizada'].includes(status)) {
+      return res.status(400).json({ error: 'Estado inválido. Debe ser "por_realizar" o "realizada".' });
+    }
+
+    const result = await query(
+      'UPDATE lesson_plans SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, status, class_number',
+      [status, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Clase no encontrada.' });
+    }
+
+    res.json({
+      success: true,
+      message: `Clase marcada como ${status === 'realizada' ? 'Realizada' : 'Por Realizar'}.`,
+      lesson: result.rows[0]
+    });
+  } catch (err: any) {
+    console.error('Error al actualizar estado de clase:', err);
+    res.status(500).json({ error: 'Error al cambiar estado de clase.' });
+  }
+});
+
 // DELETE /api/curriculum/lesson-plans/:id - Eliminar clase
-router.delete('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
+router.delete('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'Profesor', 'Profesor Jefe', 'Inspector General', 'Jefe UTP', 'Coordinador']), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     await query('DELETE FROM lesson_plans WHERE id = $1', [id]);
@@ -485,6 +532,102 @@ router.delete('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Directo
   } catch (err: any) {
     console.error('Error al eliminar clase:', err);
     res.status(500).json({ error: 'Error al eliminar clase.' });
+  }
+});
+
+// GET /api/curriculum/coverage-stats - Cobertura curricular oficial en tiempo real
+router.get('/coverage-stats', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { course_name, subject_name } = req.query;
+
+    if (!course_name || !subject_name) {
+      return res.status(400).json({ error: 'course_name y subject_name son requeridos.' });
+    }
+
+    const cName = String(course_name).trim();
+    const sName = String(subject_name).trim();
+
+    // 1. Extraer nivel (ej: "4° Medio")
+    const gradeMatch = cName.match(/\d+°\s*(Básico|Medio)/i);
+    const gradeLevel = gradeMatch ? gradeMatch[0] : cName;
+
+    // 2. OAs oficiales del catálogo MINEDUC
+    const officialGoalsRes = await query(`
+      SELECT * FROM curriculum_learning_goals 
+      WHERE (grade_level ILIKE $1 OR grade_level ILIKE $2)
+        AND subject ILIKE $3
+      ORDER BY oa_code ASC
+    `, [`%${gradeLevel}%`, `%${cName}%`, `%${sName}%`]);
+
+    const officialGoals = officialGoalsRes.rows || [];
+
+    // 3. Clases de esta asignatura y curso
+    const lessonsRes = await query(`
+      SELECT id, class_number, class_date, class_goal, status, oa_codes, ticket_salida
+      FROM lesson_plans 
+      WHERE course_name ILIKE $1 AND subject_name ILIKE $2
+      ORDER BY class_number ASC
+    `, [`%${cName}%`, `%${sName}%`]);
+
+    const lessons = lessonsRes.rows || [];
+    const plannedClassesCount = lessons.length;
+    const completedClasses = lessons.filter(l => l.status === 'realizada');
+    const completedClassesCount = completedClasses.length;
+    const pendingClassesCount = plannedClassesCount - completedClassesCount;
+
+    // 4. OAs abordados en clases REALIZADAS
+    const completedOAs = new Set<string>();
+    completedClasses.forEach(l => {
+      const raw = `${l.oa_codes || ''} ${l.class_goal || ''}`;
+      const matches = raw.match(/OA\s*\d+/gi) || [];
+      matches.forEach(m => completedOAs.add(m.toUpperCase().replace(/\s+/, ' ')));
+    });
+
+    // 5. OAs planificados en total
+    const plannedOAs = new Set<string>();
+    lessons.forEach(l => {
+      const raw = `${l.oa_codes || ''} ${l.class_goal || ''}`;
+      const matches = raw.match(/OA\s*\d+/gi) || [];
+      matches.forEach(m => plannedOAs.add(m.toUpperCase().replace(/\s+/, ' ')));
+    });
+
+    const totalOfficialOAs = officialGoals.length > 0 ? officialGoals.length : Math.max(plannedOAs.size, 1);
+    const coveredOAsCount = completedOAs.size;
+
+    const coveragePercentage = totalOfficialOAs > 0
+      ? Math.round((coveredOAsCount / totalOfficialOAs) * 100)
+      : 0;
+
+    const executionPercentage = plannedClassesCount > 0
+      ? Math.round((completedClassesCount / plannedClassesCount) * 100)
+      : 0;
+
+    let coverageLevel: 'optima' | 'media' | 'critica' = 'critica';
+    if (coveragePercentage >= 85) coverageLevel = 'optima';
+    else if (coveragePercentage >= 60) coverageLevel = 'media';
+
+    res.json({
+      success: true,
+      stats: {
+        totalOfficialOAs,
+        coveredOAsCount,
+        coveredOAList: Array.from(completedOAs),
+        plannedClassesCount,
+        completedClassesCount,
+        pendingClassesCount,
+        coveragePercentage: Math.min(coveragePercentage, 100),
+        executionPercentage: Math.min(executionPercentage, 100),
+        coverageLevel,
+        officialGoals: officialGoals.map(g => ({
+          ...g,
+          isCompleted: completedOAs.has(g.oa_code.toUpperCase().replace(/\s+/, ' ')),
+          isPlanned: plannedOAs.has(g.oa_code.toUpperCase().replace(/\s+/, ' '))
+        }))
+      }
+    });
+  } catch (err: any) {
+    console.error('Error calculando cobertura curricular:', err);
+    res.status(500).json({ error: 'Error al calcular cobertura curricular.' });
   }
 });
 
@@ -861,11 +1004,15 @@ function generatePedagogicalResponse(opts: any): any {
     recursos = `Torno convencional / fresadora, plano técnico normalizado, instrumentos de metrología (calibre pie de metro) y EPP.`;
   }
 
+  let ticket = `1. Pregunta rápida de síntesis (2 min): Explica con tus propias palabras o resuelve brevemente el ejercicio clave del día (${opts.oa_code}).
+2. Metacognición: ¿Qué paso del procedimiento te pareció más claro y en cuál requieres mayor práctica?`;
+
   return {
     class_goal: goal,
     moment_start: inicio,
     moment_development: desarrollo,
     moment_closing: cierre,
+    ticket_salida: ticket,
     pedagogical_resources: recursos,
     evaluation_indicators: indicadores,
     dua_accommodations: dua
