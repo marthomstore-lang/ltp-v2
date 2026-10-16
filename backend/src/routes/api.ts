@@ -10,6 +10,7 @@ import { authMiddleware, checkRoles, logAudit } from '../middleware/auth';
 import { sendPasswordResetEmail, sendTeacherWelcomeEmail, sendCourseBroadcastEmail } from '../utils/mailer';
 import mineducReportsRouter from './mineducReports';
 import curriculumPlansRouter from './curriculumPlans';
+import schedulesRouter from './schedules';
 
 const router = Router();
 
@@ -13006,6 +13007,9 @@ router.use('/mineduc-reports', mineducReportsRouter);
 
 // Rutas de Planificación Curricular y Asistente IA Docente (Anual y Clase a Clase)
 router.use('/curriculum', curriculumPlansRouter);
+
+// Rutas de Horarios Escolares y aSc Timetables Importer
+router.use('/schedules', schedulesRouter);
 
 export default router;
 

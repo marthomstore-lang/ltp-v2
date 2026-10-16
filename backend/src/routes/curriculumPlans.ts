@@ -179,6 +179,7 @@ router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director', 'D
       teacher_name,
       teacher_email,
       total_hours = 4,
+      weekly_sessions = 1,
       description,
       status = 'Borrador',
       units = []
@@ -196,8 +197,8 @@ router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director', 'D
     await query(`
       INSERT INTO annual_curriculum_plans (
         id, academic_year, semester, course_name, subject_name,
-        teacher_name, teacher_email, total_hours, description, created_by, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        teacher_name, teacher_email, total_hours, weekly_sessions, description, created_by, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     `, [
       planId,
       parseInt(String(academic_year), 10),
@@ -207,6 +208,7 @@ router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director', 'D
       effectiveTeacher,
       userEmail,
       parseInt(String(total_hours || 4), 10),
+      parseInt(String(weekly_sessions || 1), 10),
       description || '',
       userName,
       status
@@ -260,6 +262,7 @@ router.put('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director',
       teacher_name,
       teacher_email,
       total_hours,
+      weekly_sessions,
       description,
       status,
       units = []
@@ -279,10 +282,11 @@ router.put('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director',
         teacher_name = COALESCE($5, teacher_name),
         teacher_email = COALESCE($6, teacher_email),
         total_hours = COALESCE($7, total_hours),
-        description = COALESCE($8, description),
-        status = COALESCE($9, status),
+        weekly_sessions = COALESCE($8, weekly_sessions),
+        description = COALESCE($9, description),
+        status = COALESCE($10, status),
         updated_at = NOW()
-      WHERE id = $10
+      WHERE id = $11
     `, [
       academic_year ? parseInt(String(academic_year), 10) : null,
       semester,
@@ -291,6 +295,7 @@ router.put('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director',
       teacher_name,
       teacher_email,
       total_hours ? parseInt(String(total_hours), 10) : null,
+      weekly_sessions ? parseInt(String(weekly_sessions), 10) : null,
       description,
       status,
       id
@@ -532,6 +537,7 @@ router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director', 'D
     const {
       annual_plan_id,
       unit_id,
+      unit_name,
       course_name,
       subject_name,
       teacher_name,
@@ -560,15 +566,16 @@ router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director', 'D
 
     await query(`
       INSERT INTO lesson_plans (
-        id, annual_plan_id, unit_id, course_name, subject_name, teacher_name,
+        id, annual_plan_id, unit_id, unit_name, course_name, subject_name, teacher_name,
         class_number, class_date, class_goal, status, oa_codes, ticket_salida,
         moment_start, moment_development, moment_closing,
         pedagogical_resources, evaluation_indicators, dua_accommodations, homework, reflection_notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
     `, [
       id,
       annual_plan_id || null,
       unit_id || null,
+      unit_name || null,
       course_name,
       subject_name,
       effectiveTeacher,
@@ -600,6 +607,8 @@ router.put('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Director',
   try {
     const { id } = req.params;
     const {
+      unit_id,
+      unit_name,
       class_number,
       class_date,
       class_goal,
@@ -618,23 +627,27 @@ router.put('/lesson-plans/:id', authMiddleware, checkRoles(['Admin', 'Director',
 
     await query(`
       UPDATE lesson_plans SET
-        class_number = COALESCE($1, class_number),
-        class_date = COALESCE($2, class_date),
-        class_goal = COALESCE($3, class_goal),
-        status = COALESCE($4, status),
-        oa_codes = COALESCE($5, oa_codes),
-        ticket_salida = COALESCE($6, ticket_salida),
-        moment_start = COALESCE($7, moment_start),
-        moment_development = COALESCE($8, moment_development),
-        moment_closing = COALESCE($9, moment_closing),
-        pedagogical_resources = COALESCE($10, pedagogical_resources),
-        evaluation_indicators = COALESCE($11, evaluation_indicators),
-        dua_accommodations = COALESCE($12, dua_accommodations),
-        homework = COALESCE($13, homework),
-        reflection_notes = COALESCE($14, reflection_notes),
+        unit_id = COALESCE($1, unit_id),
+        unit_name = COALESCE($2, unit_name),
+        class_number = COALESCE($3, class_number),
+        class_date = COALESCE($4, class_date),
+        class_goal = COALESCE($5, class_goal),
+        status = COALESCE($6, status),
+        oa_codes = COALESCE($7, oa_codes),
+        ticket_salida = COALESCE($8, ticket_salida),
+        moment_start = COALESCE($9, moment_start),
+        moment_development = COALESCE($10, moment_development),
+        moment_closing = COALESCE($11, moment_closing),
+        pedagogical_resources = COALESCE($12, pedagogical_resources),
+        evaluation_indicators = COALESCE($13, evaluation_indicators),
+        dua_accommodations = COALESCE($14, dua_accommodations),
+        homework = COALESCE($15, homework),
+        reflection_notes = COALESCE($16, reflection_notes),
         updated_at = NOW()
-      WHERE id = $15
+      WHERE id = $17
     `, [
+      unit_id || null,
+      unit_name || null,
       class_number ? parseInt(String(class_number), 10) : null,
       class_date || null,
       class_goal,

@@ -31,6 +31,7 @@ import {
   UserPlus
 } from 'lucide-react';
 import Swal from 'sweetalert2';
+import { SchoolSchedulesModule } from './SchoolSchedulesModule';
 
 interface LearningGoal {
   id: string;
@@ -62,6 +63,7 @@ interface AnnualPlan {
   teacher_email?: string;
   substitute_teacher_name?: string | null;
   total_hours: number;
+  weekly_sessions?: number;
   description?: string;
   status: string;
   units?: AnnualUnit[];
@@ -72,6 +74,7 @@ interface LessonPlan {
   id?: string;
   annual_plan_id?: string;
   unit_id?: string;
+  unit_name?: string;
   course_name: string;
   subject_name: string;
   teacher_name: string;
@@ -127,7 +130,7 @@ interface CurriculumPlansModuleProps {
 }
 
 export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ token, user }) => {
-  const [activeTab, setActiveTab] = useState<'annual' | 'lessons' | 'catalog' | 'ai_config'>('annual');
+  const [activeTab, setActiveTab] = useState<'annual' | 'lessons' | 'catalog' | 'ai_config' | 'schedules'>('annual');
 
   // Modo de visualización: Editor (permite modificar y guardar) vs Solo Vista (lectura e impresión)
   const [viewMode, setViewMode] = useState<'edit' | 'readonly'>('edit');
@@ -163,6 +166,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
     subject_name: string;
     teacher_name: string;
     total_hours: number;
+    weekly_sessions: number;
     status: string;
     units: AnnualUnit[];
   }>({
@@ -172,6 +176,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
     subject_name: '',
     teacher_name: user?.name || '',
     total_hours: 4,
+    weekly_sessions: 1,
     status: 'Oficial / Aprobada',
     units: []
   });
@@ -404,6 +409,17 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
     }
   };
 
+  const parseUnitWeeks = (temporality?: string): number => {
+    const match = String(temporality || '').match(/\d+/);
+    return match ? parseInt(match[0], 10) : 1;
+  };
+
+  const getMaxClassesForUnit = (unit?: AnnualUnit | null, weeklySessions = 1): number => {
+    if (!unit) return 999;
+    const weeks = parseUnitWeeks(unit.temporality);
+    return weeks * (weeklySessions || 1);
+  };
+
   const selectAnnualPlan = (plan: AnnualPlan) => {
     setSelectedPlan(plan);
     setAnnualForm({
@@ -413,6 +429,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
       subject_name: plan.subject_name,
       teacher_name: plan.teacher_name,
       total_hours: plan.total_hours || 4,
+      weekly_sessions: plan.weekly_sessions || 1,
       status: plan.status || 'Borrador',
       units: plan.units ? JSON.parse(JSON.stringify(plan.units)) : []
     });
@@ -448,9 +465,26 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
     }
   };
 
-  const resetLessonFormForNewClass = (classNumber: number, plan: AnnualPlan | null) => {
+  const resetLessonFormForNewClass = (classNumber: number, plan: AnnualPlan | null, targetUnit?: AnnualUnit | null) => {
+    const units = plan?.units || [];
+    let assignedUnit = targetUnit;
+
+    if (!assignedUnit && units.length > 0) {
+      for (const u of units) {
+        const count = lessonPlans.filter(l => (u.id && l.unit_id === u.id) || l.unit_name === u.unit_name).length;
+        const maxC = getMaxClassesForUnit(u, plan?.weekly_sessions || 1);
+        if (count < maxC) {
+          assignedUnit = u;
+          break;
+        }
+      }
+      if (!assignedUnit) assignedUnit = units[units.length - 1];
+    }
+
     setLessonForm({
       class_number: classNumber,
+      unit_id: assignedUnit?.id || (assignedUnit ? assignedUnit.unit_name : undefined),
+      unit_name: assignedUnit?.unit_name || '',
       class_date: new Date().toISOString().split('T')[0],
       course_name: plan?.course_name || '',
       subject_name: plan?.subject_name || '',
@@ -468,6 +502,56 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
     });
   };
 
+  const handleAddNewClass = () => {
+    if (!selectedPlan) {
+      Swal.fire('Atención', 'Selecciona primero una Planificación Anual.', 'info');
+      return;
+    }
+    const units = selectedPlan.units || [];
+    if (units.length === 0) {
+      Swal.fire('Sin Unidades', 'Esta planificación anual no tiene unidades registradas. Agrega unidades en la Planificación Anual primero.', 'warning');
+      return;
+    }
+
+    let currentUnit = units.find(u => (u.id && u.id === lessonForm.unit_id) || u.unit_name === lessonForm.unit_name);
+    if (!currentUnit) currentUnit = units[0];
+
+    const currentUnitClasses = lessonPlans.filter(l => (currentUnit.id && l.unit_id === currentUnit.id) || l.unit_name === currentUnit.unit_name);
+    const maxAllowed = getMaxClassesForUnit(currentUnit, selectedPlan.weekly_sessions || 1);
+
+    if (currentUnitClasses.length >= maxAllowed) {
+      const currIdx = units.findIndex(u => u === currentUnit);
+      const nextUnit = units[currIdx + 1];
+
+      if (nextUnit) {
+        Swal.fire({
+          title: `Límite de Clases de la ${currentUnit.unit_name}`,
+          html: `La <strong>${currentUnit.unit_name}</strong> tiene asignadas <strong>${parseUnitWeeks(currentUnit.temporality)} semanas</strong> (${maxAllowed} clases máx) y ya tiene sus <strong>${maxAllowed} clases completadas</strong>.<br><br>¿Deseas comenzar a planificar la siguiente unidad: <strong>${nextUnit.unit_name}</strong>?`,
+          icon: 'info',
+          showCancelButton: true,
+          confirmButtonText: `Sí, pasar a ${nextUnit.unit_name}`,
+          cancelButtonText: 'Cancelar',
+          confirmButtonColor: '#0284c7'
+        }).then(res => {
+          if (res.isConfirmed) {
+            resetLessonFormForNewClass(lessonPlans.length + 1, selectedPlan, nextUnit);
+          }
+        });
+        return;
+      } else {
+        Swal.fire({
+          title: 'Todas las Unidades Completas',
+          html: `Has alcanzado la cantidad total de clases planificadas para todas las unidades de <strong>${selectedPlan.subject_name}</strong>.<br><br>Si necesitas más clases, amplía las semanas de la unidad en la <strong>Planificación Anual</strong>.`,
+          icon: 'warning',
+          confirmButtonText: 'Entendido'
+        });
+        return;
+      }
+    }
+
+    resetLessonFormForNewClass(lessonPlans.length + 1, selectedPlan, currentUnit);
+  };
+
   // ===========================================================================
   // ACCIONES DE PLANIFICACIÓN ANUAL
   // ===========================================================================
@@ -480,6 +564,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
       subject_name: asn.subject_name,
       teacher_name: user?.name || asn.teacher_name,
       total_hours: 4,
+      weekly_sessions: 1,
       status: 'Borrador',
       units: [
         {
@@ -487,7 +572,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
           unit_name: 'Unidad 1: Nivelación y Diagnóstico Inicial',
           learning_goals: '',
           evaluation_instruments: 'Evaluación diagnóstica inicial; Guías de trabajo formativo; Prueba sumativa',
-          temporality: '8 Semanas'
+          temporality: '2 Semanas'
         }
       ]
     });
@@ -506,6 +591,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
       subject_name: defaultSubj,
       teacher_name: user?.name || '',
       total_hours: 4,
+      weekly_sessions: 1,
       status: 'Borrador',
       units: [
         {
@@ -513,7 +599,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
           unit_name: 'Unidad 1: Nivelación y Diagnóstico Inicial',
           learning_goals: '',
           evaluation_instruments: 'Evaluación diagnóstica inicial; Guías formativas; Prueba sumativa',
-          temporality: '8 Semanas'
+          temporality: '2 Semanas'
         }
       ]
     });
@@ -969,6 +1055,8 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
       const payload = {
         ...lessonForm,
         annual_plan_id: selectedPlan?.id || null,
+        unit_id: lessonForm.unit_id || null,
+        unit_name: lessonForm.unit_name || null,
         course_name: lessonForm.course_name || selectedPlan?.course_name || annualForm.course_name,
         subject_name: lessonForm.subject_name || selectedPlan?.subject_name || annualForm.subject_name,
         teacher_name: lessonForm.teacher_name || selectedPlan?.teacher_name || user?.name || ''
@@ -1039,12 +1127,33 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
     }
   };
 
-  // OAs disponibles para la asignatura activa (extraídos de unidades o catálogo)
+  // OAs disponibles para la asignatura activa (con prioridad en la unidad seleccionada)
   const availableOAsForClass = useMemo(() => {
-    const oas: { oa_code: string; oa_title: string }[] = [];
+    const unitOas: { oa_code: string; oa_title: string; isUnitOa: boolean }[] = [];
+    const otherOas: { oa_code: string; oa_title: string; isUnitOa: boolean }[] = [];
     const seen = new Set<string>();
 
-    // 1. Del plan anual activo
+    // 1. OAs de la unidad activa en la clase
+    const currentUnit = selectedPlan?.units?.find(
+      u => (u.id && u.id === lessonForm.unit_id) || u.unit_name === lessonForm.unit_name
+    );
+
+    if (currentUnit && currentUnit.learning_goals) {
+      const matches = currentUnit.learning_goals.match(/OA\s*\d+/gi) || [];
+      matches.forEach(m => {
+        const code = m.toUpperCase().replace(/\s+/, ' ');
+        if (!seen.has(code)) {
+          seen.add(code);
+          unitOas.push({
+            oa_code: code,
+            oa_title: `Objetivo de ${currentUnit.unit_name}`,
+            isUnitOa: true
+          });
+        }
+      });
+    }
+
+    // 2. Del resto de las unidades del plan anual
     if (selectedPlan && selectedPlan.units) {
       selectedPlan.units.forEach(u => {
         const raw = u.learning_goals || '';
@@ -1053,23 +1162,27 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
           const code = m.toUpperCase().replace(/\s+/, ' ');
           if (!seen.has(code)) {
             seen.add(code);
-            oas.push({ oa_code: code, oa_title: `Objetivo de Aprendizaje ${code} de ${selectedPlan.subject_name}` });
+            otherOas.push({
+              oa_code: code,
+              oa_title: `OA ${code} de ${u.unit_name}`,
+              isUnitOa: false
+            });
           }
         });
       });
     }
 
-    // 2. Del catálogo oficial cargado
+    // 3. Del catálogo oficial cargado
     learningGoals.forEach(g => {
       const code = g.oa_code.toUpperCase().replace(/\s+/, ' ');
       if (!seen.has(code)) {
         seen.add(code);
-        oas.push({ oa_code: code, oa_title: g.oa_title });
+        otherOas.push({ oa_code: code, oa_title: g.oa_title, isUnitOa: false });
       }
     });
 
-    return oas;
-  }, [selectedPlan, learningGoals]);
+    return { unitOas, otherOas, allOas: [...unitOas, ...otherOas] };
+  }, [selectedPlan, learningGoals, lessonForm.unit_id, lessonForm.unit_name]);
 
   // ===========================================================================
   // IMPRESIÓN OFICIAL DEL FORMATO MINEDUC
@@ -1686,6 +1799,28 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
           <Brain size={16} />
           4. Asistente IA & Memoria Pedagógica
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('schedules')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            padding: '0.55rem 1rem',
+            borderRadius: '10px',
+            border: 'none',
+            background: activeTab === 'schedules' ? '#ffffff' : 'transparent',
+            color: activeTab === 'schedules' ? '#0d9488' : '#475569',
+            fontWeight: activeTab === 'schedules' ? 800 : 600,
+            fontSize: '0.84rem',
+            cursor: 'pointer',
+            boxShadow: activeTab === 'schedules' ? '0 2px 4px rgba(0,0,0,0.06)' : 'none'
+          }}
+        >
+          <CalendarDays size={16} />
+          5. Horarios Escolares & aSc Horarios
+        </button>
       </div>
 
       {/* ===================================================================== */}
@@ -2185,6 +2320,45 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                         )}
                       </td>
                     </tr>
+                    <tr>
+                      <td style={{ fontWeight: 800, padding: '8px 12px', border: '1px solid #000000', background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.82rem' }}>
+                        Horas Pedagógicas:
+                      </td>
+                      <td style={{ padding: '8px 12px', border: '1px solid #000000', fontSize: '0.86rem' }}>
+                        {isEditingAnnual ? (
+                          <input
+                            type="number"
+                            min={1}
+                            max={44}
+                            value={annualForm.total_hours}
+                            onChange={e => setAnnualForm({ ...annualForm, total_hours: parseInt(e.target.value, 10) || 4 })}
+                            style={{ width: '100%', padding: '4px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+                          />
+                        ) : (
+                          `${annualForm.total_hours || 4} Horas Semanales`
+                        )}
+                      </td>
+                      <td style={{ fontWeight: 800, padding: '8px 12px', border: '1px solid #000000', background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.82rem' }}>
+                        Clases por Semana:
+                      </td>
+                      <td style={{ padding: '8px 12px', border: '1px solid #000000', fontSize: '0.86rem' }}>
+                        {isEditingAnnual ? (
+                          <select
+                            value={annualForm.weekly_sessions || 1}
+                            onChange={e => setAnnualForm({ ...annualForm, weekly_sessions: parseInt(e.target.value, 10) || 1 })}
+                            style={{ width: '100%', padding: '4px', border: '1px solid #cbd5e1', borderRadius: '4px', fontWeight: 700 }}
+                          >
+                            <option value={1}>1 clase semanal (1 sesión)</option>
+                            <option value={2}>2 clases semanales (2 sesiones)</option>
+                            <option value={3}>3 clases semanales (3 sesiones)</option>
+                            <option value={4}>4 clases semanales (4 sesiones)</option>
+                            <option value={5}>5 clases semanales (5 sesiones)</option>
+                          </select>
+                        ) : (
+                          <strong>{annualForm.weekly_sessions || 1} clase(s) a la semana</strong>
+                        )}
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
 
@@ -2292,14 +2466,25 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                           </td>
                           <td style={{ border: '1px solid #000000', padding: '8px', textAlign: 'center', verticalAlign: 'top' }}>
                             {isEditingAnnual ? (
-                              <input
-                                type="text"
-                                value={unit.temporality}
-                                onChange={e => handleUnitChange(index, 'temporality', e.target.value)}
-                                style={{ width: '100%', padding: '4px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.82rem', textAlign: 'center' }}
-                              />
+                              <div>
+                                <input
+                                  type="text"
+                                  value={unit.temporality}
+                                  onChange={e => handleUnitChange(index, 'temporality', e.target.value)}
+                                  placeholder="Ej: 2 Semanas"
+                                  style={{ width: '100%', padding: '4px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.82rem', textAlign: 'center' }}
+                                />
+                                <div style={{ fontSize: '0.7rem', color: '#0369a1', fontWeight: 700, marginTop: '2px' }}>
+                                  ({parseUnitWeeks(unit.temporality) * (annualForm.weekly_sessions || 1)} Clases)
+                                </div>
+                              </div>
                             ) : (
-                              <strong>{unit.temporality || '8 Semanas'}</strong>
+                              <div>
+                                <strong>{unit.temporality || '8 Semanas'}</strong>
+                                <div style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: 700, marginTop: '2px' }}>
+                                  ({parseUnitWeeks(unit.temporality) * (annualForm.weekly_sessions || 1)} Clases est.)
+                                </div>
+                              </div>
                             )}
                           </td>
                           {isEditingAnnual && (
@@ -2404,9 +2589,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   {viewMode !== 'readonly' && (
                     <button
                       type="button"
-                      onClick={() => {
-                        resetLessonFormForNewClass(lessonPlans.length + 1, selectedPlan);
-                      }}
+                      onClick={handleAddNewClass}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -2447,98 +2630,210 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   </select>
                 </div>
 
-                {/* LISTADO DE CLASES CON SWITCH DE REALIZADA */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '600px', overflowY: 'auto' }}>
-                  {lessonPlans.map((lesson, idx) => {
-                    const isSelected = lessonForm.class_number === lesson.class_number;
-                    const isRealizada = lesson.status === 'realizada';
+                {/* LISTADO DE CLASES ORGANIZADAS POR UNIDAD TEMÁTICA */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '620px', overflowY: 'auto' }}>
+                  {selectedPlan?.units && selectedPlan.units.length > 0 ? (
+                    selectedPlan.units.map((unit, uIdx) => {
+                      const unitClasses = lessonPlans.filter(l => (unit.id && l.unit_id === unit.id) || l.unit_name === unit.unit_name);
+                      const maxForUnit = getMaxClassesForUnit(unit, selectedPlan.weekly_sessions);
+                      const isCompleted = unitClasses.length >= maxForUnit;
 
-                    return (
-                      <div
-                        key={lesson.id || idx}
-                        onClick={() => setLessonForm(lesson)}
-                        style={{
-                          padding: '0.85rem',
+                      return (
+                        <div key={unit.id || uIdx} style={{
+                          border: isCompleted ? '1.5px solid #86efac' : '1px solid #e2e8f0',
                           borderRadius: '10px',
-                          border: isSelected ? '2px solid #0284c7' : '1px solid #e2e8f0',
-                          background: isSelected ? '#f0f9ff' : '#ffffff',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '4px' }}>
-                          <span style={{
-                            background: isSelected ? '#0284c7' : '#e2e8f0',
-                            color: isSelected ? '#ffffff' : '#334155',
-                            padding: '0.2rem 0.55rem',
-                            borderRadius: '6px',
-                            fontSize: '0.72rem',
-                            fontWeight: 900
+                          overflow: 'hidden',
+                          background: isCompleted ? '#f0fdf4' : '#ffffff',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                        }}>
+                          {/* CABECERA DE LA UNIDAD */}
+                          <div style={{
+                            padding: '0.5rem 0.75rem',
+                            background: isCompleted ? '#dcfce7' : '#f8fafc',
+                            borderBottom: '1px solid #e2e8f0',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '4px'
                           }}>
-                            Clase N° {lesson.class_number}
-                          </span>
-
-                          {/* BOTÓN RÁPIDO TOGGLE REALIZADA */}
-                          <button
-                            type="button"
-                            disabled={viewMode === 'readonly'}
-                            onClick={(e) => {
-                              if (viewMode === 'readonly') return;
-                              handleToggleLessonStatus(lesson, e);
-                            }}
-                            title={viewMode === 'readonly' ? 'Modo Solo Vista' : 'Haga clic para alternar entre Realizada y Por Realizar'}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px',
-                              padding: '0.18rem 0.5rem',
-                              borderRadius: '6px',
-                              border: 'none',
-                              background: isRealizada ? '#dcfce7' : '#fef3c7',
-                              color: isRealizada ? '#15803d' : '#b45309',
-                              fontSize: '0.7rem',
-                              fontWeight: 800,
-                              cursor: viewMode === 'readonly' ? 'default' : 'pointer',
-                              opacity: viewMode === 'readonly' ? 0.9 : 1
-                            }}
-                          >
-                            {isRealizada ? <CheckCircle2 size={12} /> : <Clock size={12} />}
-                            {isRealizada ? 'Realizada' : 'Por Realizar'}
-                          </button>
-                        </div>
-
-                        {lesson.oa_codes && (
-                          <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0369a1', marginBottom: '0.3rem' }}>
-                            OAs: {lesson.oa_codes}
+                            <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0f172a' }}>
+                              {unit.unit_name}
+                            </span>
+                            <span style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 900,
+                              padding: '0.12rem 0.45rem',
+                              borderRadius: '999px',
+                              background: isCompleted ? '#16a34a' : '#0284c7',
+                              color: '#ffffff',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {unitClasses.length} / {maxForUnit} clases
+                            </span>
                           </div>
-                        )}
 
-                        <p style={{ margin: 0, fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          {lesson.class_goal || 'Sin objetivo redactado aún'}
-                        </p>
+                          {/* CLASES DE LA UNIDAD */}
+                          <div style={{ padding: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            {unitClasses.map((lesson) => {
+                              const isSelected = lessonForm.class_number === lesson.class_number;
+                              const isRealizada = lesson.status === 'realizada';
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.4rem' }}>
-                          <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                            {lesson.class_date ? new Date(lesson.class_date).toLocaleDateString('es-CL') : 'Sin fecha'}
-                          </span>
-                          {lesson.id && viewMode !== 'readonly' && (isAdmin || isUserMatch(lesson.teacher_name) || isUserMatch(lesson.substitute_teacher_name)) && (
+                              return (
+                                <div
+                                  key={lesson.id || lesson.class_number}
+                                  onClick={() => setLessonForm(lesson)}
+                                  style={{
+                                    padding: '0.65rem 0.75rem',
+                                    borderRadius: '8px',
+                                    border: isSelected ? '2px solid #0284c7' : '1px solid #e2e8f0',
+                                    background: isSelected ? '#f0f9ff' : '#ffffff',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem', flexWrap: 'wrap', gap: '4px' }}>
+                                    <span style={{
+                                      background: isSelected ? '#0284c7' : '#e2e8f0',
+                                      color: isSelected ? '#ffffff' : '#334155',
+                                      padding: '0.15rem 0.45rem',
+                                      borderRadius: '4px',
+                                      fontSize: '0.7rem',
+                                      fontWeight: 900
+                                    }}>
+                                      Clase N° {lesson.class_number}
+                                    </span>
+
+                                    <button
+                                      type="button"
+                                      disabled={viewMode === 'readonly'}
+                                      onClick={(e) => {
+                                        if (viewMode === 'readonly') return;
+                                        handleToggleLessonStatus(lesson, e);
+                                      }}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '2px',
+                                        padding: '0.12rem 0.45rem',
+                                        borderRadius: '4px',
+                                        border: 'none',
+                                        background: isRealizada ? '#dcfce7' : '#fef3c7',
+                                        color: isRealizada ? '#15803d' : '#b45309',
+                                        fontSize: '0.68rem',
+                                        fontWeight: 800,
+                                        cursor: viewMode === 'readonly' ? 'default' : 'pointer'
+                                      }}
+                                    >
+                                      {isRealizada ? <CheckCircle2 size={11} /> : <Clock size={11} />}
+                                      {isRealizada ? 'Realizada' : 'Por Realizar'}
+                                    </button>
+                                  </div>
+
+                                  {lesson.oa_codes && (
+                                    <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#0369a1', marginBottom: '0.2rem' }}>
+                                      OAs: {lesson.oa_codes}
+                                    </div>
+                                  )}
+
+                                  <p style={{ margin: 0, fontSize: '0.76rem', fontWeight: 700, color: '#1e293b', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                    {lesson.class_goal || 'Sin objetivo redactado aún'}
+                                  </p>
+
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.3rem' }}>
+                                    <span style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                                      {lesson.class_date ? new Date(lesson.class_date).toLocaleDateString('es-CL') : 'Sin fecha'}
+                                    </span>
+                                    {lesson.id && viewMode !== 'readonly' && (isAdmin || isUserMatch(lesson.teacher_name) || isUserMatch(lesson.substitute_teacher_name)) && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleDeleteLessonPlan(lesson.id!, e)}
+                                        title="Eliminar clase"
+                                        style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px' }}
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                            {unitClasses.length === 0 && (
+                              <div style={{ textAlign: 'center', padding: '0.5rem', color: '#94a3b8', fontSize: '0.72rem' }}>
+                                Sin clases planificadas aún para esta unidad.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    lessonPlans.map((lesson, idx) => {
+                      const isSelected = lessonForm.class_number === lesson.class_number;
+                      const isRealizada = lesson.status === 'realizada';
+
+                      return (
+                        <div
+                          key={lesson.id || idx}
+                          onClick={() => setLessonForm(lesson)}
+                          style={{
+                            padding: '0.85rem',
+                            borderRadius: '10px',
+                            border: isSelected ? '2px solid #0284c7' : '1px solid #e2e8f0',
+                            background: isSelected ? '#f0f9ff' : '#ffffff',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '4px' }}>
+                            <span style={{
+                              background: isSelected ? '#0284c7' : '#e2e8f0',
+                              color: isSelected ? '#ffffff' : '#334155',
+                              padding: '0.2rem 0.55rem',
+                              borderRadius: '6px',
+                              fontSize: '0.72rem',
+                              fontWeight: 900
+                            }}>
+                              Clase N° {lesson.class_number}
+                            </span>
+
                             <button
                               type="button"
-                              onClick={(e) => handleDeleteLessonPlan(lesson.id!, e)}
-                              title="Eliminar clase"
-                              style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px' }}
+                              disabled={viewMode === 'readonly'}
+                              onClick={(e) => {
+                                if (viewMode === 'readonly') return;
+                                handleToggleLessonStatus(lesson, e);
+                              }}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                padding: '0.18rem 0.5rem',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: isRealizada ? '#dcfce7' : '#fef3c7',
+                                color: isRealizada ? '#15803d' : '#b45309',
+                                fontSize: '0.7rem',
+                                fontWeight: 800,
+                                cursor: viewMode === 'readonly' ? 'default' : 'pointer'
+                              }}
                             >
-                              <Trash2 size={13} />
+                              {isRealizada ? <CheckCircle2 size={12} /> : <Clock size={12} />}
+                              {isRealizada ? 'Realizada' : 'Por Realizar'}
                             </button>
-                          )}
+                          </div>
+
+                          <p style={{ margin: 0, fontSize: '0.8rem', fontWeight: 700, color: '#1e293b' }}>
+                            {lesson.class_goal || 'Sin objetivo redactado aún'}
+                          </p>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
 
                   {lessonPlans.length === 0 && (
                     <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#94a3b8', fontSize: '0.82rem' }}>
-                      Aún no hay clases registradas. Haz clic en "+ Nueva Clase" o genera la primera clase con IA.
+                      Aún no hay clases registradas. Haz clic en "+ Nueva Clase" para crear la primera clase de la Unidad 1.
                     </div>
                   )}
                 </div>
@@ -2634,6 +2929,52 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   </div>
                 </div>
 
+                {/* SELECTOR DE UNIDAD TEMÁTICA A LA QUE PERTENECE ESTA CLASE */}
+                {selectedPlan && selectedPlan.units && selectedPlan.units.length > 0 && (
+                  <div style={{ marginBottom: '1rem', background: '#f0f9ff', padding: '0.85rem 1rem', borderRadius: '10px', border: '1px solid #bae6fd' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0369a1' }}>
+                        🏷️ Unidad Temática a la que pertenece esta Clase:
+                      </label>
+                      {(() => {
+                        const activeUnit = selectedPlan.units.find(u => (u.id && u.id === lessonForm.unit_id) || u.unit_name === lessonForm.unit_name) || selectedPlan.units[0];
+                        const count = lessonPlans.filter(l => (activeUnit.id && l.unit_id === activeUnit.id) || l.unit_name === activeUnit.unit_name).length;
+                        const maxC = getMaxClassesForUnit(activeUnit, selectedPlan.weekly_sessions || 1);
+                        return (
+                          <span style={{ fontSize: '0.74rem', fontWeight: 800, color: count >= maxC ? '#b45309' : '#0284c7', background: '#ffffff', padding: '0.15rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                            {count} de {maxC} Clases ({parseUnitWeeks(activeUnit.temporality)} Semanas)
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <select
+                      value={lessonForm.unit_id || lessonForm.unit_name || ''}
+                      onChange={e => {
+                        const val = e.target.value;
+                        const foundUnit = selectedPlan.units?.find(u => u.id === val || u.unit_name === val);
+                        if (foundUnit) {
+                          setLessonForm(prev => ({
+                            ...prev,
+                            unit_id: foundUnit.id || foundUnit.unit_name,
+                            unit_name: foundUnit.unit_name
+                          }));
+                        }
+                      }}
+                      style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid #0284c7', fontSize: '0.84rem', fontWeight: 700, background: '#ffffff' }}
+                    >
+                      {selectedPlan.units.map((u, i) => {
+                        const count = lessonPlans.filter(l => (u.id && l.unit_id === u.id) || l.unit_name === u.unit_name).length;
+                        const maxC = getMaxClassesForUnit(u, selectedPlan.weekly_sessions || 1);
+                        return (
+                          <option key={u.id || i} value={u.id || u.unit_name}>
+                            Unidad {u.unit_number || i + 1}: {u.unit_name} — ({count}/{maxC} Clases • {u.temporality || '2 Semanas'})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
+
                 {/* FILA DE CONTROLES: N° CLASE, FECHA Y ESTADO (REALIZADA VS POR REALIZAR) */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.25rem', background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                   <div>
@@ -2695,14 +3036,21 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
 
                 {/* SELECTOR DE OAs A TRABAJAR EN ESTA CLASE */}
                 <div style={{ marginBottom: '1.25rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.35rem' }}>
-                    📚 Objetivos de Aprendizaje (OA) que se abordarán en esta Clase:
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>
+                      📚 Objetivos de Aprendizaje (OA) que se abordarán en esta Clase:
+                    </label>
+                    {availableOAsForClass.unitOas.length > 0 && (
+                      <span style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: 800, background: '#e0f2fe', padding: '0.15rem 0.45rem', borderRadius: '4px' }}>
+                        ⭐ {availableOAsForClass.unitOas.length} OAs sugeridos de esta Unidad
+                      </span>
+                    )}
+                  </div>
                   <span style={{ display: 'block', fontSize: '0.74rem', color: '#64748b', marginBottom: '0.5rem' }}>
                     Selecciona los OAs del currículum que se trabajarán. Cada OA marcado como realizado sumará automáticamente a la Cobertura Curricular.
                   </span>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem', maxHeight: '140px', overflowY: 'auto', padding: '0.5rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                    {availableOAsForClass.map((oa) => {
+                    {availableOAsForClass.allOas.map((oa) => {
                       const isSelected = (lessonForm.oa_codes || '').includes(oa.oa_code);
                       return (
                         <button
@@ -2727,9 +3075,9 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                             gap: '0.3rem',
                             padding: '0.28rem 0.65rem',
                             borderRadius: '6px',
-                            border: isSelected ? '1.5px solid #0284c7' : '1px solid #cbd5e1',
-                            background: isSelected ? '#0284c7' : '#ffffff',
-                            color: isSelected ? '#ffffff' : '#334155',
+                            border: isSelected ? '1.5px solid #0284c7' : oa.isUnitOa ? '1.5px solid #0284c7' : '1px solid #cbd5e1',
+                            background: isSelected ? '#0284c7' : oa.isUnitOa ? '#e0f2fe' : '#ffffff',
+                            color: isSelected ? '#ffffff' : oa.isUnitOa ? '#0369a1' : '#334155',
                             fontSize: '0.75rem',
                             fontWeight: 800,
                             cursor: 'pointer'
@@ -2737,7 +3085,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                           title={oa.oa_title}
                         >
                           {isSelected && <Check size={12} />}
-                          {oa.oa_code}
+                          {oa.oa_code} {oa.isUnitOa && !isSelected && '★'}
                         </button>
                       );
                     })}
@@ -3177,6 +3525,49 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
             </div>
           </div>
         </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* PESTAÑA 5: HORARIOS ESCOLARES & ASC HORARIOS                         */}
+      {/* ===================================================================== */}
+      {activeTab === 'schedules' && (
+        <SchoolSchedulesModule
+          token={token}
+          user={user}
+          coursesList={coursesList}
+          subjectsList={subjectsList}
+          teachersList={teachersList}
+          onSelectForPlanning={(courseName, subjectName) => {
+            // Buscar si ya existe un plan anual para este curso y asignatura
+            const foundPlan = allAnnualPlans.find(p => p.course_name === courseName && p.subject_name === subjectName);
+            if (foundPlan) {
+              selectAnnualPlan(foundPlan);
+              setActiveTab('lessons');
+            } else {
+              setAnnualForm({
+                academic_year: 2026,
+                semester: 'PRIMER Y SEGUNDO SEMESTRE',
+                course_name: courseName,
+                subject_name: subjectName,
+                teacher_name: user?.name || '',
+                total_hours: 4,
+                weekly_sessions: 1,
+                status: 'Borrador',
+                units: [
+                  {
+                    unit_number: 1,
+                    unit_name: 'Unidad 1: Nivelación y Diagnóstico Inicial',
+                    learning_goals: '',
+                    evaluation_instruments: 'Evaluación diagnóstica inicial; Guías formativas; Rúbrica sumativa',
+                    temporality: '2 Semanas'
+                  }
+                ]
+              });
+              setIsEditingAnnual(true);
+              setActiveTab('annual');
+            }
+          }}
+        />
       )}
 
       {/* ===================================================================== */}
