@@ -932,6 +932,109 @@ router.post('/auth/switch-role', authMiddleware, async (req: Request, res: Respo
 });
 
 // -----------------------------------------------------------------------------
+// IMPERSONACIÓN MAESTRA DE USUARIO (MODO MAESTRO / INICIAR SESIÓN COMO CUALQUIER DOCENTE O ASISTENTE)
+// Permite al Administrador / Directivo navegar como cualquier usuario registrado para verificar su plataforma
+// -----------------------------------------------------------------------------
+router.post('/auth/impersonate', authMiddleware, async (req: Request, res: Response) => {
+  const adminUser = req.user as any;
+  const adminRole = adminUser?.role;
+  const adminRun = String(adminUser?.run || '').replace(/\./g, '').trim();
+  const isSuperAdmin = adminRole === 'Admin' || adminRun === '18803735-6' || adminRole === 'Director' || (Array.isArray(adminUser?.roles) && adminUser.roles.includes('Admin'));
+
+  if (!isSuperAdmin) {
+    return res.status(403).json({ error: 'Acceso denegado. Solo Administradores y Directivos pueden utilizar la impersonación maestra.' });
+  }
+
+  const { targetUserId, targetRun, targetName } = req.body;
+  if (!targetUserId && !targetRun && !targetName) {
+    return res.status(400).json({ error: 'Debe especificar el usuario a suplantar (targetUserId, targetRun o targetName).' });
+  }
+
+  try {
+    let userRes;
+    if (targetUserId) {
+      userRes = await query('SELECT * FROM users WHERE id = $1', [targetUserId]);
+    } else if (targetRun) {
+      const cleanRun = String(targetRun).replace(/\./g, '').trim();
+      userRes = await query('SELECT * FROM users WHERE REPLACE(run, \'.\', \'\') = $1 OR run = $2', [cleanRun, targetRun]);
+    } else {
+      userRes = await query('SELECT * FROM users WHERE name ILIKE $1 OR full_name ILIKE $1 LIMIT 1', [`%${String(targetName).trim()}%`]);
+    }
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'El usuario especificado no fue encontrado en la base de datos.' });
+    }
+
+    const target = userRes.rows[0];
+    const userRolesSet = new Set<string>();
+    if (target.role) userRolesSet.add(target.role);
+    if (target.roles) {
+      try {
+        const parsed = typeof target.roles === 'string' ? JSON.parse(target.roles) : target.roles;
+        if (Array.isArray(parsed)) parsed.forEach((r: any) => userRolesSet.add(String(r).trim()));
+      } catch (_) {
+        String(target.roles).split(',').forEach((r: string) => userRolesSet.add(r.trim()));
+      }
+    }
+    const rolesList = Array.from(userRolesSet);
+    const primaryRole = target.role || rolesList[0] || 'Docente';
+
+    const allowedCustomize = canCustomizeProfileRole(primaryRole);
+    const parsedTheme = allowedCustomize ? parseUserThemeConfig(target.theme_config) : null;
+    const safeAvatar = allowedCustomize && target.avatar ? String(target.avatar) : null;
+
+    const impersonatedByInfo = {
+      id: adminUser?.id || 'admin',
+      name: adminUser?.name || 'Administrador',
+      run: adminUser?.run || '',
+      role: adminRole || 'Admin'
+    };
+
+    const newToken = jwt.sign(
+      {
+        id: target.id,
+        run: target.run,
+        name: target.name || target.full_name,
+        role: primaryRole,
+        roles: rolesList,
+        impersonatedBy: impersonatedByInfo
+      },
+      JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+
+    await logAudit(
+      req,
+      'IMPERSONATE_USER',
+      `Administrador ${adminUser?.name} inició sesión maestra como: ${target.name} (${primaryRole})`
+    );
+
+    res.json({
+      success: true,
+      token: newToken,
+      user: {
+        id: target.id,
+        username: target.id,
+        run: target.run,
+        name: target.name || target.full_name,
+        email: target.email || '',
+        phone: target.phone || '',
+        role: primaryRole,
+        perfil: primaryRole,
+        roles: rolesList,
+        avatar: safeAvatar,
+        themeConfig: parsedTheme,
+        canCustomize: allowedCustomize,
+        impersonatedBy: impersonatedByInfo
+      }
+    });
+  } catch (err: any) {
+    console.error('❌ Error en /auth/impersonate:', err);
+    res.status(500).json({ error: 'Error al iniciar sesión como el usuario seleccionado.' });
+  }
+});
+
+// -----------------------------------------------------------------------------
 // ASIGNACIÓN DOCENTE DE ASIGNATURAS Y NIVELES (6.4 ASIGNACIÓN DOCENTE - 2 DOCENTES PERMITIDOS)
 // -----------------------------------------------------------------------------
 // Asegurar que la tabla teacher_assignments tenga las columnas para co-docencia

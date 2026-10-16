@@ -85,6 +85,7 @@ export interface User {
   avatar?: string | null;
   themeConfig?: UserThemeConfig | null;
   canCustomize?: boolean;
+  impersonatedBy?: { id?: string; name?: string; run?: string; role?: string } | null;
 }
 
 interface AuthContextType {
@@ -94,10 +95,13 @@ interface AuthContextType {
   updateUser: (updatedUser: Partial<User>) => void;
   switchRole: (newRole: UserRole) => void;
   restoreOriginalRole: () => void;
+  impersonateUser: (target: { targetUserId?: string; targetRun?: string; targetName?: string }) => Promise<boolean>;
+  revertImpersonation: () => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
   isImpersonating: boolean;
+  masterAdminUser: User | null;
   canCustomizeProfile: boolean;
 }
 
@@ -311,9 +315,75 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     switchRole(orig as UserRole);
   };
 
+  // SESIÓN MAESTRA ORIGINAL (PARA REVERTIR CUANDO SE SUPLANTA VISTA DE DOCENTE O ASISTENTE)
+  const [masterAdminSession, setMasterAdminSession] = useState<{ token: string; user: User } | null>(() => {
+    try {
+      const raw = sessionStorage.getItem('ltp_master_admin_session');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const impersonateUser = async (target: { targetUserId?: string; targetRun?: string; targetName?: string }): Promise<boolean> => {
+    if (!token || !user) return false;
+    try {
+      // Guardar la sesión maestra del admin actual antes de cambiar si aún no está guardada
+      const currentMaster = masterAdminSession || { token, user };
+      sessionStorage.setItem('ltp_master_admin_session', JSON.stringify(currentMaster));
+      setMasterAdminSession(currentMaster);
+
+      const res = await fetch('/api/auth/impersonate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(target)
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.token && data.user) {
+        setToken(data.token);
+        setUser(data.user);
+        sessionStorage.setItem('ltp_token', data.token);
+        sessionStorage.setItem('ltp_user', JSON.stringify(data.user));
+        applyUserThemeToDocument(data.user.themeConfig || null, data.user.role);
+        return true;
+      } else {
+        console.error('Error al impersonar usuario:', data.error);
+        return false;
+      }
+    } catch (err) {
+      console.error('Fallo en llamada impersonateUser:', err);
+      return false;
+    }
+  };
+
+  const revertImpersonation = async () => {
+    try {
+      const savedMasterRaw = sessionStorage.getItem('ltp_master_admin_session');
+      if (savedMasterRaw) {
+        const savedMaster = JSON.parse(savedMasterRaw);
+        if (savedMaster.token && savedMaster.user) {
+          setToken(savedMaster.token);
+          setUser(savedMaster.user);
+          sessionStorage.setItem('ltp_token', savedMaster.token);
+          sessionStorage.setItem('ltp_user', JSON.stringify(savedMaster.user));
+          applyUserThemeToDocument(savedMaster.user.themeConfig || null, savedMaster.user.role);
+        }
+      }
+      sessionStorage.removeItem('ltp_master_admin_session');
+      setMasterAdminSession(null);
+    } catch (e) {
+      console.error('Error revirtiendo impersonación:', e);
+    }
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
+    setMasterAdminSession(null);
     applyUserThemeToDocument(null, null);
     try {
       localStorage.removeItem('ltp_token');
@@ -325,6 +395,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionStorage.removeItem('ltp_admin_tab');
       sessionStorage.removeItem('ltp_teacher_active_tab');
       sessionStorage.removeItem('ltp_a11y_prompt_shown');
+      sessionStorage.removeItem('ltp_master_admin_session');
       if (typeof window !== 'undefined' && window.location.pathname !== '/') {
         window.history.replaceState(null, '', '/');
       }
@@ -334,8 +405,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const cleanUserRun = user?.run?.replace(/\./g, '');
-  const isSuperAdmin = cleanUserRun === '18803735-6' || user?.originalRole === 'Admin' || user?.role === 'Admin' || (Array.isArray(user?.roles) && user.roles.includes('Admin'));
-  const isImpersonating = (!!user?.originalRole && user.originalRole !== user.role) || (isSuperAdmin && user?.role !== 'Admin');
+  const isSuperAdmin = cleanUserRun === '18803735-6' || user?.originalRole === 'Admin' || user?.role === 'Admin' || (Array.isArray(user?.roles) && user.roles.includes('Admin')) || Boolean(masterAdminSession);
+  const isMasterImpersonating = Boolean(masterAdminSession || user?.impersonatedBy);
+  const isImpersonating = isMasterImpersonating || (!!user?.originalRole && user.originalRole !== user.role) || (isSuperAdmin && user?.role !== 'Admin');
   const canCustomizeProfile = canUserCustomizeAppearance(user?.role);
 
   return (
@@ -346,10 +418,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateUser,
       switchRole,
       restoreOriginalRole,
+      impersonateUser,
+      revertImpersonation,
       logout,
       isAuthenticated: !!(token && user),
       isSuperAdmin,
       isImpersonating,
+      masterAdminUser: masterAdminSession ? masterAdminSession.user : (user?.impersonatedBy ? (user.impersonatedBy as any) : null),
       canCustomizeProfile
     }}>
       {children}

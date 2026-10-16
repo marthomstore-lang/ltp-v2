@@ -561,6 +561,22 @@ router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director', 'D
       return res.status(400).json({ error: 'Curso, asignatura y objetivo de la clase son obligatorios.' });
     }
 
+    let finalUnitId = unit_id || null;
+    let finalUnitName = unit_name || null;
+
+    if ((!finalUnitId || !finalUnitName) && annual_plan_id) {
+      try {
+        const uRes = await query(
+          'SELECT id, unit_name FROM annual_curriculum_units WHERE plan_id = $1 ORDER BY sort_order ASC, unit_number ASC LIMIT 1',
+          [annual_plan_id]
+        );
+        if (uRes.rows.length > 0) {
+          finalUnitId = finalUnitId || uRes.rows[0].id;
+          finalUnitName = finalUnitName || uRes.rows[0].unit_name;
+        }
+      } catch (_) {}
+    }
+
     const id = `LESSON-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const effectiveTeacher = teacher_name || (req as any).user?.name || 'Docente';
 
@@ -574,8 +590,8 @@ router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director', 'D
     `, [
       id,
       annual_plan_id || null,
-      unit_id || null,
-      unit_name || null,
+      finalUnitId,
+      finalUnitName,
       course_name,
       subject_name,
       effectiveTeacher,
@@ -595,7 +611,26 @@ router.post('/lesson-plans', authMiddleware, checkRoles(['Admin', 'Director', 'D
       reflection_notes || ''
     ]);
 
-    res.json({ success: true, message: 'Planificación de clase guardada exitosamente.', id });
+    res.json({
+      success: true,
+      message: 'Planificación de clase guardada exitosamente.',
+      id,
+      lesson: {
+        id,
+        annual_plan_id,
+        unit_id: finalUnitId,
+        unit_name: finalUnitName,
+        course_name,
+        subject_name,
+        teacher_name: effectiveTeacher,
+        class_number: parseInt(String(class_number || 1), 10),
+        class_date,
+        class_goal,
+        status: status || 'por_realizar',
+        oa_codes: oa_codes || '',
+        ticket_salida: ticket_salida || ''
+      }
+    });
   } catch (err: any) {
     console.error('Error al guardar planificación de clase:', err);
     res.status(500).json({ error: 'Error al registrar planificación de clase.' });
@@ -1106,6 +1141,7 @@ function parseGeminiResponse(raw: string, mode: string): any {
 function generatePedagogicalResponse(opts: any): any {
   const isTp = opts.grade_level.includes('Técnico') || opts.grade_level.includes('Industrial') || opts.subject.includes('Industrial') || opts.subject.includes('Párvulo');
   const oa = opts.oa_title || 'Aplicación práctica y comprensión de conceptos fundamentales.';
+  const contextNote = opts.context ? String(opts.context).trim() : '';
 
   if (opts.mode === 'suggest_annual_units') {
     return {
@@ -1144,7 +1180,7 @@ function generatePedagogicalResponse(opts: any): any {
 
   if (opts.mode === 'suggest_dua') {
     return {
-      dua_accommodations: `• Múltiples formas de representación: Presentar la información mediante organizadores gráficos, esquemas visuales y ejemplos de la vida diaria o del taller.
+      dua_accommodations: `• Múltiples formas de representación: Presentar la información mediante organizadores gráficos, esquemas visuales y ejemplos de la vida diaria o del taller${contextNote ? ` (orientado a: ${contextNote})` : ''}.
 • Múltiples formas de acción y expresión: Permitir que los estudiantes demuestren su aprendizaje a través de respuestas orales, resolución práctica en pizarra o fichas guiadas.
 • Múltiples formas de implicación: Fomentar el trabajo en parejas heterogéneas con apoyo del profesional PIE y asignación de roles colaborativos claros.`
     };
@@ -1161,54 +1197,79 @@ function generatePedagogicalResponse(opts: any): any {
   const isParvulo = opts.subject.toLowerCase().includes('párvulo') || opts.grade_level.toLowerCase().includes('párvulo');
   const isMecanica = opts.subject.toLowerCase().includes('mecánic') || opts.grade_level.toLowerCase().includes('industrial');
 
-  let goal = `Aplicar los principios de ${opts.subject} para resolver situaciones prácticas vinculadas a ${opts.oa_code}.`;
+  let goal = contextNote
+    ? `Aplicar los principios de ${opts.subject} mediante ${contextNote}, resolviendo situaciones vinculadas a ${opts.oa_code}.`
+    : `Aplicar los principios de ${opts.subject} para resolver situaciones prácticas vinculadas a ${opts.oa_code}.`;
+
   let inicio = `1. Saludo y ambientación: Presentar en la pizarra el objetivo de la clase y su relevancia cotidiana.
 2. Activación de conocimientos previos: Preguntas dirigidas sobre la clase anterior mediante lluvia de ideas breve (5 min).
-3. Desafío motivacional inicial: Presentar un caso o problema detonante real que requiera aplicar el tema del día.`;
+3. Desafío motivacional inicial: Presentar un caso o problema detonante real${contextNote ? ` enfocado en ${contextNote}` : ''} que requiera aplicar el tema del día.`;
 
-  let desarrollo = `1. Modelamiento docente (20 min): Demostración paso a paso del procedimiento o concepto clave, resolviendo un ejemplo guiado en pizarra y aclarando dudas frecuentes.
+  let desarrollo = contextNote
+    ? `1. Modelamiento docente (20 min): Demostración guiada del docente vinculada a "${contextNote}", explicando el procedimiento paso a paso en pizarra o proyector.
+2. Trabajo colaborativo práctico (30 min): Los estudiantes se organizan en parejas o equipos para desarrollar la actividad de "${contextNote}", aplicando los conceptos de ${opts.oa_code} con monitoreo docente.
+3. Socialización y corrección grupal (10 min): Un equipo expone su procedimiento o producto; se contrastan distintos caminos de resolución y se aclaran dudas.`
+    : `1. Modelamiento docente (20 min): Demostración paso a paso del procedimiento o concepto clave, resolviendo un ejemplo guiado en pizarra y aclarando dudas frecuentes.
 2. Trabajo colaborativo práctico (30 min): Los estudiantes resuelven en parejas una guía de aplicación práctica o ejercicio de taller con monitoreo y retroalimentación docente en puesto.
 3. Socialización y corrección grupal (10 min): Un equipo expone su procedimiento; se contrastan distintos caminos de resolución.`;
 
   let cierre = `1. Síntesis guiada: El docente recapitula los 3 aprendizajes esenciales de la sesión junto con los estudiantes.
-2. Preguntas de metacognición: "¿Qué paso resultó más desafiante hoy y cómo logramos resolverlo?".
+2. Preguntas de metacognición: "¿Qué paso resultó más desafiante hoy${contextNote ? ` durante ${contextNote}` : ''} y cómo logramos resolverlo?".
 3. Ticket de salida: Cada estudiante responde un ejercicio breve de 2 minutos para verificar el logro del objetivo antes de retirarse.`;
 
-  let recursos = `Guía de aprendizaje impresa, proyector multimedia, pizarra, plumones de colores y cuaderno de la asignatura.`;
+  let recursos = contextNote
+    ? `Materiales para "${contextNote}", guía de aprendizaje impresa, proyector multimedia, pizarra, plumones y cuaderno de la asignatura.`
+    : `Guía de aprendizaje impresa, proyector multimedia, pizarra, plumones de colores y cuaderno de la asignatura.`;
+
   let indicadores = `• Identifica correctamente los conceptos clave del ${opts.oa_code}.
-• Aplica procedimientos de resolución de forma ordenada y autónoma.
+• Aplica procedimientos de resolución de forma ordenada y autónoma${contextNote ? ` en ${contextNote}` : ''}.
 • Justifica sus respuestas utilizando vocabulario técnico de la asignatura.`;
 
   let dua = `• Proporcionar apoyos visuales y fichas con pasos resumidos para estudiantes que lo requieran.
-• Permitir apoyo mutuo entre pares y supervisión prioritaria del equipo de co-docencia / PIE.`;
+• Permitir apoyo mutuo entre pares y supervisión prioritaria del equipo de co-docencia / PIE en las actividades prácticas.`;
 
   if (isMath) {
-    goal = `Analizar y resolver problemas aplicando modelos matemáticos y cálculo guiado en torno a ${opts.oa_code}.`;
-    inicio = `1. Pregunta activadora: Mostrar un gráfico o factura económica real y preguntar: "¿Cómo influyen las tasas o índices en nuestro presupuesto?".
-2. Conexión de conceptos previos: Recordar porcentaje, interés simple y lectura de datos (8 min).
+    goal = contextNote
+      ? `Analizar y resolver problemas aplicando modelos matemáticos y cálculo guiado en torno a ${opts.oa_code} (${contextNote}).`
+      : `Analizar y resolver problemas aplicando modelos matemáticos y cálculo guiado en torno a ${opts.oa_code}.`;
+    inicio = `1. Pregunta activadora: Mostrar un gráfico o caso económico real${contextNote ? ` sobre ${contextNote}` : ''} y preguntar: "¿Cómo influyen estos datos en nuestro resultado?".
+2. Conexión de conceptos previos: Recordar porcentaje, fórmulas o procedimientos previos (8 min).
 3. Presentación del objetivo y criterio de éxito de la clase.`;
     desarrollo = `1. Modelamiento matemático: Explicación de la fórmula o modelo con un caso práctico resuelto en conjunto.
-2. Taller de ejercitación graduada: Los estudiantes avanzan desde ejercicios básicos de comprensión hasta problemas contextualizados de la vida cotidiana.
+2. Taller de ejercitación graduada: Los estudiantes avanzan desde ejercicios básicos de comprensión hasta problemas contextualizados${contextNote ? ` basados en ${contextNote}` : ''}.
 3. Retroalimentación en tiempo real: Revisión formativa en la pizarra destacando los errores conceptuales más comunes para corregirlos positivamente.`;
-    recursos = `Calculadora, guía de ejercicios de matemática financiera/estadística, proyector y tabla de fórmulas de apoyo.`;
+    recursos = `Calculadora, guía de ejercicios de matemática contextualizada, proyector y tabla de fórmulas de apoyo.`;
   } else if (isParvulo) {
-    goal = `Diseñar y planificar actividades lúdicas pertinentes a las bases curriculares de educación parvularia según ${opts.oa_code}.`;
+    goal = `Diseñar y planificar experiencias lúdicas pertinentes a las bases curriculares de educación parvularia según ${opts.oa_code}${contextNote ? ` con enfoque en ${contextNote}` : ''}.`;
     inicio = `1. Dinámica de inicio: Observación de un recurso didáctico infantil y debate sobre la edad apropiada para su uso.
 2. Activación: Repaso de las etapas del desarrollo psicomotor según las Bases Curriculares de Educación Parvularia.`;
-    desarrollo = `1. Taller de diseño pedagógico: En grupos de trabajo, las estudiantes elaboran una micro-planificación de experiencia de aprendizaje con inicio, desarrollo y cierre para párvulos.
+    desarrollo = `1. Taller de diseño pedagógico: En grupos de trabajo, las estudiantes elaboran una micro-planificación con inicio, desarrollo y cierre${contextNote ? ` centrada en ${contextNote}` : ''}.
 2. Simulación de aula: Presentación breve de la actividad y análisis de seguridad, pertinencia y estimulación del material.`;
     recursos = `Bases Curriculares de Educación Parvularia MINEDUC, fichas de planificación técnica, materiales de manualidades y cartulinas.`;
   } else if (isMecanica) {
-    goal = `Identificar normas de seguridad, parámetros de corte y secuencias de mecanizado según especificaciones técnicas (${opts.oa_code}).`;
+    goal = `Identificar normas de seguridad, parámetros de corte y secuencias de mecanizado según especificaciones técnicas (${opts.oa_code})${contextNote ? ` aplicados a ${contextNote}` : ''}.`;
     inicio = `1. Charla de 5 minutos sobre seguridad y Elementos de Protección Personal (EPP) en el taller.
 2. Lectura e interpretación del plano técnico de la pieza a fabricar.`;
     desarrollo = `1. Demostración en máquina herramienta: Montaje seguro de la pieza y centrado de la herramienta de corte.
-2. Operación guiada de mecanizado: Ejecución de operaciones con supervisión directa y control dimensional con pie de metro / micrómetro.`;
+2. Operación guiada de mecanizado: Ejecución de operaciones con supervisión directa y control dimensional con pie de metro / micrómetro${contextNote ? ` en ${contextNote}` : ''}.`;
     recursos = `Torno convencional / fresadora, plano técnico normalizado, instrumentos de metrología (calibre pie de metro) y EPP.`;
   }
 
-  let ticket = `1. Pregunta rápida de síntesis (2 min): Explica con tus propias palabras o resuelve brevemente el ejercicio clave del día (${opts.oa_code}).
+  let ticket = `1. Pregunta rápida de síntesis (2 min): Explica con tus propias palabras o resuelve brevemente el ejercicio clave del día (${opts.oa_code})${contextNote ? ` realizado en ${contextNote}` : ''}.
 2. Metacognición: ¿Qué paso del procedimiento te pareció más claro y en cuál requieres mayor práctica?`;
+
+  if (opts.mode === 'suggest_goal') {
+    return { class_goal: goal };
+  }
+  if (opts.mode === 'suggest_moments') {
+    return { moment_start: inicio, moment_development: desarrollo, moment_closing: cierre };
+  }
+  if (opts.mode === 'suggest_ticket') {
+    return { ticket_salida: ticket };
+  }
+  if (opts.mode === 'suggest_indicators') {
+    return { evaluation_indicators: indicadores, ticket_salida: ticket };
+  }
 
   return {
     class_goal: goal,

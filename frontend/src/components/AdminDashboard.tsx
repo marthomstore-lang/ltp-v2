@@ -33,6 +33,7 @@ const CourseMessageModal = lazy(() => import('./CourseMessageModal').then(m => (
 const PedagogicalTripsModule = lazy(() => import('./PedagogicalTripsModule').then(m => ({ default: m.PedagogicalTripsModule })));
 const TeacherCoursesGrid = lazy(() => import('./TeacherCoursesGrid').then(m => ({ default: m.TeacherCoursesGrid })));
 const CurriculumPlansModule = lazy(() => import('./CurriculumPlansModule').then(m => ({ default: m.CurriculumPlansModule })));
+const ImpersonateUserModal = lazy(() => import('./ImpersonateUserModal').then(m => ({ default: m.ImpersonateUserModal })));
 import { DEFAULT_PERMISSIONS_MATRIX } from './PermissionsMatrix';
 
 const ModuleLoader: React.FC = () => (
@@ -115,7 +116,8 @@ export const formatAuditAction = (action: string): string => {
 };
 
 export const AdminDashboard: React.FC = () => {
-  const { user, token, logout, switchRole, restoreOriginalRole, isSuperAdmin, isImpersonating, canCustomizeProfile } = useAuth();
+  const { user, token, logout, switchRole, restoreOriginalRole, isSuperAdmin, isImpersonating, canCustomizeProfile, revertImpersonation } = useAuth();
+  const [showImpersonateModal, setShowImpersonateModal] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<AdminTabId>(() => {
     if (user?.role === 'Apoderado' || user?.role === 'Estudiante') {
       return 'home';
@@ -862,6 +864,55 @@ export const AdminDashboard: React.FC = () => {
 
   return (
     <div className="app-container">
+      {/* BANNER STICKY DE MODO MAESTRO / IMPERSONACIÓN */}
+      {isImpersonating && (
+        <div style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 99999,
+          background: 'linear-gradient(90deg, #7c3aed 0%, #4338ca 100%)',
+          color: '#ffffff',
+          padding: '0.65rem 1.5rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
+          fontSize: '0.86rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <span style={{ fontSize: '1.3rem' }}>👁️</span>
+            <div>
+              <strong>MODO MAESTRO ACTIVO:</strong> Estás navegando la plataforma como <u>{user?.name}</u> ({user?.role})
+              {user?.impersonatedBy ? (
+                <span style={{ opacity: 0.9, marginLeft: '0.5rem', fontSize: '0.8rem' }}>
+                  — Sesión original: <strong>{user.impersonatedBy.name}</strong>
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => revertImpersonation()}
+            style={{
+              background: '#ffffff',
+              color: '#5b21b6',
+              border: 'none',
+              padding: '0.4rem 1rem',
+              borderRadius: '8px',
+              fontWeight: 800,
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.15)'
+            }}
+          >
+            🔙 Salir del Modo Maestro (Volver a mi cuenta)
+          </button>
+        </div>
+      )}
+
       <Suspense fallback={null}>
         {/* Multivista Dual Screen Modal */}
         {showMultiview && (
@@ -908,6 +959,15 @@ export const AdminDashboard: React.FC = () => {
             isOpen={showCourseMessageModal}
             onClose={() => setShowCourseMessageModal(false)}
             onMessageSent={loadNotifications}
+          />
+        )}
+
+        {/* MODAL MODO MAESTRO: INICIAR SESIÓN COMO CUALQUIER USUARIO */}
+        {showImpersonateModal && token && (
+          <ImpersonateUserModal
+            isOpen={showImpersonateModal}
+            onClose={() => setShowImpersonateModal(false)}
+            token={token}
           />
         )}
       </Suspense>
@@ -1606,6 +1666,33 @@ export const AdminDashboard: React.FC = () => {
               </span>
             </div>
 
+            {/* BOTÓN MODO MAESTRO / INICIAR COMO CUALQUIER FUNCIONARIO */}
+            {(isSuperAdmin || user?.role === 'Admin' || user?.role === 'Director' || user?.run === '18803735-6' || isImpersonating) && (
+              <button
+                type="button"
+                onClick={() => setShowImpersonateModal(true)}
+                title="Modo Maestro: Iniciar sesión temporal como cualquier docente o funcionario para inspeccionar su portal"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  padding: '0.4rem 0.85rem',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontSize: '0.8rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(124, 58, 237, 0.35)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <span>🎭</span>
+                <span>Iniciar como...</span>
+              </button>
+            )}
+
             {/* BOTÓN CON MENÚ DESPLEGABLE PARA PERFIL Y CERRAR SESIÓN */}
             <div style={{ position: 'relative' }}>
               <div
@@ -1710,6 +1797,32 @@ export const AdminDashboard: React.FC = () => {
                         )}
                       </select>
                     </div>
+                  )}
+
+                  {(isSuperAdmin || user?.role === 'Admin' || user?.role === 'Director' || user?.run === '18803735-6') && (
+                    <button
+                      onClick={() => {
+                        setShowUserDropdown(false);
+                        setShowImpersonateModal(true);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem 1rem',
+                        border: 'none',
+                        background: '#faf5ff',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: 700,
+                        color: '#6b21a8',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        borderBottom: '1px solid #f1f5f9'
+                      }}
+                    >
+                      <span>🎭</span> Iniciar como otro usuario...
+                    </button>
                   )}
 
                   <button

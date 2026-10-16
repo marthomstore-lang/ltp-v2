@@ -223,6 +223,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
 
   // Asistente IA y Memoria
   const [generatingAi, setGeneratingAi] = useState(false);
+  const [aiActivityIdea, setAiActivityIdea] = useState<string>('');
   const [aiMemory, setAiMemory] = useState<TeacherAiMemory>({
     preferred_style: 'Equilibrado y Práctico',
     concise_mode: true,
@@ -892,7 +893,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
     }
   };
 
-  const handleGenerateAiLesson = async () => {
+  const handleGenerateAiLesson = async (specificMode?: string | React.MouseEvent) => {
     if (!lessonForm.subject_name && !annualForm.subject_name) {
       Swal.fire('Atención', 'Selecciona una asignatura para que la IA genere la clase.', 'info');
       return;
@@ -901,6 +902,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
     setGeneratingAi(true);
     try {
       const oaCodes = lessonForm.oa_codes || 'OA de la Clase';
+      const modeToUse = typeof specificMode === 'string' ? specificMode : 'suggest_class_activities';
       const res = await fetch('/api/curriculum/ai-assistant', {
         method: 'POST',
         headers: {
@@ -908,11 +910,12 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          mode: 'suggest_class_activities',
+          mode: modeToUse,
           grade_level: lessonForm.course_name || annualForm.course_name,
           subject: lessonForm.subject_name || annualForm.subject_name,
           oa_code: oaCodes,
           oa_title: lessonForm.class_goal || `Clase N° ${lessonForm.class_number} de ${lessonForm.subject_name || annualForm.subject_name}`,
+          context: aiActivityIdea.trim() || undefined,
           class_duration_mins: 90
         })
       });
@@ -920,25 +923,53 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
       const data = await res.json();
       if (res.ok && data.data) {
         const ai = data.data;
-        setLessonForm(prev => ({
-          ...prev,
-          class_goal: ai.class_goal || prev.class_goal,
-          moment_start: ai.moment_start || prev.moment_start,
-          moment_development: ai.moment_development || prev.moment_development,
-          moment_closing: ai.moment_closing || prev.moment_closing,
-          ticket_salida: ai.ticket_salida || prev.ticket_salida,
-          pedagogical_resources: ai.pedagogical_resources || prev.pedagogical_resources,
-          evaluation_indicators: ai.evaluation_indicators || prev.evaluation_indicators,
-          dua_accommodations: ai.dua_accommodations || prev.dua_accommodations
-        }));
+        if (modeToUse === 'suggest_goal') {
+          setLessonForm(prev => ({ ...prev, class_goal: ai.class_goal || prev.class_goal }));
+          Swal.fire({ icon: 'success', title: 'Objetivo de Clase Generado', timer: 1500, showConfirmButton: false });
+        } else if (modeToUse === 'suggest_moments') {
+          setLessonForm(prev => ({
+            ...prev,
+            moment_start: ai.moment_start || prev.moment_start,
+            moment_development: ai.moment_development || prev.moment_development,
+            moment_closing: ai.moment_closing || prev.moment_closing
+          }));
+          Swal.fire({ icon: 'success', title: '3 Momentos Didácticos Generados', timer: 1500, showConfirmButton: false });
+        } else if (modeToUse === 'suggest_ticket') {
+          setLessonForm(prev => ({ ...prev, ticket_salida: ai.ticket_salida || prev.ticket_salida }));
+          Swal.fire({ icon: 'success', title: 'Ticket de Salida Generado', timer: 1500, showConfirmButton: false });
+        } else if (modeToUse === 'suggest_indicators') {
+          setLessonForm(prev => ({ ...prev, evaluation_indicators: ai.evaluation_indicators || prev.evaluation_indicators }));
+          Swal.fire({ icon: 'success', title: 'Indicadores de Evaluación Generados', timer: 1500, showConfirmButton: false });
+        } else if (modeToUse === 'suggest_dua') {
+          setLessonForm(prev => ({
+            ...prev,
+            dua_accommodations: ai.dua_accommodations || prev.dua_accommodations,
+            pedagogical_resources: ai.pedagogical_resources || prev.pedagogical_resources
+          }));
+          Swal.fire({ icon: 'success', title: 'DUA y Recursos Generados', timer: 1500, showConfirmButton: false });
+        } else {
+          setLessonForm(prev => ({
+            ...prev,
+            class_goal: ai.class_goal || prev.class_goal,
+            moment_start: ai.moment_start || prev.moment_start,
+            moment_development: ai.moment_development || prev.moment_development,
+            moment_closing: ai.moment_closing || prev.moment_closing,
+            ticket_salida: ai.ticket_salida || prev.ticket_salida,
+            pedagogical_resources: ai.pedagogical_resources || prev.pedagogical_resources,
+            evaluation_indicators: ai.evaluation_indicators || prev.evaluation_indicators,
+            dua_accommodations: ai.dua_accommodations || prev.dua_accommodations
+          }));
 
-        Swal.fire({
-          icon: 'success',
-          title: 'Clase Generada con IA',
-          text: 'Se han estructurado los 3 momentos (Inicio, Desarrollo, Cierre), Ticket de Salida, Recursos, Indicadores y DUA.',
-          timer: 2200,
-          showConfirmButton: false
-        });
+          Swal.fire({
+            icon: 'success',
+            title: 'Clase Generada con IA Exitosamente',
+            text: aiActivityIdea.trim()
+              ? 'Se integraron tus OAs y tu idea de actividad en los 3 momentos didácticos, Ticket de Salida, Recursos e Inclusión DUA.'
+              : 'Se han estructurado los 3 momentos (Inicio, Desarrollo, Cierre), Ticket de Salida, Recursos, Indicadores y DUA.',
+            timer: 2300,
+            showConfirmButton: false
+          });
+        }
       }
     } catch (err) {
       Swal.fire('Error IA', 'No se pudo generar la propuesta de clase.', 'error');
@@ -1052,11 +1083,15 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
 
     setSavingLesson(true);
     try {
+      const defaultUnit = selectedPlan?.units && selectedPlan.units.length > 0 ? selectedPlan.units[0] : null;
+      const effectiveUnitId = lessonForm.unit_id || defaultUnit?.id || (defaultUnit ? defaultUnit.unit_name : null);
+      const effectiveUnitName = lessonForm.unit_name || defaultUnit?.unit_name || null;
+
       const payload = {
         ...lessonForm,
         annual_plan_id: selectedPlan?.id || null,
-        unit_id: lessonForm.unit_id || null,
-        unit_name: lessonForm.unit_name || null,
+        unit_id: effectiveUnitId,
+        unit_name: effectiveUnitName,
         course_name: lessonForm.course_name || selectedPlan?.course_name || annualForm.course_name,
         subject_name: lessonForm.subject_name || selectedPlan?.subject_name || annualForm.subject_name,
         teacher_name: lessonForm.teacher_name || selectedPlan?.teacher_name || user?.name || ''
@@ -1076,6 +1111,17 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
       });
 
       if (res.ok) {
+        const resData = await res.json().catch(() => ({}));
+        const savedId = resData.id || lessonForm.id;
+
+        // Mantener sincronizado el formulario en memoria
+        setLessonForm(prev => ({
+          ...prev,
+          id: savedId,
+          unit_id: effectiveUnitId || undefined,
+          unit_name: effectiveUnitName || undefined
+        }));
+
         Swal.fire({
           icon: 'success',
           title: 'Clase Guardada Exitosamente',
@@ -1087,6 +1133,9 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
           await loadLessonsForPlan(selectedPlan.id);
           loadCoverageStats(selectedPlan.course_name, selectedPlan.subject_name);
         }
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        Swal.fire('Error al Guardar', errorData.error || 'No se pudo guardar la clase.', 'error');
       }
     } catch (err: any) {
       Swal.fire('Error', err?.message || 'No se pudo guardar la clase.', 'error');
@@ -2633,32 +2682,42 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                 {/* LISTADO DE CLASES ORGANIZADAS POR UNIDAD TEMÁTICA */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '620px', overflowY: 'auto' }}>
                   {selectedPlan?.units && selectedPlan.units.length > 0 ? (
-                    selectedPlan.units.map((unit, uIdx) => {
-                      const unitClasses = lessonPlans.filter(l => (unit.id && l.unit_id === unit.id) || l.unit_name === unit.unit_name);
-                      const maxForUnit = getMaxClassesForUnit(unit, selectedPlan.weekly_sessions);
-                      const isCompleted = unitClasses.length >= maxForUnit;
+                    (() => {
+                      const units = selectedPlan.units;
+                      const unassignedClasses = lessonPlans.filter(l =>
+                        !units.some(u => (u.id && l.unit_id === u.id) || (u.unit_name && l.unit_name === u.unit_name))
+                      );
 
-                      return (
-                        <div key={unit.id || uIdx} style={{
-                          border: isCompleted ? '1.5px solid #86efac' : '1px solid #e2e8f0',
-                          borderRadius: '10px',
-                          overflow: 'hidden',
-                          background: isCompleted ? '#f0fdf4' : '#ffffff',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-                        }}>
-                          {/* CABECERA DE LA UNIDAD */}
-                          <div style={{
-                            padding: '0.5rem 0.75rem',
-                            background: isCompleted ? '#dcfce7' : '#f8fafc',
-                            borderBottom: '1px solid #e2e8f0',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            gap: '4px'
+                      return units.map((unit, uIdx) => {
+                        const directClasses = lessonPlans.filter(l => (unit.id && l.unit_id === unit.id) || l.unit_name === unit.unit_name);
+                        const unitClasses = uIdx === 0 && unassignedClasses.length > 0
+                          ? [...directClasses, ...unassignedClasses.filter(uc => !directClasses.some(dc => dc.id === uc.id))]
+                          : directClasses;
+                        const maxForUnit = getMaxClassesForUnit(unit, selectedPlan.weekly_sessions);
+                        const isCompleted = unitClasses.length >= maxForUnit;
+                        const cleanUnitTitle = (unit.unit_name || '').replace(new RegExp(`^Unidad\\s*${unit.unit_number || uIdx + 1}\\s*[:\\-]?\\s*`, 'i'), '');
+
+                        return (
+                          <div key={unit.id || uIdx} style={{
+                            border: isCompleted ? '1.5px solid #86efac' : '1px solid #e2e8f0',
+                            borderRadius: '10px',
+                            overflow: 'hidden',
+                            background: isCompleted ? '#f0fdf4' : '#ffffff',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
                           }}>
-                            <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0f172a' }}>
-                              {unit.unit_name}
-                            </span>
+                            {/* CABECERA DE LA UNIDAD */}
+                            <div style={{
+                              padding: '0.5rem 0.75rem',
+                              background: isCompleted ? '#dcfce7' : '#f8fafc',
+                              borderBottom: '1px solid #e2e8f0',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0f172a' }}>
+                                Unidad {unit.unit_number || uIdx + 1}: {cleanUnitTitle || unit.unit_name}
+                              </span>
                             <span style={{
                               fontSize: '0.68rem',
                               fontWeight: 900,
@@ -2766,7 +2825,8 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                           </div>
                         </div>
                       );
-                    })
+                    });
+                  })()
                   ) : (
                     lessonPlans.map((lesson, idx) => {
                       const isSelected = lessonForm.class_number === lesson.class_number;
@@ -2862,7 +2922,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                       <button
                         type="button"
                         disabled={generatingAi}
-                        onClick={handleGenerateAiLesson}
+                        onClick={() => handleGenerateAiLesson()}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -2965,9 +3025,10 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                       {selectedPlan.units.map((u, i) => {
                         const count = lessonPlans.filter(l => (u.id && l.unit_id === u.id) || l.unit_name === u.unit_name).length;
                         const maxC = getMaxClassesForUnit(u, selectedPlan.weekly_sessions || 1);
+                        const cleanUnitName = (u.unit_name || '').replace(new RegExp(`^Unidad\\s*${u.unit_number || i + 1}\\s*[:\\-]?\\s*`, 'i'), '');
                         return (
                           <option key={u.id || i} value={u.id || u.unit_name}>
-                            Unidad {u.unit_number || i + 1}: {u.unit_name} — ({count}/{maxC} Clases • {u.temporality || '2 Semanas'})
+                            Unidad {u.unit_number || i + 1}: {cleanUnitName || u.unit_name} — ({count}/{maxC} Clases • {u.temporality || '2 Semanas'})
                           </option>
                         );
                       })}
@@ -3097,11 +3158,183 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   )}
                 </div>
 
+                {/* BLOQUE ASISTENTE IA: GENERADOR DE IDEAS Y ACTIVIDADES PEDAGÓGICAS */}
+                <div style={{
+                  background: 'linear-gradient(135deg, #f5f3ff 0%, #eff6ff 100%)',
+                  borderRadius: '12px',
+                  border: '1.5px solid #c7d2fe',
+                  padding: '1.1rem 1.25rem',
+                  marginBottom: '1.25rem',
+                  boxShadow: '0 2px 6px rgba(99, 102, 241, 0.08)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '1.2rem' }}>✨</span>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 900, color: '#4338ca' }}>
+                          Asistente IA: Generador de Ideas Pedagógicas y Actividades
+                        </h4>
+                        <span style={{ fontSize: '0.72rem', color: '#6366f1', fontWeight: 600 }}>
+                          Complemento inteligente para optimizar el tiempo docente y redactar actividades didácticas según los OAs seleccionados
+                        </span>
+                      </div>
+                    </div>
+                    {generatingAi && (
+                      <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <RefreshCw size={13} className="spin-animation" /> Diseñando propuesta con IA...
+                      </span>
+                    )}
+                  </div>
+
+                  {/* INPUT PARA ESCRIBIR LA IDEA / ACTIVIDAD DE LA CLASE */}
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 800, color: '#312e81', marginBottom: '0.3rem' }}>
+                      💡 Describe brevemente tu idea de actividad o dinámica de clase (opcional pero recomendado):
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={aiActivityIdea}
+                      onChange={e => setAiActivityIdea(e.target.value)}
+                      placeholder="Ej: Trabajo en parejas resolviendo una guía contextualizada al taller con debate grupal final y ticket de salida..."
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem 0.75rem',
+                        borderRadius: '8px',
+                        border: '1.5px solid #a5b4fc',
+                        fontSize: '0.82rem',
+                        lineHeight: 1.4,
+                        background: '#ffffff',
+                        color: '#1e1b4b'
+                      }}
+                    />
+                  </div>
+
+                  {/* BOTONES DE ACCIÓN RÁPIDA DE IA */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      disabled={generatingAi}
+                      onClick={() => handleGenerateAiLesson()}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                        color: '#ffffff',
+                        padding: '0.45rem 1rem',
+                        borderRadius: '8px',
+                        border: 'none',
+                        fontSize: '0.82rem',
+                        fontWeight: 900,
+                        cursor: generatingAi ? 'not-allowed' : 'pointer',
+                        boxShadow: '0 2px 4px rgba(79, 70, 229, 0.3)'
+                      }}
+                    >
+                      <Sparkles size={15} />
+                      {generatingAi ? 'Generando...' : '✨ Generar Planificación Completa con IA'}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={generatingAi}
+                      onClick={() => handleGenerateAiLesson('suggest_goal')}
+                      style={{
+                        padding: '0.38rem 0.75rem',
+                        borderRadius: '7px',
+                        border: '1px solid #c7d2fe',
+                        background: '#ffffff',
+                        color: '#4338ca',
+                        fontSize: '0.76rem',
+                        fontWeight: 800,
+                        cursor: generatingAi ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      🎯 Sugerir Objetivo
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={generatingAi}
+                      onClick={() => handleGenerateAiLesson('suggest_moments')}
+                      style={{
+                        padding: '0.38rem 0.75rem',
+                        borderRadius: '7px',
+                        border: '1px solid #c7d2fe',
+                        background: '#ffffff',
+                        color: '#4338ca',
+                        fontSize: '0.76rem',
+                        fontWeight: 800,
+                        cursor: generatingAi ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      ⏱️ 3 Momentos Didácticos
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={generatingAi}
+                      onClick={() => handleGenerateAiLesson('suggest_ticket')}
+                      style={{
+                        padding: '0.38rem 0.75rem',
+                        borderRadius: '7px',
+                        border: '1px solid #fed7aa',
+                        background: '#fffbeb',
+                        color: '#b45309',
+                        fontSize: '0.76rem',
+                        fontWeight: 800,
+                        cursor: generatingAi ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      🎫 Ticket de Salida
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={generatingAi}
+                      onClick={() => handleGenerateAiLesson('suggest_dua')}
+                      style={{
+                        padding: '0.38rem 0.75rem',
+                        borderRadius: '7px',
+                        border: '1px solid #bbf7d0',
+                        background: '#f0fdf4',
+                        color: '#15803d',
+                        fontSize: '0.76rem',
+                        fontWeight: 800,
+                        cursor: generatingAi ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      🌱 DUA e Inclusión
+                    </button>
+                  </div>
+                </div>
+
                 {/* OBJETIVO DE LA CLASE */}
                 <div style={{ marginBottom: '1.25rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.35rem' }}>
-                    🎯 Objetivo Específico de la Clase (Bloom): *
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>
+                      🎯 Objetivo Específico de la Clase (Bloom): *
+                    </label>
+                    <button
+                      type="button"
+                      disabled={generatingAi}
+                      onClick={() => handleGenerateAiLesson('suggest_goal')}
+                      style={{
+                        background: '#f1f5f9',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        padding: '2px 8px',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        color: '#475569',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px'
+                      }}
+                    >
+                      <Sparkles size={11} color="#6366f1" /> Sugerir con IA
+                    </button>
+                  </div>
                   <textarea
                     rows={2}
                     required
@@ -3126,9 +3359,31 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
 
                   {/* 1. INICIO */}
                   <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, color: '#1e293b', marginBottom: '0.3rem' }}>
-                      🟡 1. Inicio de la Clase (Aprox. 15 minutos):
-                    </label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1e293b' }}>
+                        🟡 1. Inicio de la Clase (Aprox. 15 minutos):
+                      </label>
+                      <button
+                        type="button"
+                        disabled={generatingAi}
+                        onClick={() => handleGenerateAiLesson('suggest_moments')}
+                        style={{
+                          background: '#f1f5f9',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          padding: '2px 8px',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          color: '#475569',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}
+                      >
+                        <Sparkles size={11} color="#6366f1" /> Sugerir con IA
+                      </button>
+                    </div>
                     <span style={{ display: 'block', fontSize: '0.72rem', color: '#64748b', marginBottom: '0.35rem' }}>
                       Activación de conocimientos previos, desafío motivacional inicial y presentación del objetivo.
                     </span>
@@ -3143,9 +3398,31 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
 
                   {/* 2. DESARROLLO */}
                   <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, color: '#1e293b', marginBottom: '0.3rem' }}>
-                      🔵 2. Desarrollo de la Clase (Aprox. 60 minutos):
-                    </label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1e293b' }}>
+                        🔵 2. Desarrollo de la Clase (Aprox. 60 minutos):
+                      </label>
+                      <button
+                        type="button"
+                        disabled={generatingAi}
+                        onClick={() => handleGenerateAiLesson('suggest_moments')}
+                        style={{
+                          background: '#f1f5f9',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          padding: '2px 8px',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          color: '#475569',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}
+                      >
+                        <Sparkles size={11} color="#6366f1" /> Sugerir con IA
+                      </button>
+                    </div>
                     <span style={{ display: 'block', fontSize: '0.72rem', color: '#64748b', marginBottom: '0.35rem' }}>
                       Modelamiento docente ("Yo hago"), práctica guiada ("Nosotros hacemos") y práctica independiente ("Tú haces").
                     </span>
@@ -3160,9 +3437,31 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
 
                   {/* 3. CIERRE */}
                   <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, color: '#1e293b', marginBottom: '0.3rem' }}>
-                      🟢 3. Cierre de la Clase (Aprox. 15 minutos):
-                    </label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1e293b' }}>
+                        🟢 3. Cierre de la Clase (Aprox. 15 minutos):
+                      </label>
+                      <button
+                        type="button"
+                        disabled={generatingAi}
+                        onClick={() => handleGenerateAiLesson('suggest_moments')}
+                        style={{
+                          background: '#f1f5f9',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          padding: '2px 8px',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          color: '#475569',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}
+                      >
+                        <Sparkles size={11} color="#6366f1" /> Sugerir con IA
+                      </button>
+                    </div>
                     <span style={{ display: 'block', fontSize: '0.72rem', color: '#64748b', marginBottom: '0.35rem' }}>
                       Síntesis de ideas clave y preguntas de metacognición (¿cómo aprendí hoy?).
                     </span>
@@ -3182,9 +3481,31 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                     borderRadius: '10px',
                     padding: '0.85rem'
                   }}>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, color: '#92400e', marginBottom: '0.3rem' }}>
-                      🎫 Ticket de Salida de la Clase (Evaluación Formativa Rápida 1-3 preguntas):
-                    </label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 800, color: '#92400e' }}>
+                        🎫 Ticket de Salida de la Clase (Evaluación Formativa Rápida 1-3 preguntas):
+                      </label>
+                      <button
+                        type="button"
+                        disabled={generatingAi}
+                        onClick={() => handleGenerateAiLesson('suggest_ticket')}
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #fcd34d',
+                          borderRadius: '6px',
+                          padding: '2px 8px',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          color: '#b45309',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}
+                      >
+                        <Sparkles size={11} color="#f59e0b" /> Sugerir con IA
+                      </button>
+                    </div>
                     <span style={{ display: 'block', fontSize: '0.72rem', color: '#b45309', marginBottom: '0.35rem' }}>
                       Preguntas breves para que el estudiante responda en 2 minutos al término de la clase y compruebe el logro del objetivo.
                     </span>
@@ -3214,9 +3535,31 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                      📊 Indicadores de Logro / Evaluación:
-                    </label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                      <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
+                        📊 Indicadores de Logro / Evaluación:
+                      </label>
+                      <button
+                        type="button"
+                        disabled={generatingAi}
+                        onClick={() => handleGenerateAiLesson('suggest_indicators')}
+                        style={{
+                          background: '#f1f5f9',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          padding: '2px 8px',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          color: '#475569',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}
+                      >
+                        <Sparkles size={11} color="#6366f1" /> Sugerir con IA
+                      </button>
+                    </div>
                     <textarea
                       rows={2}
                       value={lessonForm.evaluation_indicators}
@@ -3227,9 +3570,31 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   </div>
 
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#047857', marginBottom: '0.3rem' }}>
-                      🤝 Adecuaciones Inclusivas DUA / Programa PIE:
-                    </label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                      <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#047857' }}>
+                        🤝 Adecuaciones Inclusivas DUA / Programa PIE:
+                      </label>
+                      <button
+                        type="button"
+                        disabled={generatingAi}
+                        onClick={() => handleGenerateAiLesson('suggest_dua')}
+                        style={{
+                          background: '#ecfdf5',
+                          border: '1px solid #a7f3d0',
+                          borderRadius: '6px',
+                          padding: '2px 8px',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          color: '#047857',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}
+                      >
+                        <Sparkles size={11} color="#059669" /> Sugerir con IA
+                      </button>
+                    </div>
                     <textarea
                       rows={2}
                       value={lessonForm.dua_accommodations}
