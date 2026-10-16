@@ -16,13 +16,40 @@ router.get('/learning-goals', authMiddleware, async (req: Request, res: Response
     const params: any[] = [];
 
     if (grade_level && typeof grade_level === 'string' && grade_level.trim()) {
-      params.push(`%${grade_level.trim()}%`);
-      sql += ` AND grade_level ILIKE $${params.length}`;
+      const rawGrade = grade_level.trim();
+      const baseGradeMatch = rawGrade.match(/\d+°\s*(Básico|Medio)/i);
+      const cleanGrade = baseGradeMatch ? baseGradeMatch[0] : rawGrade.replace(/\s+[A-Z]$/i, '').trim();
+
+      params.push(`%${cleanGrade}%`);
+      const p1 = params.length;
+      params.push(`%${rawGrade}%`);
+      const p2 = params.length;
+      params.push(rawGrade);
+      const p3 = params.length;
+
+      sql += ` AND (grade_level ILIKE $${p1} OR grade_level ILIKE $${p2} OR $${p3} ILIKE '%' || grade_level || '%')`;
     }
 
     if (subject && typeof subject === 'string' && subject.trim()) {
-      params.push(`%${subject.trim()}%`);
-      sql += ` AND subject ILIKE $${params.length}`;
+      const rawSubj = subject.trim();
+      const isLenguaje = /lengua|literatura|lenguaje/i.test(rawSubj);
+      const isMatematica = /matem/i.test(rawSubj);
+      const isCiencias = /ciencia|biolog|fisic|quimic/i.test(rawSubj);
+      const isHistoria = /historia|geograf|social/i.test(rawSubj);
+
+      if (isLenguaje) {
+        sql += ` AND (subject ILIKE '%Lengua%' OR subject ILIKE '%Lenguaje%' OR subject ILIKE '%Literatura%')`;
+      } else if (isMatematica) {
+        sql += ` AND (subject ILIKE '%Matem%')`;
+      } else if (isCiencias) {
+        sql += ` AND (subject ILIKE '%Ciencia%' OR subject ILIKE '%Biolog%' OR subject ILIKE '%Físic%' OR subject ILIKE '%Fisic%' OR subject ILIKE '%Químic%' OR subject ILIKE '%Quimic%')`;
+      } else if (isHistoria) {
+        sql += ` AND (subject ILIKE '%Historia%')`;
+      } else {
+        params.push(`%${rawSubj}%`);
+        const pSubj = params.length;
+        sql += ` AND (subject ILIKE $${pSubj} OR $${pSubj} ILIKE '%' || subject || '%')`;
+      }
     }
 
     if (search && typeof search === 'string' && search.trim()) {
@@ -30,7 +57,7 @@ router.get('/learning-goals', authMiddleware, async (req: Request, res: Response
       sql += ` AND (oa_code ILIKE $${params.length} OR oa_title ILIKE $${params.length} OR axis ILIKE $${params.length} OR description ILIKE $${params.length})`;
     }
 
-    sql += ' ORDER BY grade_level ASC, subject ASC, oa_code ASC LIMIT 100';
+    sql += ' ORDER BY grade_level ASC, oa_code ASC LIMIT 100';
 
     const result = await query(sql, params);
     res.json({ success: true, learningGoals: result.rows || [] });
@@ -686,17 +713,41 @@ router.get('/coverage-stats', authMiddleware, async (req: Request, res: Response
     const cName = String(course_name).trim();
     const sName = String(subject_name).trim();
 
-    // 1. Extraer nivel (ej: "4° Medio")
+    // 1. Extraer nivel (ej: "7° Básico A" -> "7° Básico")
     const gradeMatch = cName.match(/\d+°\s*(Básico|Medio)/i);
-    const gradeLevel = gradeMatch ? gradeMatch[0] : cName;
+    const gradeLevel = gradeMatch ? gradeMatch[0] : cName.replace(/\s+[A-Z]$/i, '').trim();
 
-    // 2. OAs oficiales del catálogo MINEDUC
-    const officialGoalsRes = await query(`
-      SELECT * FROM curriculum_learning_goals 
-      WHERE (grade_level ILIKE $1 OR grade_level ILIKE $2)
-        AND subject ILIKE $3
-      ORDER BY oa_code ASC
-    `, [`%${gradeLevel}%`, `%${cName}%`, `%${sName}%`]);
+    // 2. OAs oficiales del catálogo MINEDUC con soporte a sinónimos
+    const isLenguaje = /lengua|literatura|lenguaje/i.test(sName);
+    const isMatematica = /matem/i.test(sName);
+    const isCiencias = /ciencia|biolog|fisic|quimic/i.test(sName);
+    const isHistoria = /historia|geograf|social/i.test(sName);
+
+    let subjSql = 'subject ILIKE $2';
+    let subjParam = `%${sName}%`;
+    if (isLenguaje) {
+      subjSql = `(subject ILIKE '%Lengua%' OR subject ILIKE '%Lenguaje%' OR subject ILIKE '%Literatura%')`;
+    } else if (isMatematica) {
+      subjSql = `subject ILIKE '%Matem%'`;
+    } else if (isCiencias) {
+      subjSql = `(subject ILIKE '%Ciencia%' OR subject ILIKE '%Biolog%' OR subject ILIKE '%Físic%' OR subject ILIKE '%Químic%')`;
+    } else if (isHistoria) {
+      subjSql = `subject ILIKE '%Historia%'`;
+    }
+
+    const officialGoalsRes = isLenguaje || isMatematica || isCiencias || isHistoria
+      ? await query(`
+          SELECT * FROM curriculum_learning_goals 
+          WHERE (grade_level ILIKE $1 OR grade_level ILIKE $2 OR $3 ILIKE '%' || grade_level || '%')
+            AND ${subjSql}
+          ORDER BY oa_code ASC
+        `, [`%${gradeLevel}%`, `%${cName}%`, cName])
+      : await query(`
+          SELECT * FROM curriculum_learning_goals 
+          WHERE (grade_level ILIKE $1 OR grade_level ILIKE $2 OR $3 ILIKE '%' || grade_level || '%')
+            AND (subject ILIKE $4 OR $4 ILIKE '%' || subject || '%')
+          ORDER BY oa_code ASC
+        `, [`%${gradeLevel}%`, `%${cName}%`, cName, subjParam]);
 
     const officialGoals = officialGoalsRes.rows || [];
 

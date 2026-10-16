@@ -213,6 +213,8 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [showOaPickerModal, setShowOaPickerModal] = useState(false);
   const [targetUnitIndexForOa, setTargetUnitIndexForOa] = useState<number | null>(null);
+  const [modalGradeFilter, setModalGradeFilter] = useState('');
+  const [modalSubjectFilter, setModalSubjectFilter] = useState('');
 
   // Asistente IA y Memoria
   const [generatingAi, setGeneratingAi] = useState(false);
@@ -891,8 +893,13 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
   // ===========================================================================
   const openOaPicker = (unitIndex: number) => {
     setTargetUnitIndexForOa(unitIndex);
+    const initialGrade = annualForm.course_name;
+    const initialSubj = annualForm.subject_name;
+    setModalGradeFilter(initialGrade);
+    setModalSubjectFilter(initialSubj);
+    setCatalogSearch('');
     setShowOaPickerModal(true);
-    loadLearningGoals(annualForm.course_name, annualForm.subject_name);
+    loadLearningGoals(initialGrade, initialSubj, '');
   };
 
   const handleApplyOaToUnit = (oa: LearningGoal) => {
@@ -3200,8 +3207,11 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
             overflow: 'hidden',
             boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
           }}>
+
+
+            {/* ENCABEZADO MODAL */}
             <div style={{
-              padding: '1.25rem',
+              padding: '1.25rem 1.5rem',
               borderBottom: '1px solid #e2e8f0',
               display: 'flex',
               justifyContent: 'space-between',
@@ -3214,7 +3224,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   Seleccionar Objetivo de Aprendizaje (OA)
                 </h3>
                 <span style={{ fontSize: '0.78rem', color: '#e0f2fe' }}>
-                  {annualForm.course_name} • {annualForm.subject_name}
+                  {modalGradeFilter || annualForm.course_name} • {modalSubjectFilter || annualForm.subject_name}
                 </span>
               </div>
               <button
@@ -3226,42 +3236,127 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
               </button>
             </div>
 
-            <div style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0' }}>
-              <input
-                type="text"
-                placeholder="Buscar por código (ej. OA 1) o palabra clave..."
-                value={catalogSearch}
-                onChange={e => setCatalogSearch(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    loadLearningGoals(annualForm.course_name, annualForm.subject_name, catalogSearch);
-                  }
-                }}
-                style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.84rem' }}
-              />
+            {/* BARRA DE FILTROS Y BÚSQUEDA DEL MODAL */}
+            <div style={{
+              padding: '0.85rem 1.25rem',
+              borderBottom: '1px solid #e2e8f0',
+              background: '#f8fafc',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.65rem'
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.65rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#475569', marginBottom: '0.2rem' }}>
+                    Nivel / Curso:
+                  </label>
+                  <select
+                    value={modalGradeFilter}
+                    onChange={e => {
+                      setModalGradeFilter(e.target.value);
+                      loadLearningGoals(e.target.value, modalSubjectFilter, catalogSearch);
+                    }}
+                    style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.78rem', fontWeight: 700 }}
+                  >
+                    <option value="">Todos los Niveles</option>
+                    {coursesList.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#475569', marginBottom: '0.2rem' }}>
+                    Asignatura:
+                  </label>
+                  <select
+                    value={modalSubjectFilter}
+                    onChange={e => {
+                      setModalSubjectFilter(e.target.value);
+                      loadLearningGoals(modalGradeFilter, e.target.value, catalogSearch);
+                    }}
+                    style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.78rem', fontWeight: 700 }}
+                  >
+                    <option value="">Todas las Asignaturas</option>
+                    {subjectsList.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input
+                  type="text"
+                  placeholder="Buscar por código (ej. OA 1, OA 2) o palabra clave..."
+                  value={catalogSearch}
+                  onChange={e => setCatalogSearch(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      loadLearningGoals(modalGradeFilter, modalSubjectFilter, catalogSearch);
+                    }
+                  }}
+                  style={{ flex: 1, padding: '0.45rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => loadLearningGoals(modalGradeFilter, modalSubjectFilter, catalogSearch)}
+                  style={{
+                    background: '#0284c7',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '0.45rem 0.85rem',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem'
+                  }}
+                >
+                  <Search size={14} />
+                  Buscar
+                </button>
+              </div>
             </div>
 
-            <div style={{ padding: '1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {learningGoals.map(oa => (
+            {/* LISTADO DE OAs */}
+            <div style={{ padding: '1.25rem', overflowY: 'auto', maxHeight: '55vh', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {loadingCatalog && (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#0284c7', fontSize: '0.84rem', fontWeight: 700 }}>
+                  Consultando catálogo oficial de Objetivos de Aprendizaje MINEDUC...
+                </div>
+              )}
+
+              {!loadingCatalog && learningGoals.map(oa => (
                 <div key={oa.id} style={{
                   border: '1px solid #e2e8f0',
                   borderRadius: '10px',
-                  padding: '0.85rem',
+                  padding: '0.85rem 1rem',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  gap: '1rem'
+                  gap: '1rem',
+                  background: '#ffffff',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
                 }}>
-                  <div>
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.25rem' }}>
-                      <span style={{ background: '#0284c7', color: '#ffffff', padding: '0.15rem 0.45rem', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 800 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+                      <span style={{ background: '#0284c7', color: '#ffffff', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 900 }}>
                         {oa.oa_code}
                       </span>
-                      <strong style={{ fontSize: '0.85rem', color: '#0f172a' }}>{oa.oa_title}</strong>
+                      <strong style={{ fontSize: '0.86rem', color: '#0f172a' }}>{oa.oa_title}</strong>
+                      <span style={{ fontSize: '0.7rem', color: '#64748b', background: '#f1f5f9', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
+                        {oa.axis || 'Eje Curricular'}
+                      </span>
                     </div>
-                    <p style={{ margin: 0, fontSize: '0.76rem', color: '#475569', lineHeight: 1.35 }}>
+                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569', lineHeight: 1.4 }}>
                       {oa.description}
                     </p>
+                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.25rem', display: 'block' }}>
+                      {oa.grade_level} • {oa.subject}
+                    </span>
                   </div>
                   <button
                     type="button"
@@ -3271,21 +3366,69 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: '8px',
-                      padding: '0.45rem 0.85rem',
+                      padding: '0.5rem 0.95rem',
                       fontSize: '0.78rem',
                       fontWeight: 800,
                       cursor: 'pointer',
-                      whiteSpace: 'nowrap'
+                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem'
                     }}
                   >
-                    + Agregar
+                    <Plus size={14} />
+                    Agregar
                   </button>
                 </div>
               ))}
 
-              {learningGoals.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                  No se encontraron OAs. Puedes escribirlo manualmente en la casilla de la unidad.
+              {!loadingCatalog && learningGoals.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#64748b' }}>
+                  <AlertCircle size={36} color="#94a3b8" style={{ marginBottom: '0.6rem' }} />
+                  <p style={{ margin: '0 0 0.85rem', fontSize: '0.86rem', fontWeight: 700, color: '#334155' }}>
+                    No se encontraron OAs para {modalGradeFilter || 'este nivel'} y {modalSubjectFilter || 'esta asignatura'}.
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalSubjectFilter('');
+                        loadLearningGoals(modalGradeFilter, '', '');
+                      }}
+                      style={{
+                        background: '#f1f5f9',
+                        color: '#0f172a',
+                        border: '1px solid #cbd5e1',
+                        padding: '0.45rem 0.85rem',
+                        borderRadius: '6px',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      🌐 Ver todos los OAs de {modalGradeFilter || 'este nivel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalGradeFilter('');
+                        setModalSubjectFilter('');
+                        loadLearningGoals('', '', '');
+                      }}
+                      style={{
+                        background: '#f1f5f9',
+                        color: '#0f172a',
+                        border: '1px solid #cbd5e1',
+                        padding: '0.45rem 0.85rem',
+                        borderRadius: '6px',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      📚 Ver catálogo completo
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
