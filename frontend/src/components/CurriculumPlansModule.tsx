@@ -215,11 +215,13 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
   const [catalogSearch, setCatalogSearch] = useState('');
   const [catalogGradeFilter, setCatalogGradeFilter] = useState('');
   const [catalogSubjectFilter, setCatalogSubjectFilter] = useState('');
+  const [catalogPriorityFilter, setCatalogPriorityFilter] = useState<'all' | 'prioritized' | 'standard'>('all');
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [showOaPickerModal, setShowOaPickerModal] = useState(false);
   const [targetUnitIndexForOa, setTargetUnitIndexForOa] = useState<number | null>(null);
   const [modalGradeFilter, setModalGradeFilter] = useState('');
   const [modalSubjectFilter, setModalSubjectFilter] = useState('');
+  const [modalPriorityFilter, setModalPriorityFilter] = useState<'all' | 'prioritized' | 'standard'>('all');
 
   // Asistente IA y Memoria
   const [generatingAi, setGeneratingAi] = useState(false);
@@ -353,13 +355,15 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
     return getVisiblePlans(allAnnualPlans, selectedTeacherFilter);
   }, [allAnnualPlans, selectedTeacherFilter, user]);
 
-  const loadLearningGoals = async (grade = '', subj = '', search = '') => {
+  const loadLearningGoals = async (grade = '', subj = '', search = '', priority = 'all') => {
     setLoadingCatalog(true);
     try {
       const params = new URLSearchParams();
       if (grade) params.append('grade_level', grade);
       if (subj) params.append('subject', subj);
       if (search) params.append('search', search);
+      if (priority === 'prioritized') params.append('is_prioritized', 'true');
+      if (priority === 'standard') params.append('is_prioritized', 'false');
 
       const res = await fetch(`/api/curriculum/learning-goals?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -1014,9 +1018,10 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
     const initialSubj = annualForm.subject_name;
     setModalGradeFilter(initialGrade);
     setModalSubjectFilter(initialSubj);
+    setModalPriorityFilter('all');
     setCatalogSearch('');
     setShowOaPickerModal(true);
-    loadLearningGoals(initialGrade, initialSubj, '');
+    loadLearningGoals(initialGrade, initialSubj, '', 'all');
   };
 
   const handleApplyOaToUnit = (oa: LearningGoal) => {
@@ -3648,7 +3653,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                 value={catalogGradeFilter}
                 onChange={e => {
                   setCatalogGradeFilter(e.target.value);
-                  loadLearningGoals(e.target.value, catalogSubjectFilter, catalogSearch);
+                  loadLearningGoals(e.target.value, catalogSubjectFilter, catalogSearch, catalogPriorityFilter);
                 }}
                 style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
               >
@@ -3667,7 +3672,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                 value={catalogSubjectFilter}
                 onChange={e => {
                   setCatalogSubjectFilter(e.target.value);
-                  loadLearningGoals(catalogGradeFilter, e.target.value, catalogSearch);
+                  loadLearningGoals(catalogGradeFilter, e.target.value, catalogSearch, catalogPriorityFilter);
                 }}
                 style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
               >
@@ -3675,6 +3680,25 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                 {subjectsList.map(s => (
                   <option key={s} value={s}>{s}</option>
                 ))}
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#475569', marginBottom: '0.25rem' }}>
+                Tipo de Objetivo (OA):
+              </label>
+              <select
+                value={catalogPriorityFilter}
+                onChange={e => {
+                  const val = e.target.value as 'all' | 'prioritized' | 'standard';
+                  setCatalogPriorityFilter(val);
+                  loadLearningGoals(catalogGradeFilter, catalogSubjectFilter, catalogSearch, val);
+                }}
+                style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}
+              >
+                <option value="all">Todos los OAs (Priorizados y Complementarios)</option>
+                <option value="prioritized">★ Solo Priorizados / Basales</option>
+                <option value="standard">Solo Complementarios / No Priorizados</option>
               </select>
             </div>
 
@@ -3690,14 +3714,14 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   onChange={e => setCatalogSearch(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter') {
-                      loadLearningGoals(catalogGradeFilter, catalogSubjectFilter, catalogSearch);
+                      loadLearningGoals(catalogGradeFilter, catalogSubjectFilter, catalogSearch, catalogPriorityFilter);
                     }
                   }}
                   style={{ flex: 1, padding: '0.45rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
                 />
                 <button
                   type="button"
-                  onClick={() => loadLearningGoals(catalogGradeFilter, catalogSubjectFilter, catalogSearch)}
+                  onClick={() => loadLearningGoals(catalogGradeFilter, catalogSubjectFilter, catalogSearch, catalogPriorityFilter)}
                   style={{
                     background: '#0284c7',
                     color: '#ffffff',
@@ -3755,9 +3779,13 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
                     {oa.grade_level} • {oa.subject}
                   </span>
-                  {oa.is_prioritized && (
-                    <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#059669', background: '#d1fae5', padding: '0.15rem 0.45rem', borderRadius: '4px' }}>
-                      Priorizado
+                  {oa.is_prioritized ? (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#065f46', background: '#d1fae5', padding: '0.18rem 0.5rem', borderRadius: '4px' }}>
+                      ★ Priorizado / Basal
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', background: '#f1f5f9', padding: '0.18rem 0.5rem', borderRadius: '4px' }}>
+                      Complementario
                     </span>
                   )}
                 </div>
@@ -4001,7 +4029,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
               flexDirection: 'column',
               gap: '0.65rem'
             }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.65rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.65rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#475569', marginBottom: '0.2rem' }}>
                     Nivel / Curso:
@@ -4010,7 +4038,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                     value={modalGradeFilter}
                     onChange={e => {
                       setModalGradeFilter(e.target.value);
-                      loadLearningGoals(e.target.value, modalSubjectFilter, catalogSearch);
+                      loadLearningGoals(e.target.value, modalSubjectFilter, catalogSearch, modalPriorityFilter);
                     }}
                     style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.78rem', fontWeight: 700 }}
                   >
@@ -4029,7 +4057,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                     value={modalSubjectFilter}
                     onChange={e => {
                       setModalSubjectFilter(e.target.value);
-                      loadLearningGoals(modalGradeFilter, e.target.value, catalogSearch);
+                      loadLearningGoals(modalGradeFilter, e.target.value, catalogSearch, modalPriorityFilter);
                     }}
                     style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.78rem', fontWeight: 700 }}
                   >
@@ -4037,6 +4065,25 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                     {subjectsList.map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#475569', marginBottom: '0.2rem' }}>
+                    Tipo de Objetivo (OA):
+                  </label>
+                  <select
+                    value={modalPriorityFilter}
+                    onChange={e => {
+                      const val = e.target.value as 'all' | 'prioritized' | 'standard';
+                      setModalPriorityFilter(val);
+                      loadLearningGoals(modalGradeFilter, modalSubjectFilter, catalogSearch, val);
+                    }}
+                    style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.78rem', fontWeight: 700, color: '#0f172a' }}
+                  >
+                    <option value="all">Todos los OAs (Priorizados y Complementarios)</option>
+                    <option value="prioritized">★ Solo Priorizados / Basales</option>
+                    <option value="standard">Solo Complementarios / No Priorizados</option>
                   </select>
                 </div>
               </div>
@@ -4049,14 +4096,14 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   onChange={e => setCatalogSearch(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter') {
-                      loadLearningGoals(modalGradeFilter, modalSubjectFilter, catalogSearch);
+                      loadLearningGoals(modalGradeFilter, modalSubjectFilter, catalogSearch, modalPriorityFilter);
                     }
                   }}
                   style={{ flex: 1, padding: '0.45rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
                 />
                 <button
                   type="button"
-                  onClick={() => loadLearningGoals(modalGradeFilter, modalSubjectFilter, catalogSearch)}
+                  onClick={() => loadLearningGoals(modalGradeFilter, modalSubjectFilter, catalogSearch, modalPriorityFilter)}
                   style={{
                     background: '#0284c7',
                     color: '#ffffff',
@@ -4106,6 +4153,15 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                       <span style={{ fontSize: '0.7rem', color: '#64748b', background: '#f1f5f9', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
                         {oa.axis || 'Eje Curricular'}
                       </span>
+                      {oa.is_prioritized ? (
+                        <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#065f46', background: '#d1fae5', padding: '0.1rem 0.45rem', borderRadius: '4px' }}>
+                          ★ Priorizado / Basal
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#475569', background: '#f1f5f9', padding: '0.1rem 0.45rem', borderRadius: '4px' }}>
+                          Complementario
+                        </span>
+                      )}
                     </div>
                     <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569', lineHeight: 1.4 }}>
                       {oa.description}

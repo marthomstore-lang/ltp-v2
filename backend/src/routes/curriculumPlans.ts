@@ -11,7 +11,7 @@ const router = Router();
 // GET /api/curriculum/learning-goals - Buscar y filtrar OAs MINEDUC
 router.get('/learning-goals', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const { grade_level, subject, search } = req.query;
+    const { grade_level, subject, search, is_prioritized } = req.query;
     let sql = 'SELECT * FROM curriculum_learning_goals WHERE 1=1';
     const params: any[] = [];
 
@@ -36,6 +36,15 @@ router.get('/learning-goals', authMiddleware, async (req: Request, res: Response
       const isMatematica = /matem/i.test(rawSubj);
       const isCiencias = /ciencia|biolog|fisic|quimic/i.test(rawSubj);
       const isHistoria = /historia|geograf|social/i.test(rawSubj);
+      const isIngles = /ingl[eé]s/i.test(rawSubj);
+      const isArtes = /arte/i.test(rawSubj);
+      const isMusica = /m[uú]sica/i.test(rawSubj);
+      const isEdFisica = /f[ií]sica\s+y\s+salud|educaci[oó]n\s+f[ií]sica/i.test(rawSubj);
+      const isTecnologia = /tecnolog/i.test(rawSubj);
+      const isFilosofia = /filosof/i.test(rawSubj);
+      const isCiudadana = /ciudadan/i.test(rawSubj);
+      const isParvulos = /p[aá]rvulo|infantil|l[uú]dica/i.test(rawSubj);
+      const isMecanica = /mec[aá]nica|torno|soldadura|mantenimiento|montaje|electrotecnia/i.test(rawSubj);
 
       if (isLenguaje) {
         sql += ` AND (subject ILIKE '%Lengua%' OR subject ILIKE '%Lenguaje%' OR subject ILIKE '%Literatura%')`;
@@ -45,6 +54,24 @@ router.get('/learning-goals', authMiddleware, async (req: Request, res: Response
         sql += ` AND (subject ILIKE '%Ciencia%' OR subject ILIKE '%Biolog%' OR subject ILIKE '%Físic%' OR subject ILIKE '%Fisic%' OR subject ILIKE '%Químic%' OR subject ILIKE '%Quimic%')`;
       } else if (isHistoria) {
         sql += ` AND (subject ILIKE '%Historia%')`;
+      } else if (isIngles) {
+        sql += ` AND (subject ILIKE '%Inglés%' OR subject ILIKE '%Ingles%' OR subject ILIKE '%Idioma Extranjero%')`;
+      } else if (isArtes) {
+        sql += ` AND (subject ILIKE '%Arte%')`;
+      } else if (isMusica) {
+        sql += ` AND (subject ILIKE '%Música%' OR subject ILIKE '%Musica%')`;
+      } else if (isEdFisica) {
+        sql += ` AND (subject ILIKE '%Física y Salud%' OR subject ILIKE '%Educación Física%')`;
+      } else if (isTecnologia) {
+        sql += ` AND (subject ILIKE '%Tecnolog%')`;
+      } else if (isFilosofia) {
+        sql += ` AND (subject ILIKE '%Filosof%')`;
+      } else if (isCiudadana) {
+        sql += ` AND (subject ILIKE '%Ciudadan%')`;
+      } else if (isParvulos) {
+        sql += ` AND (subject ILIKE '%Párvulo%' OR subject ILIKE '%Parvulo%')`;
+      } else if (isMecanica) {
+        sql += ` AND (subject ILIKE '%Mecánica%' OR subject ILIKE '%Soldadura%' OR subject ILIKE '%Industrial%' OR subject ILIKE '%Torno%')`;
       } else {
         params.push(`%${rawSubj}%`);
         const pSubj = params.length;
@@ -57,7 +84,13 @@ router.get('/learning-goals', authMiddleware, async (req: Request, res: Response
       sql += ` AND (oa_code ILIKE $${params.length} OR oa_title ILIKE $${params.length} OR axis ILIKE $${params.length} OR description ILIKE $${params.length})`;
     }
 
-    sql += ' ORDER BY grade_level ASC, oa_code ASC LIMIT 100';
+    if (is_prioritized !== undefined && is_prioritized !== null && is_prioritized !== '' && is_prioritized !== 'all') {
+      const isPri = String(is_prioritized).toLowerCase() === 'true';
+      params.push(isPri);
+      sql += ` AND is_prioritized = $${params.length}`;
+    }
+
+    sql += ' ORDER BY grade_level ASC, oa_code ASC LIMIT 1000';
 
     const result = await query(sql, params);
     res.json({ success: true, learningGoals: result.rows || [] });
@@ -770,9 +803,20 @@ router.get('/coverage-stats', authMiddleware, async (req: Request, res: Response
     const isMatematica = /matem/i.test(sName);
     const isCiencias = /ciencia|biolog|fisic|quimic/i.test(sName);
     const isHistoria = /historia|geograf|social/i.test(sName);
+    const isIngles = /ingl[eé]s/i.test(sName);
+    const isArtes = /arte/i.test(sName);
+    const isMusica = /m[uú]sica/i.test(sName);
+    const isEdFisica = /f[ií]sica\s+y\s+salud|educaci[oó]n\s+f[ií]sica/i.test(sName);
+    const isTecnologia = /tecnolog/i.test(sName);
+    const isFilosofia = /filosof/i.test(sName);
+    const isCiudadana = /ciudadan/i.test(sName);
+    const isParvulos = /p[aá]rvulo|infantil|l[uú]dica/i.test(sName);
+    const isMecanica = /mec[aá]nica|torno|soldadura|mantenimiento|montaje|electrotecnia/i.test(sName);
 
     let subjSql = 'subject ILIKE $2';
     let subjParam = `%${sName}%`;
+    let isSpecial = true;
+
     if (isLenguaje) {
       subjSql = `(subject ILIKE '%Lengua%' OR subject ILIKE '%Lenguaje%' OR subject ILIKE '%Literatura%')`;
     } else if (isMatematica) {
@@ -781,9 +825,29 @@ router.get('/coverage-stats', authMiddleware, async (req: Request, res: Response
       subjSql = `(subject ILIKE '%Ciencia%' OR subject ILIKE '%Biolog%' OR subject ILIKE '%Físic%' OR subject ILIKE '%Químic%')`;
     } else if (isHistoria) {
       subjSql = `subject ILIKE '%Historia%'`;
+    } else if (isIngles) {
+      subjSql = `(subject ILIKE '%Inglés%' OR subject ILIKE '%Ingles%' OR subject ILIKE '%Idioma Extranjero%')`;
+    } else if (isArtes) {
+      subjSql = `subject ILIKE '%Arte%'`;
+    } else if (isMusica) {
+      subjSql = `(subject ILIKE '%Música%' OR subject ILIKE '%Musica%')`;
+    } else if (isEdFisica) {
+      subjSql = `(subject ILIKE '%Física y Salud%' OR subject ILIKE '%Educación Física%')`;
+    } else if (isTecnologia) {
+      subjSql = `subject ILIKE '%Tecnolog%'`;
+    } else if (isFilosofia) {
+      subjSql = `subject ILIKE '%Filosof%'`;
+    } else if (isCiudadana) {
+      subjSql = `subject ILIKE '%Ciudadan%'`;
+    } else if (isParvulos) {
+      subjSql = `(subject ILIKE '%Párvulo%' OR subject ILIKE '%Parvulo%')`;
+    } else if (isMecanica) {
+      subjSql = `(subject ILIKE '%Mecánica%' OR subject ILIKE '%Soldadura%' OR subject ILIKE '%Industrial%' OR subject ILIKE '%Torno%')`;
+    } else {
+      isSpecial = false;
     }
 
-    const officialGoalsRes = isLenguaje || isMatematica || isCiencias || isHistoria
+    const officialGoalsRes = isSpecial
       ? await query(`
           SELECT * FROM curriculum_learning_goals 
           WHERE (grade_level ILIKE $1 OR grade_level ILIKE $2 OR $3 ILIKE '%' || grade_level || '%')
