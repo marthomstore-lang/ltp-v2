@@ -863,28 +863,29 @@ export const AdminDashboard: React.FC = () => {
   };
 
   return (
-    <div className="app-container">
-      {/* BANNER STICKY DE MODO MAESTRO / IMPERSONACIÓN */}
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', minHeight: '100vh', position: 'relative' }}>
+      {/* BANNER SUPERIOR DE MODO MAESTRO / IMPERSONACIÓN */}
       {isImpersonating && (
         <div style={{
-          position: 'sticky',
-          top: 0,
+          width: '100%',
           zIndex: 99999,
           background: 'linear-gradient(90deg, #7c3aed 0%, #4338ca 100%)',
           color: '#ffffff',
-          padding: '0.65rem 1.5rem',
+          padding: '0.45rem 1.25rem',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
-          fontSize: '0.86rem'
+          boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
+          fontSize: '0.82rem',
+          flexShrink: 0,
+          boxSizing: 'border-box'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-            <span style={{ fontSize: '1.3rem' }}>👁️</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <span style={{ fontSize: '1.15rem' }}>👁️</span>
             <div>
               <strong>MODO MAESTRO ACTIVO:</strong> Estás navegando la plataforma como <u>{user?.name}</u> ({user?.role})
               {user?.impersonatedBy ? (
-                <span style={{ opacity: 0.9, marginLeft: '0.5rem', fontSize: '0.8rem' }}>
+                <span style={{ opacity: 0.9, marginLeft: '0.45rem', fontSize: '0.78rem' }}>
                   — Sesión original: <strong>{user.impersonatedBy.name}</strong>
                 </span>
               ) : null}
@@ -897,15 +898,15 @@ export const AdminDashboard: React.FC = () => {
               background: '#ffffff',
               color: '#5b21b6',
               border: 'none',
-              padding: '0.4rem 1rem',
-              borderRadius: '8px',
+              padding: '0.3rem 0.8rem',
+              borderRadius: '6px',
               fontWeight: 800,
-              fontSize: '0.8rem',
+              fontSize: '0.75rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.4rem',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.15)'
+              gap: '0.35rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.15)'
             }}
           >
             🔙 Salir del Modo Maestro (Volver a mi cuenta)
@@ -913,7 +914,8 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      <Suspense fallback={null}>
+      <div className="app-container" style={{ flex: 1 }}>
+        <Suspense fallback={null}>
         {/* Multivista Dual Screen Modal */}
         {showMultiview && (
           <MultiviewWindow
@@ -3545,6 +3547,7 @@ export const AdminDashboard: React.FC = () => {
         )}
         </Suspense>
       </div>
+    </div>
     </div>
   );
 };
