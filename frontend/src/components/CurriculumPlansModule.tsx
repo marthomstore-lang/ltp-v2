@@ -25,7 +25,10 @@ import {
   Award,
   AlertCircle,
   TrendingUp,
-  UserCheck
+  UserCheck,
+  Eye,
+  ArrowRightLeft,
+  UserPlus
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 
@@ -57,6 +60,7 @@ interface AnnualPlan {
   subject_name: string;
   teacher_name: string;
   teacher_email?: string;
+  substitute_teacher_name?: string | null;
   total_hours: number;
   description?: string;
   status: string;
@@ -71,6 +75,7 @@ interface LessonPlan {
   course_name: string;
   subject_name: string;
   teacher_name: string;
+  substitute_teacher_name?: string | null;
   class_number: number;
   class_date?: string;
   class_goal: string;
@@ -123,6 +128,17 @@ interface CurriculumPlansModuleProps {
 
 export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ token, user }) => {
   const [activeTab, setActiveTab] = useState<'annual' | 'lessons' | 'catalog' | 'ai_config'>('annual');
+
+  // Modo de visualización: Editor (permite modificar y guardar) vs Solo Vista (lectura e impresión)
+  const [viewMode, setViewMode] = useState<'edit' | 'readonly'>('edit');
+
+  // Traspaso de Plan / Docente de Reemplazo (por licencia médica o cambio)
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferTargetTeacher, setTransferTargetTeacher] = useState<string>('');
+  const [transferCustomTeacher, setTransferCustomTeacher] = useState<string>('');
+  const [transferMode, setTransferMode] = useState<'set_substitute' | 'transfer_ownership'>('set_substitute');
+  const [transferReason, setTransferReason] = useState<string>('Licencia médica del docente titular');
+  const [isTransferring, setIsTransferring] = useState(false);
 
   // Listas institucionales y asignaciones docentes
   const [coursesList, setCoursesList] = useState<string[]>([]);
@@ -317,12 +333,12 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
   // Filtrado de planes según perfil y selección
   const getVisiblePlans = (plans: AnnualPlan[], teacherFilter: string) => {
     if (!isAdmin || teacherFilter === 'my_profile') {
-      return plans.filter(p => isUserMatch(p.teacher_name) || p.teacher_email === user?.email);
+      return plans.filter(p => isUserMatch(p.teacher_name) || isUserMatch(p.substitute_teacher_name) || p.teacher_email === user?.email);
     }
     if (teacherFilter === 'all') {
       return plans;
     }
-    return plans.filter(p => p.teacher_name === teacherFilter);
+    return plans.filter(p => p.teacher_name === teacherFilter || p.substitute_teacher_name === teacherFilter);
   };
 
   const visiblePlans = useMemo(() => {
@@ -584,7 +600,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
   const handleDeleteAnnualPlan = async (id: string) => {
     const confirm = await Swal.fire({
       title: '¿Eliminar Planificación Anual?',
-      text: 'Esta acción eliminará la planificación anual y todas sus unidades asociadas.',
+      text: 'Esta acción eliminará la planificación anual, todas sus unidades y sus clases asociadas.',
       icon: 'warning',
       showCancelButton: true,
       confirmButtonText: 'Sí, eliminar',
@@ -599,12 +615,148 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok) {
-          Swal.fire('Eliminado', 'La planificación anual fue eliminada.', 'success');
+          Swal.fire('Eliminado', 'La planificación anual y sus clases fueron eliminadas.', 'success');
           setSelectedPlan(null);
           await loadAnnualPlans();
+        } else {
+          const err = await res.json();
+          Swal.fire('Error', err.error || 'No se pudo eliminar la planificación.', 'error');
         }
       } catch (err) {
         Swal.fire('Error', 'No se pudo eliminar la planificación.', 'error');
+      }
+    }
+  };
+
+  // Eliminación masiva por el Administrador de todas las planificaciones de un docente
+  const handleDeleteTeacherAllPlans = async (teacherName: string) => {
+    if (!isAdmin) return;
+    const confirm = await Swal.fire({
+      title: `¿Eliminar TODAS las planificaciones de ${teacherName}?`,
+      text: `Esta acción de administración eliminará de forma irreversible todas las planificaciones anuales, unidades temáticas y clases registradas para este docente.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar todo',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#ef4444'
+    });
+
+    if (confirm.isConfirmed) {
+      try {
+        const res = await fetch(`/api/curriculum/teacher-plans?teacher_name=${encodeURIComponent(teacherName)}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok) {
+          Swal.fire({
+            icon: 'success',
+            title: 'Planificaciones Eliminadas',
+            text: `Se eliminaron ${data.deletedAnnualPlansCount || 0} planificaciones anuales y ${data.deletedLessonsCount || 0} clases de Prof. ${teacherName}.`,
+            timer: 2500,
+            showConfirmButton: false
+          });
+          setSelectedPlan(null);
+          await loadAnnualPlans();
+        } else {
+          Swal.fire('Error', data.error || 'No se pudieron eliminar las planificaciones.', 'error');
+        }
+      } catch (err: any) {
+        Swal.fire('Error', err?.message || 'Error de conexión.', 'error');
+      }
+    }
+  };
+
+  // Traspaso de Planificación a Docente de Reemplazo
+  const handleOpenTransferModal = () => {
+    if (!selectedPlan) return;
+    setTransferTargetTeacher(selectedPlan.substitute_teacher_name || teachersList[0] || '');
+    setTransferCustomTeacher('');
+    setTransferMode('set_substitute');
+    setTransferReason('Licencia médica del docente titular');
+    setShowTransferModal(true);
+  };
+
+  const handleTransferPlan = async () => {
+    if (!selectedPlan) return;
+    const finalTargetTeacher = transferTargetTeacher === '__custom__'
+      ? transferCustomTeacher.trim()
+      : transferTargetTeacher.trim();
+
+    if (!finalTargetTeacher) {
+      Swal.fire('Docente Requerido', 'Por favor selecciona o ingresa el nombre del docente.', 'warning');
+      return;
+    }
+
+    setIsTransferring(true);
+    try {
+      const res = await fetch('/api/curriculum/transfer-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          plan_id: selectedPlan.id,
+          target_teacher_name: finalTargetTeacher,
+          transfer_mode: transferMode,
+          reason: transferReason
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setShowTransferModal(false);
+        Swal.fire({
+          icon: 'success',
+          title: transferMode === 'set_substitute' ? 'Reemplazo Asignado' : 'Plan Traspasado',
+          text: data.message || 'La operación se realizó con éxito.',
+          timer: 2500,
+          showConfirmButton: false
+        });
+        await loadAnnualPlans();
+      } else {
+        Swal.fire('Error', data.error || 'No se pudo procesar el traspaso.', 'error');
+      }
+    } catch (err: any) {
+      Swal.fire('Error', err?.message || 'Error de conexión al traspasar.', 'error');
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
+  const handleRemoveSubstitute = async () => {
+    if (!selectedPlan) return;
+    const confirm = await Swal.fire({
+      title: '¿Reanudar Titularidad?',
+      text: `El docente titular (${selectedPlan.teacher_name}) retomará el control directo de este plan y se removerá al docente de reemplazo.`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, reanudar titular',
+      cancelButtonText: 'Cancelar'
+    });
+
+    if (confirm.isConfirmed) {
+      try {
+        const res = await fetch('/api/curriculum/transfer-plan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            plan_id: selectedPlan.id,
+            target_teacher_name: selectedPlan.teacher_name,
+            transfer_mode: 'transfer_ownership',
+            reason: 'Reincorporación del docente titular tras término de licencia médica'
+          })
+        });
+        if (res.ok) {
+          Swal.fire('Reincorporado', 'El titular ha retomado la planificación.', 'success');
+          await loadAnnualPlans();
+        }
+      } catch (err) {
+        Swal.fire('Error', 'No se pudo reanudar la titularidad.', 'error');
       }
     }
   };
@@ -1171,44 +1323,172 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
           </div>
         </div>
 
-        {/* SELECTOR DE SUPERVISIÓN PARA ADMINS */}
-        {isAdmin && teachersList.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.16)', padding: '0.35rem 0.75rem', borderRadius: '10px' }}>
-            <UserCheck size={16} color="#ffffff" />
-            <span style={{ fontSize: '0.78rem', fontWeight: 800 }}>Supervisar Docente:</span>
-            <select
-              value={selectedTeacherFilter}
-              onChange={e => {
-                setSelectedTeacherFilter(e.target.value);
-                const visible = getVisiblePlans(allAnnualPlans, e.target.value);
-                if (visible.length > 0) {
-                  selectAnnualPlan(visible[0]);
-                } else {
-                  setSelectedPlan(null);
-                }
-              }}
+        {/* CONTROLES DERECHA: MODO EDITOR / SOLO VISTA Y SUPERVISIÓN ADMIN */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {/* SWITCH: MODO EDITOR VS MODO SOLO VISTA */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: 'rgba(255,255,255,0.2)',
+            padding: '4px',
+            borderRadius: '10px',
+            gap: '3px'
+          }}>
+            <button
+              type="button"
+              onClick={() => setViewMode('edit')}
               style={{
-                background: '#ffffff',
-                color: '#0f172a',
+                padding: '0.35rem 0.75rem',
+                borderRadius: '8px',
                 border: 'none',
-                borderRadius: '6px',
-                padding: '0.35rem 0.65rem',
-                fontSize: '0.78rem',
+                background: viewMode === 'edit' ? '#ffffff' : 'transparent',
+                color: viewMode === 'edit' ? '#0369a1' : '#ffffff',
                 fontWeight: 800,
-                cursor: 'pointer'
+                fontSize: '0.76rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                boxShadow: viewMode === 'edit' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                transition: 'all 0.15s ease'
               }}
             >
-              <option value="my_profile">👨‍🏫 Mi Perfil Docente ({user?.name || 'Yo'})</option>
-              <option value="all">🌐 Todos los Docentes ({allAnnualPlans.length} planes)</option>
-              {teachersList.map(t => (
-                <option key={t} value={t}>
-                  Prof. {t}
-                </option>
-              ))}
-            </select>
+              <Edit3 size={13} />
+              Modo Editor
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode('readonly');
+                setIsEditingAnnual(false);
+              }}
+              style={{
+                padding: '0.35rem 0.75rem',
+                borderRadius: '8px',
+                border: 'none',
+                background: viewMode === 'readonly' ? '#ffffff' : 'transparent',
+                color: viewMode === 'readonly' ? '#0369a1' : '#ffffff',
+                fontWeight: 800,
+                fontSize: '0.76rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                boxShadow: viewMode === 'readonly' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Eye size={13} />
+              Modo Solo Vista
+            </button>
           </div>
-        )}
+
+          {/* SELECTOR DE SUPERVISIÓN PARA ADMINS */}
+          {isAdmin && teachersList.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', background: 'rgba(255,255,255,0.16)', padding: '0.35rem 0.65rem', borderRadius: '10px' }}>
+              <UserCheck size={15} color="#ffffff" />
+              <span style={{ fontSize: '0.75rem', fontWeight: 800 }}>Supervisar:</span>
+              <select
+                value={selectedTeacherFilter}
+                onChange={e => {
+                  setSelectedTeacherFilter(e.target.value);
+                  const visible = getVisiblePlans(allAnnualPlans, e.target.value);
+                  if (visible.length > 0) {
+                    selectAnnualPlan(visible[0]);
+                  } else {
+                    setSelectedPlan(null);
+                  }
+                }}
+                style={{
+                  background: '#ffffff',
+                  color: '#0f172a',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '0.32rem 0.6rem',
+                  fontSize: '0.76rem',
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="my_profile">👨‍🏫 Mi Perfil Docente ({user?.name || 'Yo'})</option>
+                <option value="all">🌐 Todos los Docentes ({allAnnualPlans.length} planes)</option>
+                {teachersList.map(t => (
+                  <option key={t} value={t}>
+                    Prof. {t}
+                  </option>
+                ))}
+              </select>
+
+              {/* BOTÓN ADMIN PARA VACIAR/ELIMINAR TODAS LAS PLANIFICACIONES DEL DOCENTE FILTRADO */}
+              {selectedTeacherFilter !== 'all' && selectedTeacherFilter !== 'my_profile' && viewMode === 'edit' && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteTeacherAllPlans(selectedTeacherFilter)}
+                  title={`Eliminar todas las planificaciones y clases de Prof. ${selectedTeacherFilter}`}
+                  style={{
+                    background: '#dc2626',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '0.35rem 0.6rem',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem'
+                  }}
+                >
+                  <Trash2 size={13} />
+                  Limpiar Todo
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* BANNER INFORMATIVO CUANDO ESTÁ EN MODO SOLO VISTA */}
+      {viewMode === 'readonly' && (
+        <div style={{
+          background: '#eff6ff',
+          border: '1.5px solid #60a5fa',
+          borderRadius: '12px',
+          padding: '0.75rem 1.25rem',
+          marginBottom: '1rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1rem',
+          flexWrap: 'wrap'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <Eye size={20} color="#0284c7" />
+            <div>
+              <strong style={{ fontSize: '0.84rem', color: '#1e3a8a' }}>MODO SOLO VISTA:</strong>
+              <span style={{ fontSize: '0.8rem', color: '#1e40af', marginLeft: '0.35rem' }}>
+                La visualización, impresión y revisión de Cobertura Curricular están habilitadas. Las modificaciones, creaciones y eliminaciones están bloqueadas.
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setViewMode('edit')}
+            style={{
+              background: '#0284c7',
+              color: '#ffffff',
+              border: 'none',
+              padding: '0.35rem 0.75rem',
+              borderRadius: '6px',
+              fontSize: '0.76rem',
+              fontWeight: 800,
+              cursor: 'pointer'
+            }}
+          >
+            Activar Modo Editor
+          </button>
+        </div>
+      )}
 
       {/* ===================================================================== */}
       {/* WIDGET COBERTURA CURRICULAR EN TIEMPO REAL                            */}
@@ -1558,7 +1838,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                     </>
                   )}
 
-                  {!isEditingAnnual && (
+                  {!isEditingAnnual && viewMode !== 'readonly' && (
                     <button
                       type="button"
                       onClick={handleCreateNewAnnual}
@@ -1582,29 +1862,31 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   )}
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    disabled={generatingAi}
-                    onClick={handleGenerateAiUnits}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.45rem',
-                      background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
-                      color: '#ffffff',
-                      padding: '0.55rem 1rem',
-                      borderRadius: '10px',
-                      border: 'none',
-                      fontSize: '0.82rem',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 8px rgba(124, 58, 237, 0.25)'
-                    }}
-                  >
-                    <Sparkles size={16} />
-                    {generatingAi ? 'Generando con IA...' : 'Sugerir Unidades con IA'}
-                  </button>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {viewMode !== 'readonly' && (
+                    <button
+                      type="button"
+                      disabled={generatingAi}
+                      onClick={handleGenerateAiUnits}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+                        color: '#ffffff',
+                        padding: '0.55rem 1rem',
+                        borderRadius: '10px',
+                        border: 'none',
+                        fontSize: '0.82rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(124, 58, 237, 0.25)'
+                      }}
+                    >
+                      <Sparkles size={16} />
+                      {generatingAi ? 'Generando con IA...' : 'Sugerir Unidades con IA'}
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -1627,71 +1909,127 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                     Imprimir Formato Oficial
                   </button>
 
-                  {isEditingAnnual ? (
-                    <div style={{ display: 'flex', gap: '0.4rem' }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsEditingAnnual(false);
-                          if (selectedPlan) selectAnnualPlan(selectedPlan);
-                        }}
-                        style={{
-                          padding: '0.55rem 0.9rem',
-                          borderRadius: '10px',
-                          border: '1px solid #cbd5e1',
-                          background: '#f1f5f9',
-                          color: '#475569',
-                          fontWeight: 700,
-                          fontSize: '0.82rem',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        disabled={savingAnnual}
-                        onClick={handleSaveAnnualPlan}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.45rem',
-                          background: '#059669',
-                          color: '#ffffff',
-                          padding: '0.55rem 1.15rem',
-                          borderRadius: '10px',
-                          border: 'none',
-                          fontSize: '0.82rem',
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          boxShadow: '0 2px 8px rgba(5, 150, 105, 0.25)'
-                        }}
-                      >
-                        <Save size={16} />
-                        {savingAnnual ? 'Guardando...' : 'Guardar Plan Anual'}
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingAnnual(true)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.45rem',
-                        background: '#f8fafc',
-                        color: '#0f172a',
-                        border: '1px solid #cbd5e1',
-                        padding: '0.55rem 1rem',
-                        borderRadius: '10px',
-                        fontSize: '0.82rem',
-                        fontWeight: 700,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <Edit3 size={16} />
-                      Editar Plan
-                    </button>
+                  {viewMode !== 'readonly' && (
+                    <>
+                      {isEditingAnnual ? (
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsEditingAnnual(false);
+                              if (selectedPlan) selectAnnualPlan(selectedPlan);
+                            }}
+                            style={{
+                              padding: '0.55rem 0.9rem',
+                              borderRadius: '10px',
+                              border: '1px solid #cbd5e1',
+                              background: '#f1f5f9',
+                              color: '#475569',
+                              fontWeight: 700,
+                              fontSize: '0.82rem',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingAnnual}
+                            onClick={handleSaveAnnualPlan}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.45rem',
+                              background: '#059669',
+                              color: '#ffffff',
+                              padding: '0.55rem 1.15rem',
+                              borderRadius: '10px',
+                              border: 'none',
+                              fontSize: '0.82rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              boxShadow: '0 2px 8px rgba(5, 150, 105, 0.25)'
+                            }}
+                          >
+                            <Save size={16} />
+                            {savingAnnual ? 'Guardando...' : 'Guardar Plan Anual'}
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingAnnual(true)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.45rem',
+                              background: '#f8fafc',
+                              color: '#0f172a',
+                              border: '1px solid #cbd5e1',
+                              padding: '0.55rem 0.95rem',
+                              borderRadius: '10px',
+                              fontSize: '0.82rem',
+                              fontWeight: 700,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <Edit3 size={15} />
+                            Editar Plan
+                          </button>
+
+                          {/* BOTÓN TRASPASAR A DOCENTE DE REEMPLAZO O CAMBIAR TITULAR */}
+                          {selectedPlan && (isAdmin || isUserMatch(selectedPlan.teacher_name)) && (
+                            <button
+                              type="button"
+                              onClick={handleOpenTransferModal}
+                              title="Asignar reemplazo por licencia médica o transferir curso"
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.45rem',
+                                background: '#e0f2fe',
+                                color: '#0369a1',
+                                border: '1px solid #bae6fd',
+                                padding: '0.55rem 0.95rem',
+                                borderRadius: '10px',
+                                fontSize: '0.82rem',
+                                fontWeight: 800,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <ArrowRightLeft size={15} />
+                              Traspasar / Reemplazo
+                            </button>
+                          )}
+
+                          {/* BOTÓN ELIMINAR PLAN ANUAL */}
+                          {selectedPlan && (isAdmin || isUserMatch(selectedPlan.teacher_name)) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAnnualPlan(selectedPlan.id)}
+                              title="Eliminar este plan anual y sus clases"
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.45rem',
+                                background: '#fee2e2',
+                                color: '#dc2626',
+                                border: '1px solid #fecaca',
+                                padding: '0.55rem 0.85rem',
+                                borderRadius: '10px',
+                                fontSize: '0.82rem',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <Trash2 size={15} />
+                              Eliminar Plan
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -1715,6 +2053,47 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                 }}>
                   PLANIFICACIÓN ANUAL {annualForm.academic_year}
                 </h3>
+
+                {/* ALERTA DE DOCENTE EN REEMPLAZO POR LICENCIA */}
+                {selectedPlan?.substitute_teacher_name && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: '#fef3c7',
+                    border: '1.5px solid #f59e0b',
+                    borderRadius: '10px',
+                    padding: '0.65rem 1rem',
+                    marginBottom: '1rem',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#92400e', fontSize: '0.84rem', fontWeight: 800 }}>
+                      <ArrowRightLeft size={16} />
+                      <span>
+                        En Reemplazo Docente: <strong>Prof. {selectedPlan.substitute_teacher_name}</strong> (Docente Titular: Prof. {selectedPlan.teacher_name})
+                      </span>
+                    </div>
+                    {viewMode !== 'readonly' && (isAdmin || isUserMatch(selectedPlan.teacher_name)) && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveSubstitute}
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #d97706',
+                          color: '#b45309',
+                          padding: '0.3rem 0.65rem',
+                          borderRadius: '6px',
+                          fontSize: '0.74rem',
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Reanudar Titularidad
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* ENCABEZADO MINEDUC: TABLA DE IDENTIFICACIÓN */}
                 <table style={{
@@ -2015,28 +2394,30 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#0f172a' }}>
                     Clases Planificadas ({lessonPlans.length})
                   </h4>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      resetLessonFormForNewClass(lessonPlans.length + 1, selectedPlan);
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.3rem',
-                      background: '#0284c7',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '0.35rem 0.65rem',
-                      fontSize: '0.74rem',
-                      fontWeight: 800,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <Plus size={14} />
-                    + Nueva Clase
-                  </button>
+                  {viewMode !== 'readonly' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetLessonFormForNewClass(lessonPlans.length + 1, selectedPlan);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        background: '#0284c7',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '0.35rem 0.65rem',
+                        fontSize: '0.74rem',
+                        fontWeight: 800,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Plus size={14} />
+                      + Nueva Clase
+                    </button>
+                  )}
                 </div>
 
                 <div style={{ marginBottom: '1rem' }}>
@@ -2093,8 +2474,12 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                           {/* BOTÓN RÁPIDO TOGGLE REALIZADA */}
                           <button
                             type="button"
-                            onClick={(e) => handleToggleLessonStatus(lesson, e)}
-                            title="Haga clic para alternar entre Realizada y Por Realizar"
+                            disabled={viewMode === 'readonly'}
+                            onClick={(e) => {
+                              if (viewMode === 'readonly') return;
+                              handleToggleLessonStatus(lesson, e);
+                            }}
+                            title={viewMode === 'readonly' ? 'Modo Solo Vista' : 'Haga clic para alternar entre Realizada y Por Realizar'}
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
@@ -2106,7 +2491,8 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                               color: isRealizada ? '#15803d' : '#b45309',
                               fontSize: '0.7rem',
                               fontWeight: 800,
-                              cursor: 'pointer'
+                              cursor: viewMode === 'readonly' ? 'default' : 'pointer',
+                              opacity: viewMode === 'readonly' ? 0.9 : 1
                             }}
                           >
                             {isRealizada ? <CheckCircle2 size={12} /> : <Clock size={12} />}
@@ -2128,7 +2514,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                           <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
                             {lesson.class_date ? new Date(lesson.class_date).toLocaleDateString('es-CL') : 'Sin fecha'}
                           </span>
-                          {lesson.id && (
+                          {lesson.id && viewMode !== 'readonly' && (isAdmin || isUserMatch(lesson.teacher_name) || isUserMatch(lesson.substitute_teacher_name)) && (
                             <button
                               type="button"
                               onClick={(e) => handleDeleteLessonPlan(lesson.id!, e)}
@@ -2170,28 +2556,30 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   </div>
 
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      disabled={generatingAi}
-                      onClick={handleGenerateAiLesson}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.45rem',
-                        background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
-                        color: '#ffffff',
-                        padding: '0.5rem 0.95rem',
-                        borderRadius: '8px',
-                        border: 'none',
-                        fontSize: '0.8rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        boxShadow: '0 2px 8px rgba(124, 58, 237, 0.25)'
-                      }}
-                    >
-                      <Sparkles size={15} />
-                      {generatingAi ? 'Generando...' : 'Sugerir Clase con IA'}
-                    </button>
+                    {viewMode !== 'readonly' && (
+                      <button
+                        type="button"
+                        disabled={generatingAi}
+                        onClick={handleGenerateAiLesson}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.45rem',
+                          background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+                          color: '#ffffff',
+                          padding: '0.5rem 0.95rem',
+                          borderRadius: '8px',
+                          border: 'none',
+                          fontSize: '0.8rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 8px rgba(124, 58, 237, 0.25)'
+                        }}
+                      >
+                        <Sparkles size={15} />
+                        {generatingAi ? 'Generando...' : 'Sugerir Clase con IA'}
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -2214,26 +2602,28 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                       Imprimir Ficha & Ticket
                     </button>
 
-                    <button
-                      type="submit"
-                      disabled={savingLesson}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.45rem',
-                        background: '#059669',
-                        color: '#ffffff',
-                        padding: '0.5rem 1.15rem',
-                        borderRadius: '8px',
-                        border: 'none',
-                        fontSize: '0.8rem',
-                        fontWeight: 800,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <Save size={15} />
-                      {savingLesson ? 'Guardando...' : 'Guardar Clase'}
-                    </button>
+                    {viewMode !== 'readonly' && (
+                      <button
+                        type="submit"
+                        disabled={savingLesson}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.45rem',
+                          background: '#059669',
+                          color: '#ffffff',
+                          padding: '0.5rem 1.15rem',
+                          borderRadius: '8px',
+                          border: 'none',
+                          fontSize: '0.8rem',
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Save size={15} />
+                        {savingLesson ? 'Guardando...' : 'Guardar Clase'}
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -3039,6 +3429,222 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL: TRASPASO DE PLANIFICACIÓN / DOCENTE DE REEMPLAZO POR LICENCIA */}
+      {/* ===================================================================== */}
+      {showTransferModal && selectedPlan && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            maxWidth: '560px',
+            width: '100%',
+            overflow: 'hidden',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{
+              padding: '1.25rem 1.5rem',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: '#0369a1',
+              color: '#ffffff'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <ArrowRightLeft size={20} />
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>
+                  Traspaso de Planificación / Reemplazo
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTransferModal(false)}
+                style={{ background: 'transparent', border: 'none', color: '#ffffff', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{ background: '#f8fafc', padding: '0.85rem 1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700 }}>Planificación a Traspasar:</div>
+                <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#0f172a', marginTop: '0.2rem' }}>
+                  {selectedPlan.course_name} — {selectedPlan.subject_name}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#334155', marginTop: '0.2rem' }}>
+                  Docente Titular Actual: <strong>Prof. {selectedPlan.teacher_name}</strong>
+                  {selectedPlan.substitute_teacher_name && (
+                    <span style={{ color: '#d97706', marginLeft: '0.5rem' }}>
+                      (Reemplazo actual: Prof. {selectedPlan.substitute_teacher_name})
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* MODALIDAD DE TRASPASO */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#1e293b', marginBottom: '0.5rem' }}>
+                  Modalidad de Traspaso:
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.65rem',
+                    padding: '0.75rem',
+                    borderRadius: '8px',
+                    border: transferMode === 'set_substitute' ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                    background: transferMode === 'set_substitute' ? '#f0f9ff' : '#ffffff',
+                    cursor: 'pointer'
+                  }}>
+                    <input
+                      type="radio"
+                      name="transfer_mode"
+                      value="set_substitute"
+                      checked={transferMode === 'set_substitute'}
+                      onChange={() => setTransferMode('set_substitute')}
+                      style={{ marginTop: '0.2rem' }}
+                    />
+                    <div>
+                      <strong style={{ fontSize: '0.84rem', color: '#0369a1', display: 'block' }}>
+                        🔄 Reemplazo Temporal por Licencia Médica (Recomendado)
+                      </strong>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', lineHeight: 1.35, display: 'block', marginTop: '2px' }}>
+                        Conserva al docente titular en el registro oficial, pero otorga acceso y visibilidad completa al docente de reemplazo para saber en qué clase va el curso y continuar la cobertura.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.65rem',
+                    padding: '0.75rem',
+                    borderRadius: '8px',
+                    border: transferMode === 'transfer_ownership' ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                    background: transferMode === 'transfer_ownership' ? '#f0f9ff' : '#ffffff',
+                    cursor: 'pointer'
+                  }}>
+                    <input
+                      type="radio"
+                      name="transfer_mode"
+                      value="transfer_ownership"
+                      checked={transferMode === 'transfer_ownership'}
+                      onChange={() => setTransferMode('transfer_ownership')}
+                      style={{ marginTop: '0.2rem' }}
+                    />
+                    <div>
+                      <strong style={{ fontSize: '0.84rem', color: '#0f172a', display: 'block' }}>
+                        👤 Traspaso de Titularidad Definitivo
+                      </strong>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', lineHeight: 1.35, display: 'block', marginTop: '2px' }}>
+                        Cambia de forma permanente el titular del plan y todas sus clases al nuevo docente.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* SELECCIÓN DEL DOCENTE DE DESTINO / REEMPLAZO */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#1e293b', marginBottom: '0.4rem' }}>
+                  Docente de Reemplazo / Destino:
+                </label>
+                <select
+                  value={transferTargetTeacher}
+                  onChange={e => setTransferTargetTeacher(e.target.value)}
+                  style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.84rem', fontWeight: 700 }}
+                >
+                  <option value="">-- Seleccionar Docente de la Institución --</option>
+                  {teachersList.map(t => (
+                    <option key={t} value={t}>Prof. {t}</option>
+                  ))}
+                  <option value="__custom__">➕ Otro Docente (Escribir Nombre Nuevo)</option>
+                </select>
+
+                {transferTargetTeacher === '__custom__' && (
+                  <input
+                    type="text"
+                    placeholder="Escribe el nombre completo del docente de reemplazo..."
+                    value={transferCustomTeacher}
+                    onChange={e => setTransferCustomTeacher(e.target.value)}
+                    style={{ width: '100%', marginTop: '0.5rem', padding: '0.55rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.84rem' }}
+                  />
+                )}
+              </div>
+
+              {/* MOTIVO / OBSERVACIÓN */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#1e293b', marginBottom: '0.4rem' }}>
+                  Motivo del Traspaso / Licencia:
+                </label>
+                <input
+                  type="text"
+                  value={transferReason}
+                  onChange={e => setTransferReason(e.target.value)}
+                  placeholder="Ej: Licencia médica 15 días, reasignación horaria UTP..."
+                  style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.84rem' }}
+                />
+              </div>
+
+              {/* ACCIONES MODAL */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowTransferModal(false)}
+                  style={{
+                    padding: '0.55rem 1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    background: '#f1f5f9',
+                    color: '#475569',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isTransferring}
+                  onClick={handleTransferPlan}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                    background: '#0284c7',
+                    color: '#ffffff',
+                    padding: '0.55rem 1.25rem',
+                    borderRadius: '8px',
+                    border: 'none',
+                    fontWeight: 800,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Check size={16} />
+                  {isTransferring ? 'Procesando...' : 'Confirmar Traspaso'}
+                </button>
               </div>
             </div>
           </div>

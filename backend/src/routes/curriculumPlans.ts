@@ -306,16 +306,155 @@ router.put('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director',
   }
 });
 
-// DELETE /api/curriculum/annual-plans/:id - Eliminar planificación anual
+// DELETE /api/curriculum/annual-plans/:id - Eliminar planificación anual y sus clases asociadas
 router.delete('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'Profesor', 'Profesor Jefe', 'Inspector General', 'Jefe UTP', 'Coordinador']), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const planRes = await query('SELECT * FROM annual_curriculum_plans WHERE id = $1', [id]);
+    if (planRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Planificación anual no encontrada.' });
+    }
+
+    const plan = planRes.rows[0];
+    const userRole = (req as any).user?.role;
+    const userName = (req as any).user?.name;
+
+    // Si no es Admin/Director, solo puede eliminar su propio plan
+    if (userRole !== 'Admin' && userRole !== 'Director') {
+      if (plan.teacher_name !== userName && plan.created_by !== userName) {
+        return res.status(403).json({ error: 'No tienes permiso para eliminar esta planificación.' });
+      }
+    }
+
+    // Borrado en cascada: clases, unidades y plan anual
+    await query('DELETE FROM lesson_plans WHERE annual_plan_id = $1', [id]);
+    await query('DELETE FROM annual_curriculum_units WHERE plan_id = $1', [id]);
     await query('DELETE FROM annual_curriculum_plans WHERE id = $1', [id]);
-    await logAudit(req, 'DELETE_ANNUAL_PLAN', `Eliminada Planificación Anual ${id}.`);
-    res.json({ success: true, message: 'Planificación Anual eliminada exitosamente.' });
+
+    await logAudit(req, 'DELETE_ANNUAL_PLAN', `Eliminada Planificación Anual ${id} (${plan.course_name} - ${plan.subject_name}).`);
+    res.json({ success: true, message: 'Planificación Anual y sus clases fueron eliminadas exitosamente.' });
   } catch (err: any) {
     console.error('Error al eliminar planificación anual:', err);
     res.status(500).json({ error: 'Error al eliminar planificación anual.' });
+  }
+});
+
+// DELETE /api/curriculum/teacher-plans - Eliminar masivamente todas las planificaciones de un docente (Admin / Director)
+router.delete('/teacher-plans', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
+  try {
+    const { teacher_name } = req.body;
+    if (!teacher_name || typeof teacher_name !== 'string') {
+      return res.status(400).json({ error: 'teacher_name es obligatorio.' });
+    }
+
+    // 1. Obtener los IDs de los planes de este docente
+    const plansRes = await query('SELECT id FROM annual_curriculum_plans WHERE teacher_name ILIKE $1', [teacher_name]);
+    const planIds = plansRes.rows.map(p => p.id);
+
+    if (planIds.length > 0) {
+      await query('DELETE FROM lesson_plans WHERE annual_plan_id = ANY($1::varchar[])', [planIds]);
+      await query('DELETE FROM annual_curriculum_units WHERE plan_id = ANY($1::varchar[])', [planIds]);
+      await query('DELETE FROM annual_curriculum_plans WHERE id = ANY($1::varchar[])', [planIds]);
+    }
+
+    await logAudit(
+      req,
+      'BULK_DELETE_TEACHER_PLANS',
+      `Eliminadas todas las planificaciones (${planIds.length} planes) del docente ${teacher_name}.`
+    );
+
+    res.json({
+      success: true,
+      message: `Se eliminaron exitosamente todas las planificaciones (${planIds.length}) del docente ${teacher_name}.`,
+      deletedCount: planIds.length
+    });
+  } catch (err: any) {
+    console.error('Error al eliminar planificaciones del docente:', err);
+    res.status(500).json({ error: 'Error al eliminar planificaciones del docente.' });
+  }
+});
+
+// POST /api/curriculum/transfer-plan - Traspasar planificación a docente reemplazante o nuevo titular
+router.post('/transfer-plan', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'Profesor', 'Profesor Jefe', 'Inspector General', 'Jefe UTP', 'Coordinador']), async (req: Request, res: Response) => {
+  try {
+    const {
+      plan_id,
+      new_teacher_name,
+      new_teacher_email,
+      transfer_mode = 'transfer_ownership', // 'transfer_ownership' | 'set_substitute'
+      reason = 'Licencia médica / reemplazo docente'
+    } = req.body;
+
+    if (!plan_id || !new_teacher_name) {
+      return res.status(400).json({ error: 'plan_id y new_teacher_name son obligatorios.' });
+    }
+
+    const planRes = await query('SELECT * FROM annual_curriculum_plans WHERE id = $1', [plan_id]);
+    if (planRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Planificación anual no encontrada.' });
+    }
+
+    const plan = planRes.rows[0];
+    const currentTeacher = plan.teacher_name;
+
+    if (transfer_mode === 'transfer_ownership') {
+      // Traspaso total: nuevo titular
+      await query(`
+        UPDATE annual_curriculum_plans SET
+          teacher_name = $1,
+          teacher_email = COALESCE($2, teacher_email),
+          substitute_teacher_name = NULL,
+          description = CASE 
+            WHEN description IS NULL OR description = '' THEN $3
+            ELSE description || ' | ' || $3
+          END,
+          updated_at = NOW()
+        WHERE id = $4
+      `, [
+        new_teacher_name,
+        new_teacher_email || null,
+        `Traspaso pedagógico desde ${currentTeacher} a ${new_teacher_name} (${reason}) el ${new Date().toLocaleDateString('es-CL')}`,
+        plan_id
+      ]);
+
+      await query(`
+        UPDATE lesson_plans SET
+          teacher_name = $1,
+          substitute_teacher_name = NULL,
+          updated_at = NOW()
+        WHERE annual_plan_id = $2
+      `, [new_teacher_name, plan_id]);
+    } else {
+      // Asignar reemplazo temporal manteniendo al titular
+      await query(`
+        UPDATE annual_curriculum_plans SET
+          substitute_teacher_name = $1,
+          updated_at = NOW()
+        WHERE id = $2
+      `, [new_teacher_name, plan_id]);
+
+      await query(`
+        UPDATE lesson_plans SET
+          substitute_teacher_name = $1,
+          updated_at = NOW()
+        WHERE annual_plan_id = $2
+      `, [new_teacher_name, plan_id]);
+    }
+
+    await logAudit(
+      req,
+      'TRANSFER_CURRICULUM_PLAN',
+      `Plan ${plan_id} (${plan.course_name} - ${plan.subject_name}) reasignado a ${new_teacher_name}. Modo: ${transfer_mode}. Motivo: ${reason}.`
+    );
+
+    res.json({
+      success: true,
+      message: `Planificación reasignada exitosamente a ${new_teacher_name}.`,
+      transferMode: transfer_mode
+    });
+  } catch (err: any) {
+    console.error('Error al traspasar planificación:', err);
+    res.status(500).json({ error: 'Error al traspasar planificación curricular.' });
   }
 });
 
