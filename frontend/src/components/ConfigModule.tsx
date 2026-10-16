@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Lock, Unlock, Eye, EyeOff, Plus, Link, BookOpen, UserCheck, ShieldCheck, ListOrdered, FileCheck, Layers, Trash2, Edit, Shield, X, Save, RefreshCw, Search, ArrowUp, ArrowDown, Copy, Mail, CheckSquare, Check, GraduationCap, ExternalLink, Globe, CheckCircle2, AlertCircle, Filter, Building2, School, Users } from 'lucide-react';
+import { Settings, Lock, Unlock, Eye, EyeOff, Plus, Link, BookOpen, UserCheck, ShieldCheck, ListOrdered, FileCheck, Layers, Trash2, Edit, Shield, X, Save, RefreshCw, Search, ArrowUp, ArrowDown, Copy, Mail, CheckSquare, Check, GraduationCap, ExternalLink, Globe, CheckCircle2, AlertCircle, Filter, Building2, School, Users, Clock, Coffee } from 'lucide-react';
 import { PermissionsMatrix } from './PermissionsMatrix';
 import { ChecklistTemplatesEditor } from './ChecklistTemplatesEditor';
 import { CourseSupportModal } from './CourseSupportModal';
@@ -13,7 +13,7 @@ interface ConfigModuleProps {
 }
 
 export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
-  const [subTab, setSubTab] = useState<'teachers' | 'courses' | 'subjects' | 'assignments' | 'homeroom' | 'subject_order' | 'templates' | 'locks' | 'links' | 'permissions' | 'enrollment_config' | 'institution_config' | 'checklists_config'>(() =>
+  const [subTab, setSubTab] = useState<'teachers' | 'courses' | 'subjects' | 'assignments' | 'homeroom' | 'subject_order' | 'templates' | 'locks' | 'links' | 'permissions' | 'enrollment_config' | 'institution_config' | 'checklists_config' | 'schedule_periods'>(() =>
     getModuleSubTabFromUrl('config', 'courses') as any
   );
 
@@ -71,6 +71,236 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
   const [testingDrive, setTestingDrive] = useState(false);
   const [supportCourseModal, setSupportCourseModal] = useState<string | null>(null);
   const [supportModalInitialTab, setSupportModalInitialTab] = useState<'course' | 'pie_matrix'>('course');
+
+  // CONFIGURACIÓN DE HORARIOS DE CLASES Y RECREOS (Sub-ventana 6.14)
+  const [periodsList, setPeriodsList] = useState<any[]>([]);
+  const [loadingPeriods, setLoadingPeriods] = useState<boolean>(false);
+  const [showPeriodModal, setShowPeriodModal] = useState<boolean>(false);
+  const [editingPeriod, setEditingPeriod] = useState<any | null>(null);
+  const [periodFormData, setPeriodFormData] = useState<{
+    id?: string;
+    period_number: number;
+    period_name: string;
+    start_time: string;
+    end_time: string;
+    is_break: boolean;
+    shift: string;
+    sort_order: number;
+  }>({
+    period_number: 1,
+    period_name: 'Bloque 1',
+    start_time: '08:00',
+    end_time: '09:30',
+    is_break: false,
+    shift: 'Jornada Completa',
+    sort_order: 1
+  });
+
+  const fetchPeriods = async () => {
+    setLoadingPeriods(true);
+    try {
+      const res = await fetch('/api/schedules/periods', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.periods)) {
+        setPeriodsList(data.periods);
+      }
+    } catch (err) {
+      console.error('Error fetching periods:', err);
+    } finally {
+      setLoadingPeriods(false);
+    }
+  };
+
+  const calculateDurationMinutes = (start: string, end: string) => {
+    if (!start || !end) return 0;
+    const [h1, m1] = start.split(':').map(Number);
+    const [h2, m2] = end.split(':').map(Number);
+    if (isNaN(h1) || isNaN(m1) || isNaN(h2) || isNaN(m2)) return 0;
+    return (h2 * 60 + m2) - (h1 * 60 + m1);
+  };
+
+  const handleOpenNewPeriod = (isBreak = false) => {
+    const nextOrder = periodsList.length > 0 ? Math.max(...periodsList.map(p => p.sort_order || 0)) + 1 : 1;
+    const classCount = periodsList.filter(p => !p.is_break).length;
+    setEditingPeriod(null);
+    setPeriodFormData({
+      id: '',
+      period_number: isBreak ? 0 : classCount + 1,
+      period_name: isBreak ? 'Recreo' : `Bloque ${classCount + 1}`,
+      start_time: '08:00',
+      end_time: isBreak ? '08:15' : '09:30',
+      is_break: isBreak,
+      shift: 'Jornada Completa',
+      sort_order: nextOrder
+    });
+    setShowPeriodModal(true);
+  };
+
+  const handleOpenEditPeriod = (period: any) => {
+    setEditingPeriod(period);
+    setPeriodFormData({
+      id: period.id,
+      period_number: period.period_number,
+      period_name: period.period_name,
+      start_time: period.start_time,
+      end_time: period.end_time,
+      is_break: Boolean(period.is_break),
+      shift: period.shift || 'Jornada Completa',
+      sort_order: period.sort_order || 1
+    });
+    setShowPeriodModal(true);
+  };
+
+  const handleSavePeriod = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!periodFormData.period_name.trim()) {
+      Swal.fire('Atención', 'El nombre del bloque o recreo es obligatorio.', 'warning');
+      return;
+    }
+    if (!periodFormData.start_time || !periodFormData.end_time) {
+      Swal.fire('Atención', 'Debe especificar la hora de inicio y término.', 'warning');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/schedules/periods', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(periodFormData)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        Swal.fire({
+          icon: 'success',
+          title: '¡Guardado!',
+          text: `El período "${periodFormData.period_name}" fue guardado exitosamente.`,
+          timer: 1500,
+          showConfirmButton: false
+        });
+        setShowPeriodModal(false);
+        fetchPeriods();
+      } else {
+        Swal.fire('Error', data.error || 'No se pudo guardar el bloque/recreo.', 'error');
+      }
+    } catch (err: any) {
+      Swal.fire('Error', 'Fallo de conexión al guardar el período.', 'error');
+    }
+  };
+
+  const handleDeletePeriod = async (p: any) => {
+    const confirm = await Swal.fire({
+      icon: 'warning',
+      title: `¿Eliminar "${p.period_name}"?`,
+      text: p.is_break 
+        ? 'Se eliminará este intervalo de recreo o colación de la campana institucional.'
+        : `Se eliminará el Bloque ${p.period_number}. Ten en cuenta que si hay clases asignadas a este bloque, deberás reasignarlas.`,
+      showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#ef4444'
+    });
+
+    if (confirm.isConfirmed) {
+      try {
+        const res = await fetch(`/api/schedules/periods/${encodeURIComponent(p.id)}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          Swal.fire({
+            icon: 'success',
+            title: 'Eliminado',
+            text: 'El bloque u horario fue eliminado exitosamente.',
+            timer: 1500,
+            showConfirmButton: false
+          });
+          fetchPeriods();
+        } else {
+          Swal.fire('Error', data.error || 'No se pudo eliminar el período.', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', 'Error al comunicarse con el servidor.', 'error');
+      }
+    }
+  };
+
+  const handleResetDefaultPeriods = async () => {
+    const confirm = await Swal.fire({
+      icon: 'question',
+      title: '¿Restaurar Horarios JEC Oficiales?',
+      html: `
+        <div style="text-align: left; font-size: 0.9rem; color: #334155;">
+          <p>Esta acción configurará automáticamente la campana estándar chilena (Jornada Escolar Completa):</p>
+          <ul style="margin: 0.5rem 0 0.5rem 1.25rem; font-size: 0.85rem;">
+            <li><strong>Bloque 1:</strong> 08:00 - 09:30 (90 min)</li>
+            <li><strong>Recreo Mañana:</strong> 09:30 - 09:45 (15 min)</li>
+            <li><strong>Bloque 2:</strong> 09:45 - 11:15 (90 min)</li>
+            <li><strong>Recreo:</strong> 11:15 - 11:30 (15 min)</li>
+            <li><strong>Bloque 3:</strong> 11:30 - 13:00 (90 min)</li>
+            <li><strong>Almuerzo:</strong> 13:00 - 13:45 (45 min)</li>
+            <li><strong>Bloque 4:</strong> 13:45 - 15:15 (90 min)</li>
+            <li><strong>Recreo Tarde:</strong> 15:15 - 15:25 (10 min)</li>
+            <li><strong>Bloque 5:</strong> 15:25 - 16:55 (90 min)</li>
+          </ul>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Sí, restaurar plantilla JEC',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#4f46e5'
+    });
+
+    if (confirm.isConfirmed) {
+      try {
+        const res = await fetch('/api/schedules/periods/reset-default', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          Swal.fire('¡Horarios Restaurados!', data.message, 'success');
+          fetchPeriods();
+        } else {
+          Swal.fire('Error', data.error || 'No se pudo restaurar los horarios.', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', 'Error al comunicarse con el servidor.', 'error');
+      }
+    }
+  };
+
+  const handleMovePeriod = async (index: number, direction: 'up' | 'down') => {
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === periodsList.length - 1) return;
+
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    const newItems = [...periodsList];
+    const temp = newItems[index];
+    newItems[index] = newItems[targetIndex];
+    newItems[targetIndex] = temp;
+
+    const updated = newItems.map((item, idx) => ({
+      ...item,
+      sort_order: idx + 1
+    }));
+    setPeriodsList(updated);
+
+    try {
+      await Promise.all(updated.map(item =>
+        fetch('/api/schedules/periods', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(item)
+        })
+      ));
+    } catch (e) {
+      console.error('Error reordering periods:', e);
+      fetchPeriods();
+    }
+  };
 
   const fetchDriveStatus = () => {
     if (!token) return;
@@ -343,6 +573,9 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
         }
       })
       .catch(() => {});
+
+    // 7. Cargar Horarios de Clases y Recreos (Sub-ventana 6.14)
+    fetchPeriods();
   };
 
   const [directorNameConfig, setDirectorNameConfig] = useState<string>('');
@@ -1647,6 +1880,9 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
         <button onClick={() => setSubTab('checklists_config')} style={{ padding: '0.5rem 0.8rem', borderRadius: '6px', border: 'none', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: subTab === 'checklists_config' ? '#4f46e5' : '#f1f5f9', color: subTab === 'checklists_config' ? '#ffffff' : '#64748b' }}>
           <CheckSquare size={14} /> 6.13 Checklists Documentales
         </button>
+        <button onClick={() => setSubTab('schedule_periods')} style={{ padding: '0.5rem 0.8rem', borderRadius: '6px', border: 'none', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: subTab === 'schedule_periods' ? '#0d9488' : '#f1f5f9', color: subTab === 'schedule_periods' ? '#ffffff' : '#64748b' }}>
+          <Clock size={14} /> 6.14 Horarios & Recreos
+        </button>
       </div>
 
       {/* SUB-VENTANA 6.11: FICHA & COMPROMISO DE MATRÍCULA */}
@@ -2134,6 +2370,708 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
       {/* SUB-VENTANA 6.13: CONFIGURACIÓN DE CHECKLISTS DOCUMENTALES (RETIRO Y MATRÍCULA) */}
       {subTab === 'checklists_config' && (
         <ChecklistTemplatesEditor token={token} />
+      )}
+
+      {/* SUB-VENTANA 6.14: HORARIOS DE CLASES Y RECREOS (CAMPANA INSTITUCIONAL) */}
+      {subTab === 'schedule_periods' && (
+        <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          {/* HEADER & ACTION BUTTONS */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#0f172a', margin: '0 0 0.35rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.25rem' }}>
+                <Clock size={22} color="#0d9488" /> 6.14 Campana Institucional: Horarios de Clases, Recreos y Almuerzo
+              </h3>
+              <p style={{ color: '#64748b', fontSize: '0.85rem', margin: 0, maxWidth: '800px' }}>
+                Configura los bloques de clases pedagógicos (horas pedagógicas) y los horarios oficiales de recreo o almuerzo. Estos períodos determinan la estructura de campana para los horarios de cursos, docentes, apoderados y la asignación semanal.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => handleOpenNewPeriod(false)}
+                style={{
+                  padding: '0.55rem 0.95rem',
+                  borderRadius: '8px',
+                  background: '#0d9488',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 4px rgba(13, 148, 136, 0.2)'
+                }}
+              >
+                <Plus size={15} /> + Nuevo Bloque de Clases
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenNewPeriod(true)}
+                style={{
+                  padding: '0.55rem 0.95rem',
+                  borderRadius: '8px',
+                  background: '#fef3c7',
+                  color: '#92400e',
+                  border: '1px solid #fde68a',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <Coffee size={15} /> + Nuevo Recreo / Almuerzo
+              </button>
+              <button
+                type="button"
+                onClick={handleResetDefaultPeriods}
+                style={{
+                  padding: '0.55rem 0.95rem',
+                  borderRadius: '8px',
+                  background: '#ffffff',
+                  color: '#334155',
+                  border: '1px solid #cbd5e1',
+                  fontWeight: 600,
+                  fontSize: '0.82rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  cursor: 'pointer'
+                }}
+                title="Cargar campana estándar chilena JEC (5 bloques de 90 min + recreos)"
+              >
+                <RefreshCw size={14} /> Restaurar Estándar JEC
+              </button>
+              <button
+                type="button"
+                onClick={fetchPeriods}
+                style={{
+                  padding: '0.55rem 0.8rem',
+                  borderRadius: '8px',
+                  background: '#f1f5f9',
+                  color: '#475569',
+                  border: '1px solid #cbd5e1',
+                  fontWeight: 600,
+                  fontSize: '0.82rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  cursor: 'pointer'
+                }}
+                title="Actualizar lista de períodos"
+              >
+                <RefreshCw size={14} className={loadingPeriods ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          </div>
+
+          {/* STATS SUMMARY PILLS */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+            <div style={{ background: '#ffffff', padding: '0.85rem 1.15rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#059669' }}>
+                <Clock size={20} />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Bloques de Clases</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                  {periodsList.filter(p => !p.is_break).length} Bloques
+                  <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#059669', marginLeft: '0.4rem' }}>
+                    ({periodsList.filter(p => !p.is_break).length * 2} hrs pedagógicas)
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: '#ffffff', padding: '0.85rem 1.15rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d97706' }}>
+                <Coffee size={20} />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Recreos y Almuerzos</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                  {periodsList.filter(p => p.is_break).length} Intervalos
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: '#ffffff', padding: '0.85rem 1.15rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}>
+                <Layers size={20} />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Rango de Horario Total</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                  {periodsList.length > 0 ? `${periodsList[0]?.start_time || '08:00'} - ${periodsList[periodsList.length - 1]?.end_time || '16:55'}` : 'Sin Períodos'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* PERIODS TABLE */}
+          {loadingPeriods ? (
+            <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
+              <RefreshCw size={28} className="animate-spin" style={{ margin: '0 auto 0.75rem auto' }} />
+              <p style={{ margin: 0, fontWeight: 600 }}>Cargando estructura horaria institucional...</p>
+            </div>
+          ) : periodsList.length === 0 ? (
+            <div style={{ background: '#ffffff', padding: '3rem 2rem', textAlign: 'center', borderRadius: '10px', border: '1px dashed #cbd5e1' }}>
+              <Clock size={40} color="#94a3b8" style={{ margin: '0 auto 1rem auto' }} />
+              <h4 style={{ margin: '0 0 0.5rem 0', color: '#334155' }}>No hay períodos ni recreos configurados</h4>
+              <p style={{ color: '#64748b', fontSize: '0.85rem', maxWidth: '480px', margin: '0 auto 1.5rem auto' }}>
+                Para comenzar de inmediato con la campana oficial chilena de Jornada Escolar Completa (JEC), haz clic en el siguiente botón:
+              </p>
+              <button
+                type="button"
+                onClick={handleResetDefaultPeriods}
+                style={{
+                  padding: '0.65rem 1.25rem',
+                  borderRadius: '8px',
+                  background: '#0d9488',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <RefreshCw size={15} style={{ marginRight: '0.4rem', verticalAlign: 'middle' }} /> Cargar Plantilla JEC (5 Bloques + Recreos)
+              </button>
+            </div>
+          ) : (
+            <div style={{ background: '#ffffff', borderRadius: '10px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1', color: '#475569', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <th style={{ padding: '0.75rem 1rem', width: '90px' }}>Orden</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Tipo de Intervalo</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>N° Bloque</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Nombre Oficial</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Horario</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Duración</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Jornada</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {periodsList.map((p, idx) => {
+                    const dur = calculateDurationMinutes(p.start_time, p.end_time);
+                    const isBreak = Boolean(p.is_break);
+
+                    return (
+                      <tr
+                        key={p.id || idx}
+                        style={{
+                          borderBottom: '1px solid #f1f5f9',
+                          background: isBreak ? '#fffdf7' : '#ffffff',
+                          transition: 'background 0.15s ease'
+                        }}
+                      >
+                        {/* ORDEN / REORDENAR */}
+                        <td style={{ padding: '0.65rem 1rem', verticalAlign: 'middle' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <span style={{ fontWeight: 700, color: '#94a3b8', fontSize: '0.8rem', width: '20px' }}>
+                              #{idx + 1}
+                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                              <button
+                                type="button"
+                                disabled={idx === 0}
+                                onClick={() => handleMovePeriod(idx, 'up')}
+                                style={{
+                                  border: 'none',
+                                  background: 'transparent',
+                                  cursor: idx === 0 ? 'not-allowed' : 'pointer',
+                                  color: idx === 0 ? '#cbd5e1' : '#64748b',
+                                  padding: 0,
+                                  lineHeight: 1
+                                }}
+                                title="Mover arriba"
+                              >
+                                <ArrowUp size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={idx === periodsList.length - 1}
+                                onClick={() => handleMovePeriod(idx, 'down')}
+                                style={{
+                                  border: 'none',
+                                  background: 'transparent',
+                                  cursor: idx === periodsList.length - 1 ? 'not-allowed' : 'pointer',
+                                  color: idx === periodsList.length - 1 ? '#cbd5e1' : '#64748b',
+                                  padding: 0,
+                                  lineHeight: 1
+                                }}
+                                title="Mover abajo"
+                              >
+                                <ArrowDown size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* TIPO */}
+                        <td style={{ padding: '0.65rem 1rem', verticalAlign: 'middle' }}>
+                          {isBreak ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: '#fef3c7', color: '#92400e', padding: '0.25rem 0.55rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700 }}>
+                              <Coffee size={12} /> Recreo / Almuerzo
+                            </span>
+                          ) : (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: '#e0f2fe', color: '#0369a1', padding: '0.25rem 0.55rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700 }}>
+                              <BookOpen size={12} /> Clase Pedagógica
+                            </span>
+                          )}
+                        </td>
+
+                        {/* NÚMERO */}
+                        <td style={{ padding: '0.65rem 1rem', verticalAlign: 'middle' }}>
+                          {isBreak ? (
+                            <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>
+                          ) : (
+                            <span style={{ fontWeight: 800, color: '#0f172a', background: '#f1f5f9', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
+                              Bloque {p.period_number}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* NOMBRE OFICIAL */}
+                        <td style={{ padding: '0.65rem 1rem', verticalAlign: 'middle' }}>
+                          <span style={{ fontWeight: 700, color: isBreak ? '#92400e' : '#1e293b' }}>
+                            {p.period_name}
+                          </span>
+                        </td>
+
+                        {/* HORARIO */}
+                        <td style={{ padding: '0.65rem 1rem', verticalAlign: 'middle' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '0.25rem 0.6rem', borderRadius: '6px', fontWeight: 700, color: '#334155', fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                            <Clock size={13} color="#64748b" /> {p.start_time} - {p.end_time}
+                          </span>
+                        </td>
+
+                        {/* DURACIÓN */}
+                        <td style={{ padding: '0.65rem 1rem', verticalAlign: 'middle' }}>
+                          <span style={{ fontWeight: 700, color: dur > 0 ? '#0f172a' : '#ef4444' }}>
+                            {dur} min
+                          </span>
+                          {!isBreak && dur === 90 && (
+                            <span style={{ fontSize: '0.72rem', color: '#059669', display: 'block' }}>
+                              (2 hrs ped.)
+                            </span>
+                          )}
+                          {!isBreak && dur === 45 && (
+                            <span style={{ fontSize: '0.72rem', color: '#0284c7', display: 'block' }}>
+                              (1 hr ped.)
+                            </span>
+                          )}
+                        </td>
+
+                        {/* JORNADA */}
+                        <td style={{ padding: '0.65rem 1rem', verticalAlign: 'middle' }}>
+                          <span style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                            {p.shift || 'Jornada Completa'}
+                          </span>
+                        </td>
+
+                        {/* ACCIONES */}
+                        <td style={{ padding: '0.65rem 1rem', verticalAlign: 'middle', textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditPeriod(p)}
+                              style={{
+                                border: '1px solid #cbd5e1',
+                                background: '#ffffff',
+                                color: '#334155',
+                                padding: '0.3rem 0.55rem',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                fontSize: '0.75rem',
+                                fontWeight: 600
+                              }}
+                              title="Editar este período"
+                            >
+                              <Edit size={13} /> Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePeriod(p)}
+                              style={{
+                                border: '1px solid #fecaca',
+                                background: '#fef2f2',
+                                color: '#b91c1c',
+                                padding: '0.3rem 0.55rem',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                fontSize: '0.75rem',
+                                fontWeight: 600
+                              }}
+                              title="Eliminar este período"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* MODAL CREAR / EDITAR PERÍODO O RECREO */}
+          {showPeriodModal && (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(15, 23, 42, 0.65)',
+              backdropFilter: 'blur(3px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+              padding: '1rem'
+            }}>
+              <div style={{
+                background: '#ffffff',
+                borderRadius: '16px',
+                maxWidth: '540px',
+                width: '100%',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.08)',
+                overflow: 'hidden'
+              }}>
+                {/* MODAL HEADER */}
+                <div style={{
+                  padding: '1.25rem 1.5rem',
+                  borderBottom: '1px solid #e2e8f0',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: periodFormData.is_break ? '#fffdf7' : '#f8fafc'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '8px',
+                      background: periodFormData.is_break ? '#fef3c7' : '#e0f2fe',
+                      color: periodFormData.is_break ? '#92400e' : '#0369a1',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {periodFormData.is_break ? <Coffee size={20} /> : <Clock size={20} />}
+                    </div>
+                    <div>
+                      <h4 style={{ margin: 0, fontFamily: 'Outfit, sans-serif', color: '#0f172a', fontSize: '1.1rem' }}>
+                        {editingPeriod ? 'Editar Horario o Recreo' : 'Nuevo Bloque o Recreo'}
+                      </h4>
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>
+                        Campana escolar institucional de LTP v2.0
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowPeriodModal(false)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      padding: '0.35rem',
+                      borderRadius: '6px'
+                    }}
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                {/* MODAL FORM */}
+                <form onSubmit={handleSavePeriod} style={{ padding: '1.5rem' }}>
+                  {/* SELECTOR DE TIPO: CLASE VS RECREO */}
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.45rem' }}>
+                      Tipo de Período:
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const classCount = periodsList.filter(p => !p.is_break).length;
+                          setPeriodFormData(prev => ({
+                            ...prev,
+                            is_break: false,
+                            period_number: prev.period_number > 0 ? prev.period_number : classCount + 1,
+                            period_name: prev.period_name.includes('Recreo') || prev.period_name.includes('Almuerzo')
+                              ? `Bloque ${classCount + 1}`
+                              : prev.period_name
+                          }));
+                        }}
+                        style={{
+                          padding: '0.75rem',
+                          borderRadius: '10px',
+                          border: !periodFormData.is_break ? '2px solid #0d9488' : '1px solid #cbd5e1',
+                          background: !periodFormData.is_break ? '#f0fdfa' : '#ffffff',
+                          color: !periodFormData.is_break ? '#0f766e' : '#64748b',
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.45rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <BookOpen size={16} /> Bloque de Clases
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPeriodFormData(prev => ({
+                            ...prev,
+                            is_break: true,
+                            period_number: 0,
+                            period_name: prev.period_name.startsWith('Bloque') ? 'Recreo' : prev.period_name
+                          }));
+                        }}
+                        style={{
+                          padding: '0.75rem',
+                          borderRadius: '10px',
+                          border: periodFormData.is_break ? '2px solid #d97706' : '1px solid #cbd5e1',
+                          background: periodFormData.is_break ? '#fffbeb' : '#ffffff',
+                          color: periodFormData.is_break ? '#b45309' : '#64748b',
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.45rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Coffee size={16} /> Recreo / Almuerzo
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* NOMBRE DEL PERÍODO */}
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                      Nombre del Período / Recreo: *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={periodFormData.period_name}
+                      onChange={e => setPeriodFormData(prev => ({ ...prev, period_name: e.target.value }))}
+                      placeholder={periodFormData.is_break ? 'ej: Recreo Mañana, Almuerzo, Recreo Tarde' : 'ej: Bloque 1, Bloque 2, Taller'}
+                      style={{
+                        width: '100%',
+                        padding: '0.65rem 0.85rem',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.88rem',
+                        color: '#0f172a',
+                        fontWeight: 600,
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  {/* NÚMERO DE BLOQUE (SI NO ES RECREO) */}
+                  {!periodFormData.is_break && (
+                    <div style={{ marginBottom: '1.25rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                        Número de Bloque Pedagógico:
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="15"
+                        value={periodFormData.period_number}
+                        onChange={e => setPeriodFormData(prev => ({ ...prev, period_number: parseInt(e.target.value, 10) || 1 }))}
+                        style={{
+                          width: '100%',
+                          padding: '0.65rem 0.85rem',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.88rem',
+                          color: '#0f172a',
+                          fontWeight: 600,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
+                        Corresponde al correlativo del bloque (ej: 1 para el 1er bloque, 2 para el 2do).
+                      </span>
+                    </div>
+                  )}
+
+                  {/* HORAS: INICIO Y TÉRMINO */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                        Hora de Inicio: *
+                      </label>
+                      <input
+                        type="time"
+                        required
+                        value={periodFormData.start_time}
+                        onChange={e => setPeriodFormData(prev => ({ ...prev, start_time: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '0.65rem 0.85rem',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.9rem',
+                          color: '#0f172a',
+                          fontWeight: 700,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                        Hora de Término: *
+                      </label>
+                      <input
+                        type="time"
+                        required
+                        value={periodFormData.end_time}
+                        onChange={e => setPeriodFormData(prev => ({ ...prev, end_time: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '0.65rem 0.85rem',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.9rem',
+                          color: '#0f172a',
+                          fontWeight: 700,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* BANNER DE DURACIÓN CALCULADA */}
+                  {(() => {
+                    const dur = calculateDurationMinutes(periodFormData.start_time, periodFormData.end_time);
+                    const isNeg = dur <= 0;
+                    return (
+                      <div style={{
+                        padding: '0.75rem 1rem',
+                        borderRadius: '8px',
+                        background: isNeg ? '#fef2f2' : '#f0fdf4',
+                        border: isNeg ? '1px solid #fecaca' : '1px solid #bbf7d0',
+                        marginBottom: '1.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.82rem', color: isNeg ? '#b91c1c' : '#166534', fontWeight: 600 }}>
+                          <Clock size={16} />
+                          {isNeg ? (
+                            <span>La hora de término debe ser mayor a la hora de inicio.</span>
+                          ) : (
+                            <span>
+                              Duración calculada: <strong>{dur} minutos</strong>
+                              {!periodFormData.is_break && (
+                                <span style={{ marginLeft: '0.35rem', opacity: 0.85 }}>
+                                  ({Math.round((dur / 45) * 10) / 10} hrs pedagógicas)
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* JORNADA / TURNO */}
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                      Jornada / Turno:
+                    </label>
+                    <select
+                      value={periodFormData.shift}
+                      onChange={e => setPeriodFormData(prev => ({ ...prev, shift: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '0.65rem 0.85rem',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.88rem',
+                        color: '#0f172a',
+                        fontWeight: 600,
+                        boxSizing: 'border-box'
+                      }}
+                    >
+                      <option value="Jornada Completa">Jornada Escolar Completa (JEC)</option>
+                      <option value="Jornada Mañana">Jornada Mañana</option>
+                      <option value="Jornada Tarde">Jornada Tarde</option>
+                      <option value="Vespertina">Jornada Vespertina / Nocturna</option>
+                    </select>
+                  </div>
+
+                  {/* MODAL FOOTER */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowPeriodModal(false)}
+                      style={{
+                        padding: '0.6rem 1.15rem',
+                        borderRadius: '8px',
+                        background: '#f1f5f9',
+                        color: '#475569',
+                        border: '1px solid #cbd5e1',
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      style={{
+                        padding: '0.6rem 1.35rem',
+                        borderRadius: '8px',
+                        background: '#0d9488',
+                        color: '#ffffff',
+                        border: 'none',
+                        fontWeight: 700,
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        boxShadow: '0 2px 6px rgba(13, 148, 136, 0.25)'
+                      }}
+                    >
+                      <Save size={16} /> {editingPeriod ? 'Actualizar Período' : 'Guardar Período'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* SUB-VENTANA 6.3: PROFESORES Y CLAVES */}

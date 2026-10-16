@@ -59,6 +59,48 @@ router.post('/periods', authMiddleware, checkRoles(['Admin', 'Director', 'Jefe U
   }
 });
 
+// DELETE /api/schedules/periods/:id - Eliminar bloque o recreo
+router.delete('/periods/:id', authMiddleware, checkRoles(['Admin', 'Director', 'Jefe UTP', 'Inspector General']), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await query('DELETE FROM school_periods WHERE id = $1', [id]);
+    res.json({ success: true, message: 'Bloque o recreo eliminado exitosamente.' });
+  } catch (err: any) {
+    console.error('Error al eliminar bloque horario:', err);
+    res.status(500).json({ error: 'Error al eliminar bloque horario.' });
+  }
+});
+
+// POST /api/schedules/periods/reset-default - Restaurar bloques y recreos estándar
+router.post('/periods/reset-default', authMiddleware, checkRoles(['Admin', 'Director', 'Jefe UTP']), async (_req: Request, res: Response) => {
+  try {
+    const standardPeriods = [
+      { id: 'P1', num: 1, name: 'Bloque 1', start: '08:00', end: '09:30', is_break: false, order: 1 },
+      { id: 'P_REC1', num: 0, name: 'Recreo Mañana', start: '09:30', end: '09:45', is_break: true, order: 2 },
+      { id: 'P2', num: 2, name: 'Bloque 2', start: '09:45', end: '11:15', is_break: false, order: 3 },
+      { id: 'P_REC2', num: 0, name: 'Recreo', start: '11:15', end: '11:30', is_break: true, order: 4 },
+      { id: 'P3', num: 3, name: 'Bloque 3', start: '11:30', end: '13:00', is_break: false, order: 5 },
+      { id: 'P_LUNCH', num: 0, name: 'Almuerzo', start: '13:00', end: '13:45', is_break: true, order: 6 },
+      { id: 'P4', num: 4, name: 'Bloque 4', start: '13:45', end: '15:15', is_break: false, order: 7 },
+      { id: 'P_REC3', num: 0, name: 'Recreo Tarde', start: '15:15', end: '15:25', is_break: true, order: 8 },
+      { id: 'P5', num: 5, name: 'Bloque 5', start: '15:25', end: '16:55', is_break: false, order: 9 }
+    ];
+
+    await query('DELETE FROM school_periods');
+    for (const p of standardPeriods) {
+      await query(`
+        INSERT INTO school_periods (id, period_number, period_name, start_time, end_time, is_break, sort_order)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [p.id, p.num, p.name, p.start, p.end, p.is_break, p.order]);
+    }
+
+    res.json({ success: true, message: 'Bloques y recreos restaurados al estándar oficial con éxito.' });
+  } catch (err: any) {
+    console.error('Error al restaurar bloques estándar:', err);
+    res.status(500).json({ error: 'Error al restaurar bloques horarios.' });
+  }
+});
+
 // =============================================================================
 // 2. HORARIOS DE CLASES (class_schedules)
 // =============================================================================

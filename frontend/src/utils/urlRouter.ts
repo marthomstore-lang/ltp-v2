@@ -97,7 +97,7 @@ export const MODULE_SUBPATHS: Record<string, Record<string, string>> = {
     editor: 'editor',
     printable: 'vista-previa',
   },
-  // Configuración del Sistema (13 sub-ventanas)
+  // Configuración del Sistema (14 sub-ventanas)
   config: {
     courses: 'cursos',
     teachers: 'funcionarios',
@@ -112,6 +112,7 @@ export const MODULE_SUBPATHS: Record<string, Record<string, string>> = {
     enrollment_config: 'ficha-compromiso',
     institution_config: 'establecimiento',
     checklists_config: 'checklists',
+    schedule_periods: 'horarios-bloques',
   },
 };
 
@@ -136,7 +137,7 @@ export const FUNCTION_ID_TO_PATH: Record<string, string> = {
   admin_docs: '/documentos',
   library: '/biblioteca (+9 sub-links)',
   permissions: '/permisos',
-  config: '/configuracion (+13 sub-links)',
+  config: '/configuracion (+14 sub-links)',
   audit_logs: '/auditoria',
   course_messaging: 'Barra Superior (Botón) / /comunicaciones',
   multiview: 'Barra Superior (Botón)',
