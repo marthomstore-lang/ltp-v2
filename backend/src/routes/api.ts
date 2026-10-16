@@ -939,7 +939,18 @@ router.post('/auth/impersonate', authMiddleware, async (req: Request, res: Respo
   const adminUser = req.user as any;
   const adminRole = adminUser?.role;
   const adminRun = String(adminUser?.run || '').replace(/\./g, '').trim();
-  const isSuperAdmin = adminRole === 'Admin' || adminRun === '18803735-6' || adminRole === 'Director' || (Array.isArray(adminUser?.roles) && adminUser.roles.includes('Admin'));
+  const impersonatedBy = adminUser?.impersonatedBy;
+  const originalRole = impersonatedBy?.role;
+  const originalRun = String(impersonatedBy?.run || '').replace(/\./g, '').trim();
+
+  const isSuperAdmin =
+    adminRole === 'Admin' ||
+    adminRole === 'Director' ||
+    adminRun === '18803735-6' ||
+    (Array.isArray(adminUser?.roles) && (adminUser.roles.includes('Admin') || adminUser.roles.includes('Director'))) ||
+    originalRole === 'Admin' ||
+    originalRole === 'Director' ||
+    originalRun === '18803735-6';
 
   if (!isSuperAdmin) {
     return res.status(403).json({ error: 'Acceso denegado. Solo Administradores y Directivos pueden utilizar la impersonación maestra.' });
@@ -954,14 +965,20 @@ router.post('/auth/impersonate', authMiddleware, async (req: Request, res: Respo
     let userRes;
     if (targetUserId) {
       userRes = await query('SELECT * FROM users WHERE id = $1', [targetUserId]);
-    } else if (targetRun) {
-      const cleanRun = String(targetRun).replace(/\./g, '').trim();
-      userRes = await query('SELECT * FROM users WHERE REPLACE(run, \'.\', \'\') = $1 OR run = $2', [cleanRun, targetRun]);
-    } else {
-      userRes = await query('SELECT * FROM users WHERE name ILIKE $1 OR full_name ILIKE $1 LIMIT 1', [`%${String(targetName).trim()}%`]);
+    }
+    if (!userRes || userRes.rows.length === 0) {
+      if (targetRun) {
+        const cleanRun = String(targetRun).replace(/\./g, '').trim();
+        userRes = await query('SELECT * FROM users WHERE REPLACE(run, \'.\', \'\') = $1 OR run = $2', [cleanRun, targetRun]);
+      }
+    }
+    if (!userRes || userRes.rows.length === 0) {
+      if (targetName) {
+        userRes = await query('SELECT * FROM users WHERE name ILIKE $1 OR full_name ILIKE $1 LIMIT 1', [`%${String(targetName).trim()}%`]);
+      }
     }
 
-    if (userRes.rows.length === 0) {
+    if (!userRes || userRes.rows.length === 0) {
       return res.status(404).json({ error: 'El usuario especificado no fue encontrado en la base de datos.' });
     }
 
@@ -983,7 +1000,7 @@ router.post('/auth/impersonate', authMiddleware, async (req: Request, res: Respo
     const parsedTheme = allowedCustomize ? parseUserThemeConfig(target.theme_config) : null;
     const safeAvatar = allowedCustomize && target.avatar ? String(target.avatar) : null;
 
-    const impersonatedByInfo = {
+    const impersonatedByInfo = impersonatedBy || {
       id: adminUser?.id || 'admin',
       name: adminUser?.name || 'Administrador',
       run: adminUser?.run || '',
@@ -1003,10 +1020,11 @@ router.post('/auth/impersonate', authMiddleware, async (req: Request, res: Respo
       { expiresIn: '8h' }
     );
 
+    const callerName = impersonatedBy?.name || adminUser?.name || 'Administrador';
     await logAudit(
       req,
       'IMPERSONATE_USER',
-      `Administrador ${adminUser?.name} inició sesión maestra como: ${target.name} (${primaryRole})`
+      `Administrador ${callerName} inició sesión maestra como: ${target.name} (${primaryRole})`
     );
 
     res.json({

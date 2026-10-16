@@ -101,14 +101,14 @@ export const ImpersonateUserModal: React.FC<ImpersonateUserModalProps> = ({ isOp
 
     if (confirm.isConfirmed) {
       setSwitchingId(targetUser.id);
-      const success = await impersonateUser({
+      const result = await impersonateUser({
         targetUserId: targetUser.id,
         targetRun: targetUser.run,
         targetName: targetName
       });
 
       setSwitchingId(null);
-      if (success) {
+      if (result.success) {
         onClose();
         Swal.fire({
           icon: 'success',
@@ -118,7 +118,7 @@ export const ImpersonateUserModal: React.FC<ImpersonateUserModalProps> = ({ isOp
           showConfirmButton: false
         });
       } else {
-        Swal.fire('Error', 'No se pudo iniciar sesión como el usuario seleccionado.', 'error');
+        Swal.fire('Error', result.error || 'No se pudo iniciar sesión como el usuario seleccionado.', 'error');
       }
     }
   };

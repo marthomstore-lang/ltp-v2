@@ -95,7 +95,7 @@ interface AuthContextType {
   updateUser: (updatedUser: Partial<User>) => void;
   switchRole: (newRole: UserRole) => void;
   restoreOriginalRole: () => void;
-  impersonateUser: (target: { targetUserId?: string; targetRun?: string; targetName?: string }) => Promise<boolean>;
+  impersonateUser: (target: { targetUserId?: string; targetRun?: string; targetName?: string }) => Promise<{ success: boolean; error?: string }>;
   revertImpersonation: () => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
@@ -325,11 +325,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
 
-  const impersonateUser = async (target: { targetUserId?: string; targetRun?: string; targetName?: string }): Promise<boolean> => {
-    if (!token || !user) return false;
+  const impersonateUser = async (target: { targetUserId?: string; targetRun?: string; targetName?: string }): Promise<{ success: boolean; error?: string }> => {
+    // Tomar siempre el token del administrador maestro
+    let savedMaster = masterAdminSession;
+    if (!savedMaster) {
+      try {
+        const raw = sessionStorage.getItem('ltp_master_admin_session');
+        if (raw) savedMaster = JSON.parse(raw);
+      } catch {}
+    }
+    const currentMaster = savedMaster || (token && user ? { token, user } : null);
+    if (!currentMaster) return { success: false, error: 'No se encontró la sesión maestra de administrador.' };
+
     try {
-      // Guardar la sesión maestra del admin actual antes de cambiar si aún no está guardada
-      const currentMaster = masterAdminSession || { token, user };
       sessionStorage.setItem('ltp_master_admin_session', JSON.stringify(currentMaster));
       setMasterAdminSession(currentMaster);
 
@@ -337,26 +345,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${currentMaster.token || token}`
         },
         body: JSON.stringify(target)
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok && data.success && data.token && data.user) {
         setToken(data.token);
         setUser(data.user);
         sessionStorage.setItem('ltp_token', data.token);
         sessionStorage.setItem('ltp_user', JSON.stringify(data.user));
         applyUserThemeToDocument(data.user.themeConfig || null, data.user.role);
-        return true;
+        return { success: true };
       } else {
         console.error('Error al impersonar usuario:', data.error);
-        return false;
+        return { success: false, error: data.error || 'No se pudo iniciar sesión como el usuario seleccionado.' };
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Fallo en llamada impersonateUser:', err);
-      return false;
+      return { success: false, error: err?.message || 'Error de conexión con el servidor.' };
     }
   };
 
