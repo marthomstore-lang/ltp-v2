@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home, Send, RefreshCw, X, PhoneCall, CalendarDays, Sparkles } from 'lucide-react';
+import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home, Send, RefreshCw, X, PhoneCall, CalendarDays, Sparkles, Menu } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { InstitutionalPlatformsSection } from './InstitutionalPlatformsSection';
 import { ExecutiveOverviewSection } from './ExecutiveOverviewSection';
@@ -436,6 +436,7 @@ export const AdminDashboard: React.FC = () => {
   const [profileModalTab, setProfileModalTab] = useState<'info' | 'customize'>('info');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [auditCategoryFilter, setAuditCategoryFilter] = useState<'all' | 'courses' | 'teachers' | 'admin'>('all');
@@ -915,6 +916,84 @@ export const AdminDashboard: React.FC = () => {
       )}
 
       <div className="app-container" style={{ flex: 1 }}>
+        {/* BARRA SUPERIOR STICKY PARA MÓVIL / TABLET */}
+        <header className="mobile-top-bar">
+          <div className="mobile-top-bar-left">
+            <button
+              type="button"
+              className="mobile-hamburger-btn"
+              onClick={() => setMobileDrawerOpen(prev => !prev)}
+              aria-label="Abrir menú"
+              title="Abrir menú de navegación"
+            >
+              <Menu size={22} />
+            </button>
+            <div className="mobile-brand">
+              <img src="/logo.png" alt="LTP Logo" className="mobile-brand-logo" />
+              <span className="mobile-brand-title">LICEO PRO</span>
+            </div>
+          </div>
+
+          <div className="mobile-top-bar-center">
+            <span className="mobile-section-badge">
+              {currentRole === 'Apoderado' && activeTab === 'home' ? 'Portal Apoderado' :
+               currentRole === 'Estudiante' && activeTab === 'home' ? 'Portal Estudiante' :
+               activeTab === 'home' ? 'Dashboard' :
+               activeTab === 'grades' ? 'Calificaciones' :
+               activeTab === 'overview' ? 'Panorama' :
+               activeTab === 'evaluations_pie' ? 'Evaluaciones' :
+               activeTab === 'curriculum_plans' ? 'Planificaciones' :
+               activeTab === 'students' ? 'Matrícula' :
+               activeTab === 'guardian_calls' ? 'Llamadas' :
+               activeTab === 'interviews' ? 'Entrevistas' :
+               activeTab === 'observations' ? 'Hoja de Vida' :
+               activeTab === 'config' ? 'Configuración' : getFunctionName(activeTab)}
+            </span>
+          </div>
+
+          <div className="mobile-top-bar-right">
+            <button
+              type="button"
+              className="mobile-icon-btn"
+              onClick={() => {
+                setShowNotificationDropdown(prev => !prev);
+                if (unreadCount > 0) markNotificationsAsRead(true);
+              }}
+              aria-label="Notificaciones"
+              title="Notificaciones"
+            >
+              <Bell size={20} color={unreadCount > 0 ? '#4f46e5' : '#475569'} />
+              {unreadCount > 0 && (
+                <span className="mobile-notif-dot">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+            <div
+              className="mobile-avatar-circle"
+              onClick={() => {
+                setProfileModalTab(canCustomizeProfile ? 'customize' : 'info');
+                setShowProfileModal(true);
+              }}
+              title={user?.name || 'Mi Perfil'}
+            >
+              {canCustomizeProfile && user?.avatar ? (
+                <img src={user.avatar} alt="Perfil" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+              ) : (
+                user?.name ? user.name.substring(0, 2).toUpperCase() : 'AD'
+              )}
+            </div>
+          </div>
+        </header>
+
+        {/* TELÓN DE FONDO (BACKDROP) PARA CERRAR EL DRAWER EN TABLET / MÓVIL */}
+        {mobileDrawerOpen && (
+          <div
+            className="mobile-drawer-backdrop"
+            onClick={() => setMobileDrawerOpen(false)}
+          />
+        )}
+
         <Suspense fallback={null}>
         {/* Multivista Dual Screen Modal */}
         {showMultiview && (
@@ -988,8 +1067,8 @@ export const AdminDashboard: React.FC = () => {
         />
       )}
 
-      {/* Sidebar Estilo Intranet Behance Adaptativo */}
-      <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`} style={{ transition: 'all 0.25s ease' }}>
+      {/* Sidebar Estilo Intranet Behance Adaptativo con Drawer Off-Canvas */}
+      <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileDrawerOpen ? 'mobile-open' : ''}`} style={{ transition: 'all 0.25s ease' }}>
         <div className="sidebar-brand" style={{ gap: '0.5rem', padding: sidebarCollapsed ? '1rem 0.5rem' : '1rem 1.25rem', justifyContent: sidebarCollapsed ? 'center' : 'space-between', flexWrap: 'nowrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <img src="/logo.png" alt="LTP Logo" style={{ height: '36px', width: 'auto', objectFit: 'contain', borderRadius: '4px', background: '#ffffff', padding: '2px' }} />
@@ -998,13 +1077,26 @@ export const AdminDashboard: React.FC = () => {
             )}
           </div>
 
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            title={sidebarCollapsed ? 'Expandir menú completo' : 'Colapsar menú (Solo ver íconos)'}
-            style={{ background: 'rgba(255,255,255,0.12)', border: 'none', color: '#ffffff', borderRadius: '6px', padding: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <button
+              type="button"
+              className="mobile-close-btn"
+              onClick={() => setMobileDrawerOpen(false)}
+              aria-label="Cerrar menú"
+              title="Cerrar menú"
+            >
+              <X size={18} />
+            </button>
+
+            <button
+              className="desktop-collapse-btn"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              title={sidebarCollapsed ? 'Expandir menú completo' : 'Colapsar menú (Solo ver íconos)'}
+              style={{ background: 'rgba(255,255,255,0.12)', border: 'none', color: '#ffffff', borderRadius: '6px', padding: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+            </button>
+          </div>
         </div>
 
         {/* BUSCADOR RÁPIDO DE MÓDULOS EN EL SIDEBAR */}
@@ -1145,7 +1237,10 @@ export const AdminDashboard: React.FC = () => {
                       <div
                         key={item.id}
                         className={`nav-item ${isActive ? 'active' : ''}`}
-                        onClick={() => navigateToTab(item.id, item.label)}
+                        onClick={() => {
+                          setMobileDrawerOpen(false);
+                          navigateToTab(item.id, item.label);
+                        }}
                         title={`${item.label}${isViewOnly ? ' (Solo Vista)' : ''}`}
                         style={{
                           justifyContent: sidebarCollapsed ? 'center' : 'space-between',
@@ -1198,6 +1293,7 @@ export const AdminDashboard: React.FC = () => {
           <div
             className="nav-item"
             onClick={() => {
+              setMobileDrawerOpen(false);
               setProfileModalTab(canCustomizeProfile ? 'customize' : 'info');
               setShowProfileModal(true);
             }}
@@ -1222,7 +1318,10 @@ export const AdminDashboard: React.FC = () => {
 
           <div
             className="nav-item"
-            onClick={() => logout()}
+            onClick={() => {
+              setMobileDrawerOpen(false);
+              logout();
+            }}
             title={sidebarCollapsed ? 'Cerrar Sesión' : undefined}
             style={{
               color: '#f87171',
@@ -1288,34 +1387,36 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div ref={headerDropdownRef} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {canAccess('course_messaging') && (
-              <button
-                onClick={() => setShowCourseMessageModal(true)}
-                className="btn"
-                style={{
-                  background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
-                  color: '#ffffff',
-                  gap: '0.45rem',
-                  borderRadius: '9999px',
-                  padding: '0.5rem 1.15rem',
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                  border: 'none',
-                  boxShadow: '0 2px 8px rgba(79, 70, 229, 0.25)'
-                }}
-                title="Enviar mensaje o correo electrónico a todos los profesores asignados a un curso"
-              >
-                <MessageSquare size={16} /> Comunicar a Curso
-              </button>
-            )}
+            <div className="quick-actions-row" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              {canAccess('course_messaging') && (
+                <button
+                  onClick={() => setShowCourseMessageModal(true)}
+                  className="btn"
+                  style={{
+                    background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
+                    color: '#ffffff',
+                    gap: '0.45rem',
+                    borderRadius: '9999px',
+                    padding: '0.5rem 1.15rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    border: 'none',
+                    boxShadow: '0 2px 8px rgba(79, 70, 229, 0.25)'
+                  }}
+                  title="Enviar mensaje o correo electrónico a todos los profesores asignados a un curso"
+                >
+                  <MessageSquare size={16} /> Comunicar a Curso
+                </button>
+              )}
 
-            {canAccess('multiview') && (
-              <button onClick={() => setShowMultiview(true)} className="btn btn-primary" style={{ gap: '0.4rem', borderRadius: '9999px', padding: '0.5rem 1.1rem' }}>
-                <Monitor size={16} /> Multivista QR Dual
-              </button>
-            )}
+              {canAccess('multiview') && (
+                <button onClick={() => setShowMultiview(true)} className="btn btn-primary" style={{ gap: '0.4rem', borderRadius: '9999px', padding: '0.5rem 1.1rem' }}>
+                  <Monitor size={16} /> Multivista QR Dual
+                </button>
+              )}
+            </div>
 
             {/* MENÚ DESPLEGABLE DE NOTIFICACIONES TI */}
             <div style={{ position: 'relative' }}>

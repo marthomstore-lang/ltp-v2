@@ -783,9 +783,8 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
 
       {/* 2. TARJETAS DE PANORAMA INSTITUCIONAL */}
       <div
+        className="card-grid"
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
           gap: '1rem',
           marginBottom: '1.75rem'
         }}
@@ -1216,10 +1215,8 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
 
         {/* Marcador Analítico (Scoreboard de Contacto) */}
         <div
+          className="call-stats-grid"
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-            gap: '1rem',
             padding: '1.25rem 1.75rem',
             borderBottom: '1px solid #f1f5f9',
             backgroundColor: '#f8fafc'
@@ -1768,7 +1765,7 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', flex: '1 1 auto' }}>
             {/* Botón Filtro Rápido Alertas Semanales */}
             {studentsInWeeklyAlert.length > 0 && (
               <button
@@ -1784,7 +1781,8 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '4px'
+                  gap: '4px',
+                  whiteSpace: 'nowrap'
                 }}
                 title="Filtrar estudiantes con 3 o más llamadas no contestadas en 7 días"
               >
@@ -1800,11 +1798,13 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
                 onChange={(e) => setCourseFilter(e.target.value)}
                 style={{
                   padding: '0.45rem 0.75rem',
-                  fontSize: '0.85rem',
+                  fontSize: '0.82rem',
                   border: '1px solid #cbd5e1',
                   borderRadius: '8px',
                   outline: 'none',
-                  backgroundColor: '#ffffff'
+                  backgroundColor: '#ffffff',
+                  flex: '1 1 130px',
+                  minWidth: '120px'
                 }}
               >
                 <option value="all">Todos los Cursos</option>
@@ -1822,11 +1822,13 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
               onChange={(e) => setStatusFilter(e.target.value)}
               style={{
                 padding: '0.45rem 0.75rem',
-                fontSize: '0.85rem',
+                fontSize: '0.82rem',
                 border: '1px solid #cbd5e1',
                 borderRadius: '8px',
                 outline: 'none',
-                backgroundColor: '#ffffff'
+                backgroundColor: '#ffffff',
+                flex: '1 1 130px',
+                minWidth: '120px'
               }}
             >
               <option value="all">Todos los Resultados</option>
@@ -1840,11 +1842,13 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
               onChange={(e) => setReasonFilter(e.target.value)}
               style={{
                 padding: '0.45rem 0.75rem',
-                fontSize: '0.85rem',
+                fontSize: '0.82rem',
                 border: '1px solid #cbd5e1',
                 borderRadius: '8px',
                 outline: 'none',
-                backgroundColor: '#ffffff'
+                backgroundColor: '#ffffff',
+                flex: '1 1 130px',
+                minWidth: '120px'
               }}
             >
               <option value="all">Todos los Motivos</option>
@@ -1881,7 +1885,11 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
         </div>
 
         {/* 3.4. TABLA / BITÁCORA DE LLAMADAS */}
-        <div style={{ overflowX: 'auto', maxHeight: '460px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 1rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.74rem', color: '#64748b', flexWrap: 'wrap', gap: '4px' }}>
+          <span>📋 Bitácora de contactos ({filteredCalls.length} registros)</span>
+          <span style={{ fontSize: '0.72rem', color: '#4f46e5', fontWeight: 600 }}>↔ Desliza la tabla horizontalmente para ver todas las columnas</span>
+        </div>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', maxHeight: '460px' }}>
           {filteredCalls.length === 0 ? (
             <div
               style={{
@@ -1914,7 +1922,7 @@ export const ExecutiveOverviewSection: React.FC<Props> = ({
               </button>
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+            <table style={{ width: '100%', minWidth: '850px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
                   <th style={{ padding: '0.65rem 1rem', fontWeight: 700 }}>Folio / Fecha</th>
