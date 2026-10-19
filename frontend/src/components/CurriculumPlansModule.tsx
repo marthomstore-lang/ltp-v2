@@ -149,7 +149,9 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
   const [allAssignments, setAllAssignments] = useState<TeacherAssignment[]>([]);
   const [myAssignments, setMyAssignments] = useState<TeacherAssignment[]>([]);
   const [teachersList, setTeachersList] = useState<string[]>([]);
-  const [selectedTeacherFilter, setSelectedTeacherFilter] = useState<string>('my_profile');
+  const [selectedTeacherFilter, setSelectedTeacherFilter] = useState<string>(() => {
+    return (user?.role === 'Admin' || user?.role === 'Director' || user?.role === 'Administrador') ? 'all' : 'my_profile';
+  });
 
   // Estado de Planificación Anual
   const [allAnnualPlans, setAllAnnualPlans] = useState<AnnualPlan[]>([]);
@@ -326,7 +328,13 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
         setAllAnnualPlans(plans);
 
         // Si hay planes para el filtro actual, seleccionar el primero
-        const visible = getVisiblePlans(plans, selectedTeacherFilter);
+        let activeFilter = selectedTeacherFilter;
+        let visible = getVisiblePlans(plans, activeFilter);
+        if (visible.length === 0 && (user?.role === 'Admin' || user?.role === 'Director' || user?.role === 'Administrador') && plans.length > 0) {
+          activeFilter = 'all';
+          setSelectedTeacherFilter('all');
+          visible = plans;
+        }
         if (visible.length > 0) {
           selectAnnualPlan(visible[0]);
         } else {

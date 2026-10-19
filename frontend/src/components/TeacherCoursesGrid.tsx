@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutGrid, List, BookOpen, Star, AlertTriangle, ArrowRight, Calendar, UserCheck, Search, Filter, MessageSquare, Users } from 'lucide-react';
+import { LayoutGrid, List, BookOpen, Star, AlertTriangle, ArrowRight, Calendar, UserCheck, Search, Filter, MessageSquare, Users, CalendarDays } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getStudentCourse, sortCoursesList } from '../utils/course';
 import { CourseMessageModal } from './CourseMessageModal';
@@ -531,6 +531,29 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
                     >
                       <MessageSquare size={12} /> Comunicar
                     </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.dispatchEvent(new CustomEvent('ltp_navigate_tab', { detail: 'curriculum_plans' }));
+                      }}
+                      style={{
+                        background: '#fdf2f8',
+                        border: '1px solid #fbcfe8',
+                        borderRadius: '8px',
+                        padding: '4px 8px',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        color: '#db2777',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        cursor: 'pointer'
+                      }}
+                      title={`Abrir módulo de planificaciones curriculares & IA`}
+                    >
+                      <CalendarDays size={12} /> Planificar
+                    </button>
                   </div>
                 </div>
               </div>
@@ -641,6 +664,29 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
                         title={`Enviar mensaje o correo a los profesores del curso ${card.courseName}`}
                       >
                         <MessageSquare size={13} /> Comunicar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.dispatchEvent(new CustomEvent('ltp_navigate_tab', { detail: 'curriculum_plans' }));
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.4rem 0.75rem',
+                          borderRadius: '6px',
+                          border: '1px solid #fbcfe8',
+                          background: '#fdf2f8',
+                          color: '#db2777',
+                          fontWeight: 700,
+                          fontSize: '0.78rem',
+                          cursor: 'pointer'
+                        }}
+                        title={`Abrir módulo de planificaciones curriculares & IA`}
+                      >
+                        <CalendarDays size={13} /> Planificar
                       </button>
                       <button
                         style={{

@@ -157,7 +157,7 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     const handleNav = (e: any) => {
-      if (e.detail && ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips'].includes(e.detail)) {
+      if (e.detail && ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'curriculum_plans'].includes(e.detail)) {
         setActiveTab(prev => {
           if (prev !== e.detail) {
             setTabHistory(hist => [...hist.slice(-15), prev]);
@@ -202,15 +202,15 @@ export const AdminDashboard: React.FC = () => {
   const rolePermissions: Record<string, string[]> = {
     Admin: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging'],
     Director: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging'],
-    Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging'],
+    Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging'],
     Comunicaciones: ['home', 'communications', 'students', 'apoderados', 'computer_lab', 'pedagogical_trips', 'admin_docs', 'course_messaging'],
     EncargadoCRA: ['home', 'students', 'apoderados', 'communications', 'library', 'inspector_passes', 'admin_docs'],
     Bibliotecario: ['home', 'computer_lab', 'evaluations_pie', 'library', 'admin_docs'],
     Entrevistador: ['home', 'students', 'communications', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging'],
     Administrativo: ['home', 'students', 'apoderados', 'communications', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
-    Profesionales: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging'],
-    Asistente: ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
-    'Asistente de la Educación': ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
+    Profesionales: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging'],
+    Asistente: ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
+    'Asistente de la Educación': ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
     Apoderado: ['home', 'admin_docs'],
     Estudiante: ['home', 'admin_docs'],
     Visita: ['home', 'computer_lab', 'evaluations_pie', 'overview', 'admin_docs']
@@ -222,19 +222,6 @@ export const AdminDashboard: React.FC = () => {
     // Protección vital: Todo usuario autenticado siempre tiene acceso a 'home' (Dashboard / Portal Apoderado / Portal Estudiante)
     if (tab === 'home') {
       return (currentRole === 'Apoderado' || currentRole === 'Estudiante' || currentRole === 'Visita') ? 'view' : 'edit';
-    }
-
-    // Protección de entorno y rol: El módulo de planificaciones curriculares está en desarrollo exclusivo local
-    if (tab === 'curriculum_plans') {
-      const isLocalHost = typeof window !== 'undefined' && (
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.port === '3000'
-      );
-      if (!isLocalHost) return 'none'; // En producción (Vercel) está 100% deshabilitado y oculto
-      if (!['Admin', 'Administrador', 'Director'].includes(currentRole) && !isSuperAdmin) {
-        return 'none'; // Aún no disponible para Docentes ni otros roles
-      }
     }
 
     // Protección vital: El Administrador siempre tiene Edición en la Matriz de Permisos
@@ -1153,7 +1140,7 @@ export const AdminDashboard: React.FC = () => {
                 { id: 'overview', label: 'Panorama & Jefatura', icon: TrendingUp },
                 { id: 'evaluations_pie', label: 'Evaluaciones & PIE', icon: Puzzle },
                 { id: 'mineduc_reports', label: 'Informes PIE (Dec. 170)', icon: FileCheck2 },
-                { id: 'curriculum_plans', label: 'Planificaciones & IA (Local)', icon: CalendarDays }
+                { id: 'curriculum_plans', label: 'Planificaciones & Asistente IA', icon: CalendarDays }
               ]
             },
             {
@@ -2287,6 +2274,26 @@ export const AdminDashboard: React.FC = () => {
                   <div className="stat-value">{observations.length} Hojas RICE</div>
                   <div className="stat-trend">
                     Registro Disciplinario (Ver Hojas →)
+                  </div>
+                </div>
+              )}
+
+              {canAccess('curriculum_plans') && (
+                <div
+                  className="stat-card"
+                  onClick={() => navigateToTab('curriculum_plans', 'Planificaciones Curriculares & Asistente IA')}
+                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  title="Abrir Planificaciones Curriculares, Clase a Clase y Horarios"
+                >
+                  <div className="stat-card-header">
+                    <span>Planificaciones & IA</span>
+                    <div className="stat-icon-wrapper" style={{ background: '#fdf2f8', color: '#db2777' }}>
+                      <CalendarDays size={22} />
+                    </div>
+                  </div>
+                  <div className="stat-value" style={{ fontSize: '1.35rem', color: '#9d174d' }}>Plan Curricular & OAs</div>
+                  <div className="stat-trend" style={{ color: '#be185d' }}>
+                    Clase a Clase y Horarios (Abrir →)
                   </div>
                 </div>
               )}

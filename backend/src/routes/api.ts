@@ -5381,7 +5381,8 @@ const DEFAULT_SYSTEM_PERMISSIONS = [
   { functionId: 'audit_logs', functionName: 'Auditoría Silent-Watch', Admin: 'view', Director: 'none', Docente: 'none', Comunicaciones: 'none', Asistente: 'none', Profesionales: 'none', Estudiante: 'none', Apoderado: 'none' },
   { functionId: 'course_messaging', functionName: 'Herramienta Superior: Comunicar a Curso (Mensajería Docente)', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'edit', Asistente: 'none', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
   { functionId: 'guardian_calls', functionName: 'Registro y Marcador de Llamadas a Apoderados (Bitácora Telefónica)', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'edit', Asistente: 'edit', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'personality_reports', functionName: 'Informes al Hogar y Personalidad (PK a 4°M)', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' }
+  { functionId: 'personality_reports', functionName: 'Informes al Hogar y Personalidad (PK a 4°M)', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'curriculum_plans', functionName: 'Planificaciones Curriculares & Asistente IA', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' }
 ];
 
 function toAccessLevel(val: any, defLevel: AccessLevel, isLegacyBooleanRow: boolean): AccessLevel {

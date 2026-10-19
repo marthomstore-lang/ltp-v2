@@ -142,6 +142,7 @@ export const FUNCTION_ID_TO_PATH: Record<string, string> = {
   course_messaging: 'Barra Superior (Botón) / /comunicaciones',
   guardian_calls: '/llamadas-apoderados',
   personality_reports: '/informes-personalidad',
+  curriculum_plans: '/planificaciones-docentes',
 };
 
 export const ADMIN_TAB_TITLES: Record<AdminTabId, string> = {

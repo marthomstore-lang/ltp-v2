@@ -57,7 +57,8 @@ export const DEFAULT_PERMISSIONS_MATRIX: PermissionRow[] = [
   { functionId: 'audit_logs', functionName: 'Auditoría Silent-Watch', Admin: 'view', Director: 'none', Docente: 'none', Asistente: 'none', Profesionales: 'none', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
   { functionId: 'course_messaging', functionName: 'Herramienta Superior: Comunicar a Curso (Mensajería Docente)', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'none', Profesionales: 'edit', Comunicaciones: 'edit', EncargadoCRA: 'edit', Estudiante: 'none', Apoderado: 'none' },
   { functionId: 'guardian_calls', functionName: 'Registro y Marcador de Llamadas a Apoderados (Bitácora Telefónica)', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'edit', Profesionales: 'edit', Comunicaciones: 'edit', EncargadoCRA: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'personality_reports', functionName: 'Informes al Hogar y Personalidad (PK a 4°M)', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'view', Profesionales: 'view', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' }
+  { functionId: 'personality_reports', functionName: 'Informes al Hogar y Personalidad (PK a 4°M)', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'view', Profesionales: 'view', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'curriculum_plans', functionName: 'Planificaciones Curriculares & Asistente IA', Admin: 'edit', Director: 'edit', Docente: 'edit', Asistente: 'view', Profesionales: 'edit', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' }
 ];
 
 const ROLES_LIST: { key: RoleKey; label: string }[] = [
