@@ -140,7 +140,6 @@ export const FUNCTION_ID_TO_PATH: Record<string, string> = {
   config: '/configuracion (+14 sub-links)',
   audit_logs: '/auditoria',
   course_messaging: 'Barra Superior (Botón) / /comunicaciones',
-  multiview: 'Barra Superior (Botón)',
   guardian_calls: '/llamadas-apoderados',
   personality_reports: '/informes-personalidad',
 };

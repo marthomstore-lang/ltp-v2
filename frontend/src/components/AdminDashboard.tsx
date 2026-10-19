@@ -17,7 +17,6 @@ const AdministrationModule = lazy(() => import('./AdministrationModule').then(m 
 const StaffModule = lazy(() => import('./StaffModule').then(m => ({ default: m.StaffModule })));
 const ConfigModule = lazy(() => import('./ConfigModule').then(m => ({ default: m.ConfigModule })));
 const PermissionsMatrix = lazy(() => import('./PermissionsMatrix').then(m => ({ default: m.PermissionsMatrix })));
-const MultiviewWindow = lazy(() => import('./MultiviewWindow').then(m => ({ default: m.MultiviewWindow })));
 const OfficialEnrollmentForm = lazy(() => import('./OfficialEnrollmentForm').then(m => ({ default: m.OfficialEnrollmentForm })));
 const ReorderStudentsModal = lazy(() => import('./ReorderStudentsModal').then(m => ({ default: m.ReorderStudentsModal })));
 const UserProfileModal = lazy(() => import('./UserProfileModal').then(m => ({ default: m.UserProfileModal })));
@@ -197,22 +196,21 @@ export const AdminDashboard: React.FC = () => {
     mineduc_reports: 'mineduc_reports',
     pedagogical_trips: 'pedagogical_trips',
     course_messaging: 'course_messaging',
-    multiview: 'multiview',
     curriculum_plans: 'curriculum_plans'
   };
 
   const rolePermissions: Record<string, string[]> = {
-    Admin: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Director: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Comunicaciones: ['home', 'communications', 'students', 'apoderados', 'computer_lab', 'pedagogical_trips', 'admin_docs', 'course_messaging', 'multiview'],
-    EncargadoCRA: ['home', 'students', 'apoderados', 'communications', 'library', 'inspector_passes', 'admin_docs', 'multiview'],
-    Bibliotecario: ['home', 'computer_lab', 'evaluations_pie', 'library', 'admin_docs', 'multiview'],
-    Entrevistador: ['home', 'students', 'communications', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging', 'multiview'],
-    Administrativo: ['home', 'students', 'apoderados', 'communications', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
-    Profesionales: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'multiview'],
-    Asistente: ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
-    'Asistente de la Educación': ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'multiview'],
+    Admin: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging'],
+    Director: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging'],
+    Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging'],
+    Comunicaciones: ['home', 'communications', 'students', 'apoderados', 'computer_lab', 'pedagogical_trips', 'admin_docs', 'course_messaging'],
+    EncargadoCRA: ['home', 'students', 'apoderados', 'communications', 'library', 'inspector_passes', 'admin_docs'],
+    Bibliotecario: ['home', 'computer_lab', 'evaluations_pie', 'library', 'admin_docs'],
+    Entrevistador: ['home', 'students', 'communications', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging'],
+    Administrativo: ['home', 'students', 'apoderados', 'communications', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
+    Profesionales: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging'],
+    Asistente: ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
+    'Asistente de la Educación': ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
     Apoderado: ['home', 'admin_docs'],
     Estudiante: ['home', 'admin_docs'],
     Visita: ['home', 'computer_lab', 'evaluations_pie', 'overview', 'admin_docs']
@@ -430,7 +428,6 @@ export const AdminDashboard: React.FC = () => {
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
   const [printStudent, setPrintStudent] = useState<any | null>(null);
   const [showReorderModal, setShowReorderModal] = useState(false);
-  const [showMultiview, setShowMultiview] = useState(false);
   const [showCourseMessageModal, setShowCourseMessageModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileModalTab, setProfileModalTab] = useState<'info' | 'customize'>('info');
@@ -995,14 +992,6 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         <Suspense fallback={null}>
-        {/* Multivista Dual Screen Modal */}
-        {showMultiview && (
-          <MultiviewWindow
-            sessionCode="MVT-89201"
-            onClose={() => setShowMultiview(false)}
-          />
-        )}
-
         {/* Modal Ficha Oficial de Impresión FIDE */}
         {printStudent && (
           <OfficialEnrollmentForm
@@ -1408,12 +1397,6 @@ export const AdminDashboard: React.FC = () => {
                   title="Enviar mensaje o correo electrónico a todos los profesores asignados a un curso"
                 >
                   <MessageSquare size={16} /> Comunicar a Curso
-                </button>
-              )}
-
-              {canAccess('multiview') && (
-                <button onClick={() => setShowMultiview(true)} className="btn btn-primary" style={{ gap: '0.4rem', borderRadius: '9999px', padding: '0.5rem 1.1rem' }}>
-                  <Monitor size={16} /> Multivista QR Dual
                 </button>
               )}
             </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  MessageSquare, Lock, Unlock, UserPlus, Send, QrCode, CheckCircle, Clock,
+  MessageSquare, Lock, Unlock, UserPlus, Send, CheckCircle, Clock,
   Plus, Trash2, Printer, Eye, Link as LinkIcon, Upload, FileText, Check, X,
   Shield, Calendar, User, Save, Edit, RefreshCw, PenTool, ExternalLink,
   Search, GraduationCap, Briefcase, Users, Phone, Sparkles, AlertTriangle
@@ -158,8 +158,6 @@ export const InterviewsModule: React.FC<InterviewsModuleProps> = ({ token }) => 
 
   // Modales de Soporte
   const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [showQRModal, setShowQRModal] = useState(false);
-  const [qrSessionCode, setQrSessionCode] = useState('');
   const [previewInterviewData, setPreviewInterviewData] = useState<any>(null);
 
   // Modal de Firma Digital
@@ -658,28 +656,6 @@ export const InterviewsModule: React.FC<InterviewsModuleProps> = ({ token }) => 
       timer: 1800,
       showConfirmButton: false
     });
-  };
-
-  // Compartir Pantalla QR (Multivista en Vivo)
-  const handleOpenQR = () => {
-    const code = qrSessionCode || `LTP-${Math.floor(100000 + Math.random() * 900000)}`;
-    setQrSessionCode(code);
-
-    fetch('/api/multiview/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionCode: code,
-        data: {
-          interviewee_name: intervieweeName || 'Sin asignar',
-          objective: objective || 'En proceso de redacción...',
-          agreements: agreements || 'Pendiente de acuerdos.',
-          status: 'Redacción en Vivo'
-        }
-      })
-    }).catch(() => {});
-
-    setShowQRModal(true);
   };
 
   // Limpiar Formulario
@@ -2405,26 +2381,6 @@ export const InterviewsModule: React.FC<InterviewsModuleProps> = ({ token }) => 
 
                 <button
                   type="button"
-                  onClick={handleOpenQR}
-                  style={{
-                    background: '#ffffff',
-                    color: '#2563eb',
-                    border: '1.5px solid #bfdbfe',
-                    fontWeight: 700,
-                    padding: '0.72rem 1.4rem',
-                    borderRadius: '10px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    cursor: 'pointer',
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  <QrCode size={18} /> Compartir Pantalla (QR)
-                </button>
-
-                <button
-                  type="button"
                   onClick={handleResetForm}
                   style={{
                     background: '#ffffff',
@@ -2663,90 +2619,6 @@ export const InterviewsModule: React.FC<InterviewsModuleProps> = ({ token }) => 
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL COMPARTIR PANTALLA (QR / MULTIVISTA DUAL EN VIVO) */}
-      {/* ========================================================================= */}
-      {showQRModal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(15, 23, 42, 0.85)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 2000,
-            padding: '1.5rem'
-          }}
-        >
-          <div
-            style={{
-              background: '#ffffff',
-              borderRadius: '16px',
-              width: '100%',
-              maxWidth: '460px',
-              padding: '2rem',
-              textAlign: 'center',
-              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.3)'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
-              <button
-                type="button"
-                onClick={() => setShowQRModal(false)}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={{ width: '56px', height: '56px', background: '#eff6ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', color: '#2563eb' }}>
-              <QrCode size={30} />
-            </div>
-
-            <h3 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '1.25rem', fontWeight: 800, color: '#1e293b', marginBottom: '0.5rem' }}>
-              Multivista Dual en Vivo
-            </h3>
-            <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.5rem' }}>
-              Escanea este código desde cualquier celular, tablet o notebook conectado a la misma red Wi-Fi para seguir y firmar el acta en vivo.
-            </p>
-
-            {/* Código QR Dinámico */}
-            <div style={{ display: 'inline-block', padding: '1rem', background: '#ffffff', border: '2px solid #e2e8f0', borderRadius: '14px', marginBottom: '1.25rem' }}>
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-                  `http://${window.location.hostname === 'localhost' ? '192.168.1.12' : window.location.hostname}:3000/?session=${qrSessionCode}`
-                )}`}
-                alt="Código QR de la entrevista"
-                style={{ width: '200px', height: '200px', display: 'block' }}
-              />
-            </div>
-
-            <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '1.5rem', fontSize: '0.82rem' }}>
-              <span style={{ color: '#64748b' }}>Dirección LAN directa:</span><br />
-              <strong style={{ color: '#2563eb', fontSize: '0.9rem' }}>
-                http://{window.location.hostname === 'localhost' ? '192.168.1.12' : window.location.hostname}:3000
-              </strong>
-              <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: '#94a3b8' }}>
-                Código de Sesión: <strong>{qrSessionCode}</strong>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowQRModal(false)}
-              className="btn btn-primary"
-              style={{ width: '100%', padding: '0.7rem', borderRadius: '10px', fontWeight: 600 }}
-            >
-              Listo, Cerrar
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ========================================================================= */}
       {/* MODAL DE FIRMA DIGITAL CON CANVAS TÁCTIL */}
