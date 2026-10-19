@@ -51,6 +51,13 @@ interface AnnualUnit {
   learning_goals: string;
   evaluation_instruments: string;
   temporality: string;
+  class_count?: number;
+  hours_count?: number;
+  unit_goal?: string;
+  transversal_goals?: string;
+  resources?: string;
+  evaluation_type?: string;
+  estimated_date?: string;
 }
 
 interface AnnualPlan {
@@ -130,7 +137,7 @@ interface CurriculumPlansModuleProps {
 }
 
 export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ token, user }) => {
-  const [activeTab, setActiveTab] = useState<'annual' | 'lessons' | 'catalog' | 'ai_config' | 'schedules'>('annual');
+  const [activeTab, setActiveTab] = useState<'annual' | 'units' | 'lessons' | 'catalog' | 'ai_config' | 'schedules'>('annual');
 
   // Modo de visualización: Editor (permite modificar y guardar) vs Solo Vista (lectura e impresión)
   const [viewMode, setViewMode] = useState<'edit' | 'readonly'>('edit');
@@ -159,6 +166,25 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
   const [isEditingAnnual, setIsEditingAnnual] = useState(false);
   const [loadingAnnual, setLoadingAnnual] = useState(false);
   const [savingAnnual, setSavingAnnual] = useState(false);
+
+  // Estado de Planificación por Unidad
+  const [selectedUnitIndex, setSelectedUnitIndex] = useState<number>(0);
+  const [savingUnit, setSavingUnit] = useState(false);
+  const [generatingUnitAi, setGeneratingUnitAi] = useState(false);
+  const [unitForm, setUnitForm] = useState<AnnualUnit>({
+    unit_number: 1,
+    unit_name: 'Unidad 1: Nivelación y Diagnóstico Inicial',
+    learning_goals: '',
+    evaluation_instruments: 'Evaluación diagnóstica inicial; Guías formativas; Rúbrica sumativa',
+    temporality: '8 Semanas',
+    class_count: 8,
+    hours_count: 16,
+    unit_goal: 'Desarrollar y nivelar conocimientos y destrezas esenciales de la asignatura.',
+    transversal_goals: 'Demostrar rigor, puntualidad y trabajo colaborativo.',
+    resources: 'Guías de aprendizaje, proyector multimedia, textos de estudio.',
+    evaluation_type: 'Formativa y Sumativa',
+    estimated_date: 'Marzo - Abril 2026'
+  });
 
   // Formulario de Plan Anual
   const [annualForm, setAnnualForm] = useState<{
@@ -447,6 +473,21 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
       units: plan.units ? JSON.parse(JSON.stringify(plan.units)) : []
     });
     setIsEditingAnnual(false);
+
+    if (plan.units && plan.units.length > 0) {
+      setSelectedUnitIndex(0);
+      const u0 = plan.units[0];
+      setUnitForm({
+        ...u0,
+        class_count: u0.class_count || 8,
+        hours_count: u0.hours_count || 16,
+        unit_goal: u0.unit_goal || '',
+        transversal_goals: u0.transversal_goals || '',
+        resources: u0.resources || '',
+        evaluation_type: u0.evaluation_type || 'Formativa y Sumativa',
+        estimated_date: u0.estimated_date || ''
+      });
+    }
 
     // Cargar clases de este plan y cobertura curricular
     loadLessonsForPlan(plan.id);
@@ -1018,6 +1059,307 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
   };
 
   // ===========================================================================
+  // PLANIFICACIÓN POR UNIDAD: CONTROLADORES Y ACCIONES
+  // ===========================================================================
+  const handleSelectUnitForDetail = (index: number) => {
+    setSelectedUnitIndex(index);
+    const targetUnit = annualForm.units[index] || selectedPlan?.units?.[index];
+    if (targetUnit) {
+      setUnitForm({
+        ...targetUnit,
+        class_count: targetUnit.class_count || 8,
+        hours_count: targetUnit.hours_count || 16,
+        unit_goal: targetUnit.unit_goal || '',
+        transversal_goals: targetUnit.transversal_goals || '',
+        resources: targetUnit.resources || '',
+        evaluation_type: targetUnit.evaluation_type || 'Formativa y Sumativa',
+        estimated_date: targetUnit.estimated_date || ''
+      });
+    }
+    setActiveTab('units');
+  };
+
+  const handleAddNewUnitToPlan = () => {
+    const nextNum = (annualForm.units?.length || 0) + 1;
+    const newUnit: AnnualUnit = {
+      unit_number: nextNum,
+      unit_name: `Unidad ${nextNum}: Nueva Unidad de Aprendizaje`,
+      learning_goals: '',
+      evaluation_instruments: 'Pauta de evaluación, Rúbrica formativa, Guía de trabajo',
+      temporality: '8 Semanas',
+      class_count: 8,
+      hours_count: 16,
+      unit_goal: '',
+      transversal_goals: 'Trabajo en equipo, responsabilidad y proactividad.',
+      resources: 'Guías de aprendizaje, proyector multimedia, textos de estudio.',
+      evaluation_type: 'Formativa y Sumativa',
+      estimated_date: ''
+    };
+
+    const updated = [...annualForm.units, newUnit];
+    setAnnualForm(prev => ({
+      ...prev,
+      units: updated
+    }));
+    if (selectedPlan) {
+      setSelectedPlan(prev => prev ? {
+        ...prev,
+        units: updated
+      } : null);
+    }
+    setSelectedUnitIndex(updated.length - 1);
+    setUnitForm(newUnit);
+  };
+
+  const handleSaveUnit = async () => {
+    if (!selectedPlan && !annualForm.course_name) {
+      Swal.fire('Atención', 'No hay un plan anual seleccionado.', 'warning');
+      return;
+    }
+
+    setSavingUnit(true);
+    try {
+      const updatedUnits = [...annualForm.units];
+      if (selectedUnitIndex >= 0 && selectedUnitIndex < updatedUnits.length) {
+        updatedUnits[selectedUnitIndex] = { ...unitForm };
+      } else {
+        updatedUnits.push({ ...unitForm });
+      }
+
+      setAnnualForm(prev => ({ ...prev, units: updatedUnits }));
+      if (selectedPlan) {
+        setSelectedPlan(prev => prev ? { ...prev, units: updatedUnits } : null);
+      }
+
+      if (unitForm.id) {
+        const res = await fetch(`/api/curriculum/units/${unitForm.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(unitForm)
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Error al actualizar unidad');
+        }
+      } else if (selectedPlan?.id) {
+        const res = await fetch(`/api/curriculum/annual-plans/${selectedPlan.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            ...annualForm,
+            units: updatedUnits
+          })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Error al persistir unidades en el plan anual');
+        }
+        await loadAnnualPlans();
+      }
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Planificación de Unidad Guardada',
+        text: `La ${unitForm.unit_name} fue guardada exitosamente.`,
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      Swal.fire('Error', err?.message || 'No se pudo guardar la planificación de la unidad.', 'error');
+    } finally {
+      setSavingUnit(false);
+    }
+  };
+
+  const handleGenerateUnitWithAi = async () => {
+    const course = selectedPlan?.course_name || annualForm.course_name;
+    const subject = selectedPlan?.subject_name || annualForm.subject_name;
+
+    if (!course || !subject) {
+      Swal.fire('Atención', 'Selecciona primero un curso y asignatura.', 'info');
+      return;
+    }
+
+    setGeneratingUnitAi(true);
+    try {
+      const res = await fetch('/api/curriculum/ai-assistant', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          mode: 'suggest_unit_detail',
+          grade_level: course,
+          subject: subject,
+          unit_name: unitForm.unit_name,
+          unit_number: unitForm.unit_number || selectedUnitIndex + 1,
+          oa_title: unitForm.learning_goals || `Unidad ${unitForm.unit_number}: ${unitForm.unit_name}`,
+          learning_goals: unitForm.learning_goals
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.data) {
+        const d = data.data;
+        setUnitForm(prev => ({
+          ...prev,
+          unit_name: d.unit_name || prev.unit_name,
+          unit_goal: d.unit_goal || prev.unit_goal,
+          transversal_goals: d.transversal_goals || prev.transversal_goals,
+          resources: d.resources || prev.resources,
+          evaluation_type: d.evaluation_type || prev.evaluation_type,
+          evaluation_instruments: d.evaluation_instruments || prev.evaluation_instruments,
+          class_count: d.class_count || prev.class_count,
+          hours_count: d.hours_count || prev.hours_count,
+          temporality: d.temporality || prev.temporality,
+          estimated_date: d.estimated_date || prev.estimated_date
+        }));
+
+        Swal.fire({
+          icon: 'success',
+          title: 'Planificación de Unidad Asistida por IA',
+          html: `La IA ha estructurado el objetivo de la unidad, horas (${d.hours_count || 16} hrs), ${d.class_count || 8} clases, OATs, recursos didácticos e instrumentos de evaluación según el estándar MINEDUC.`,
+          timer: 3000,
+          showConfirmButton: false
+        });
+      } else {
+        Swal.fire('Error IA', data.error || 'No se pudo generar la propuesta pedagógica de la unidad.', 'error');
+      }
+    } catch (err: any) {
+      Swal.fire('Error IA', err?.message || 'Error de conexión con el asistente pedagógico.', 'error');
+    } finally {
+      setGeneratingUnitAi(false);
+    }
+  };
+
+  const handlePrintUnitReport = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const course = selectedPlan?.course_name || annualForm.course_name || '';
+    const subject = selectedPlan?.subject_name || annualForm.subject_name || '';
+    const teacher = selectedPlan?.teacher_name || annualForm.teacher_name || user?.name || '';
+    const semester = selectedPlan?.semester || annualForm.semester || 'PRIMER Y SEGUNDO SEMESTRE';
+    const year = selectedPlan?.academic_year || annualForm.academic_year || 2026;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>PLANIFICACIÓN POR UNIDAD — ${unitForm.unit_name} • ${course}</title>
+        <style>
+          @page { size: portrait; margin: 15mm; }
+          body { font-family: 'Arial', sans-serif; font-size: 11px; color: #000; margin: 0; padding: 10px; line-height: 1.45; }
+          .header-title { text-align: center; margin-bottom: 12px; }
+          .header-title h2 { margin: 0; font-size: 15px; font-weight: bold; text-transform: uppercase; }
+          .header-title p { margin: 3px 0 0; font-size: 11px; color: #333; }
+          table.info-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+          table.info-table td { border: 1px solid #000; padding: 6px 10px; font-size: 10.5px; }
+          table.info-table td.label { font-weight: bold; width: 140px; background-color: #f7f7f7; text-transform: uppercase; }
+          .section-block { border: 1px solid #000; padding: 10px 12px; margin-bottom: 10px; border-radius: 4px; page-break-inside: avoid; }
+          .section-title { font-weight: bold; font-size: 11px; margin-bottom: 6px; text-transform: uppercase; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+          .signatures { margin-top: 35px; display: flex; justify-content: space-around; text-align: center; page-break-inside: avoid; }
+          .sign-line { width: 220px; border-top: 1px solid #000; padding-top: 5px; font-weight: bold; font-size: 10px; text-transform: uppercase; }
+          @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header-title">
+          <h2>LICEO TÉCNICO PROFESIONAL CAMPANARIO</h2>
+          <p>PLANIFICACIÓN DIDÁCTICA POR UNIDAD DE APRENDIZAJE • AÑO ${year}</p>
+        </div>
+
+        <table class="info-table">
+          <tr>
+            <td class="label">Curso:</td>
+            <td><strong>${course}</strong></td>
+            <td class="label">Asignatura:</td>
+            <td><strong>${subject}</strong></td>
+          </tr>
+          <tr>
+            <td class="label">Docente:</td>
+            <td>${teacher}</td>
+            <td class="label">Semestre:</td>
+            <td>${semester}</td>
+          </tr>
+          <tr>
+            <td class="label">Unidad N°:</td>
+            <td><strong>Unidad ${unitForm.unit_number || selectedUnitIndex + 1}</strong></td>
+            <td class="label">Título Unidad:</td>
+            <td><strong>${unitForm.unit_name}</strong></td>
+          </tr>
+          <tr>
+            <td class="label">N° de Clases:</td>
+            <td><strong>${unitForm.class_count || 8} clases</strong></td>
+            <td class="label">N° de Horas:</td>
+            <td><strong>${unitForm.hours_count || 16} horas pedagógicas</strong></td>
+          </tr>
+          <tr>
+            <td class="label">Temporalidad:</td>
+            <td>${unitForm.temporality || '8 Semanas'}</td>
+            <td class="label">Fecha Estimada:</td>
+            <td><strong>${unitForm.estimated_date || 'Marzo - Mayo 2026'}</strong></td>
+          </tr>
+        </table>
+
+        <div class="section-block">
+          <div class="section-title">🎯 Objetivo de la Unidad (Propósito Formativo):</div>
+          <div>${(unitForm.unit_goal || 'Sin objetivo de unidad registrado').replace(/\n/g, '<br>')}</div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title">📚 Objetivos de Aprendizaje (OA MINEDUC):</div>
+          <div>${(unitForm.learning_goals || 'Sin OAs asignados').replace(/\n/g, '<br>')}</div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title">⭐ Objetivos de Aprendizaje Transversales (OAT):</div>
+          <div>${(unitForm.transversal_goals || 'Sin objetivos transversales definidos').replace(/\n/g, '<br>')}</div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title">📦 Recursos Didácticos y Tecnológicos:</div>
+          <div>${(unitForm.resources || 'Guías pedagógicas, textos escolares, proyector multimedia, talleres prácticos').replace(/\n/g, '<br>')}</div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title">📝 Tipo de Evaluación:</div>
+          <div>${(unitForm.evaluation_type || 'Formativa y Sumativa').replace(/\n/g, '<br>')}</div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-title">📋 Instrumentos de Evaluación:</div>
+          <div>${(unitForm.evaluation_instruments || 'Rúbricas analíticas, listas de cotejo, pruebas de desempeño práctico').replace(/\n/g, '<br>')}</div>
+        </div>
+
+        <div class="signatures">
+          <div>
+            <div class="sign-line">Firma Docente de Asignatura<br><span style="font-weight: normal; font-size: 9px;">${teacher}</span></div>
+          </div>
+          <div>
+            <div class="sign-line">Firma y Timbre UTP<br><span style="font-weight: normal; font-size: 9px;">Liceo TP Campanario</span></div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 400);
+  };
+
+  // ===========================================================================
   // SELECTOR RÁPIDO DE OA MINEDUC
   // ===========================================================================
   const openOaPicker = (unitIndex: number) => {
@@ -1032,10 +1374,42 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
     loadLearningGoals(initialGrade, initialSubj, '', 'all');
   };
 
+  const openOaPickerForUnitTab = () => {
+    setTargetUnitIndexForOa(-1);
+    const initialGrade = selectedPlan?.course_name || annualForm.course_name;
+    const initialSubj = selectedPlan?.subject_name || annualForm.subject_name;
+    setModalGradeFilter(initialGrade);
+    setModalSubjectFilter(initialSubj);
+    setModalPriorityFilter('all');
+    setCatalogSearch('');
+    setShowOaPickerModal(true);
+    loadLearningGoals(initialGrade, initialSubj, '', 'all');
+  };
+
   const handleApplyOaToUnit = (oa: LearningGoal) => {
-    if (targetUnitIndexForOa !== null) {
+    const formatted = `${oa.oa_code}: ${oa.oa_title}`;
+    if (targetUnitIndexForOa === -1) {
+      setUnitForm(prev => {
+        const current = prev.learning_goals || '';
+        return {
+          ...prev,
+          learning_goals: current ? `${current}\n\n${formatted}` : formatted
+        };
+      });
+      setShowOaPickerModal(false);
+      setTargetUnitIndexForOa(null);
+      Swal.fire({
+        icon: 'success',
+        title: 'Objetivo Agregado a la Unidad',
+        text: `Se agregó ${oa.oa_code} a la planificación de la unidad.`,
+        timer: 1500,
+        showConfirmButton: false
+      });
+      return;
+    }
+
+    if (targetUnitIndexForOa !== null && targetUnitIndexForOa >= 0) {
       const current = annualForm.units[targetUnitIndexForOa]?.learning_goals || '';
-      const formatted = `${oa.oa_code}: ${oa.oa_title}`;
       const newGoals = current ? `${current}\n\n${formatted}` : formatted;
       handleUnitChange(targetUnitIndexForOa, 'learning_goals', newGoals);
       setShowOaPickerModal(false);
@@ -1786,6 +2160,40 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
 
         <button
           type="button"
+          onClick={() => setActiveTab('units')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            padding: '0.55rem 1rem',
+            borderRadius: '10px',
+            border: 'none',
+            background: activeTab === 'units' ? '#ffffff' : 'transparent',
+            color: activeTab === 'units' ? '#0284c7' : '#475569',
+            fontWeight: activeTab === 'units' ? 800 : 600,
+            fontSize: '0.84rem',
+            cursor: 'pointer',
+            boxShadow: activeTab === 'units' ? '0 2px 4px rgba(0,0,0,0.06)' : 'none'
+          }}
+        >
+          <FileText size={16} />
+          2. Planificación por Unidad (Mineduc)
+          {annualForm.units.length > 0 && (
+            <span style={{
+              background: '#0284c7',
+              color: '#ffffff',
+              borderRadius: '999px',
+              padding: '0.1rem 0.5rem',
+              fontSize: '0.72rem',
+              fontWeight: 800
+            }}>
+              {annualForm.units.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('lessons')}
           style={{
             display: 'flex',
@@ -1803,7 +2211,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
           }}
         >
           <Clock size={16} />
-          2. Planificación Clase a Clase (N Sesiones)
+          3. Planificación Clase a Clase
           {lessonPlans.length > 0 && (
             <span style={{
               background: '#0284c7',
@@ -1837,7 +2245,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
           }}
         >
           <Search size={16} />
-          3. Catálogo OAs MINEDUC
+          4. Catálogo OAs MINEDUC
         </button>
 
         <button
@@ -1859,7 +2267,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
           }}
         >
           <Brain size={16} />
-          4. Asistente IA & Memoria Pedagógica
+          5. Asistente IA & Memoria Pedagógica
         </button>
 
         <button
@@ -1881,7 +2289,7 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
           }}
         >
           <CalendarDays size={16} />
-          5. Horarios Escolares & aSc Horarios
+          6. Horarios Escolares & aSc Horarios
         </button>
       </div>
 
@@ -2448,6 +2856,11 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                         <th style={{ border: '1px solid #000000', padding: '8px', fontSize: '0.82rem', fontWeight: 800, textTransform: 'uppercase', width: '120px', textAlign: 'center' }}>
                           Temporalidad
                         </th>
+                        {!isEditingAnnual && (
+                          <th style={{ border: '1px solid #000000', padding: '8px', fontSize: '0.82rem', fontWeight: 800, textTransform: 'uppercase', width: '130px', textAlign: 'center' }}>
+                            Unidad Didáctica
+                          </th>
+                        )}
                         {isEditingAnnual && (
                           <th style={{ border: '1px solid #000000', padding: '8px', fontSize: '0.82rem', fontWeight: 800, textTransform: 'uppercase', width: '50px', textAlign: 'center' }}>
                             Acción
@@ -2549,6 +2962,30 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                               </div>
                             )}
                           </td>
+                          {!isEditingAnnual && (
+                            <td style={{ border: '1px solid #000000', padding: '8px', textAlign: 'center', verticalAlign: 'middle' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleSelectUnitForDetail(index)}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.3rem',
+                                  background: '#e0f2fe',
+                                  color: '#0369a1',
+                                  border: '1px solid #bae6fd',
+                                  padding: '0.4rem 0.65rem',
+                                  borderRadius: '6px',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                Planificar Unidad →
+                              </button>
+                            </td>
+                          )}
                           {isEditingAnnual && (
                             <td style={{ border: '1px solid #000000', padding: '8px', textAlign: 'center', verticalAlign: 'middle' }}>
                               <button
@@ -2598,7 +3035,521 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
       )}
 
       {/* ===================================================================== */}
-      {/* PESTAÑA 2: PLANIFICACIÓN CLASE A CLASE (1X CADA SESIÓN)                */}
+      {/* PESTAÑA 2: PLANIFICACIÓN POR UNIDAD (MINEDUC)                         */}
+      {/* ===================================================================== */}
+      {activeTab === 'units' && (
+        <div>
+          {!selectedPlan && annualForm.units.length === 0 ? (
+            <div style={{
+              background: '#ffffff',
+              borderRadius: '16px',
+              border: '1.5px dashed #cbd5e1',
+              padding: '3rem 2rem',
+              textAlign: 'center'
+            }}>
+              <BookOpen size={40} color="#94a3b8" style={{ marginBottom: '1rem' }} />
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b', margin: '0 0 0.5rem' }}>
+                Primero selecciona o crea una Planificación Anual
+              </h4>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '480px', margin: '0 auto 1.5rem' }}>
+                Para planificar una unidad didáctica, debes contar con un Plan Anual y sus unidades temáticas asignadas.
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTab('annual')}
+                style={{
+                  background: '#0284c7',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '0.6rem 1.25rem',
+                  borderRadius: '8px',
+                  fontWeight: 800,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Ir a Planificación Anual
+              </button>
+            </div>
+          ) : (
+            <div>
+              {/* SELECTOR SUPERIOR DE UNIDADES Y DATOS GENERALES */}
+              <div style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '16px',
+                padding: '1.25rem',
+                marginBottom: '1.25rem',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.03)'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '1rem',
+                  marginBottom: '1rem',
+                  paddingBottom: '0.85rem',
+                  borderBottom: '1px solid #f1f5f9'
+                }}>
+                  <div>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Asignatura & Curso Oficial:
+                    </span>
+                    <h3 style={{ margin: '0.2rem 0 0', fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>
+                      {selectedPlan?.course_name || annualForm.course_name} — {selectedPlan?.subject_name || annualForm.subject_name}
+                    </h3>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.2rem' }}>
+                      Docente: <strong>{selectedPlan?.teacher_name || annualForm.teacher_name || user?.name}</strong> • {selectedPlan?.semester || annualForm.semester}
+                    </div>
+                  </div>
+
+                  {/* BOTONES DE ACCIÓN DE LA UNIDAD */}
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      disabled={generatingUnitAi}
+                      onClick={handleGenerateUnitWithAi}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+                        color: '#ffffff',
+                        padding: '0.55rem 1rem',
+                        borderRadius: '10px',
+                        border: 'none',
+                        fontSize: '0.82rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(124, 58, 237, 0.25)'
+                      }}
+                    >
+                      <Sparkles size={16} />
+                      {generatingUnitAi ? 'Generando con IA...' : 'Completar Unidad con IA'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handlePrintUnitReport}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        background: '#0f172a',
+                        color: '#ffffff',
+                        padding: '0.55rem 1rem',
+                        borderRadius: '10px',
+                        border: 'none',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Printer size={16} />
+                      Imprimir Ficha Oficial
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={savingUnit}
+                      onClick={handleSaveUnit}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        background: '#059669',
+                        color: '#ffffff',
+                        padding: '0.55rem 1.25rem',
+                        borderRadius: '10px',
+                        border: 'none',
+                        fontSize: '0.82rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(5, 150, 105, 0.25)'
+                      }}
+                    >
+                      <Save size={16} />
+                      {savingUnit ? 'Guardando...' : 'Guardar Planificación'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* SELECTOR EN PESTAÑAS DE CADA UNIDAD */}
+                <div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', marginBottom: '0.45rem', textTransform: 'uppercase' }}>
+                    Seleccionar Unidad a Planificar:
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {(annualForm.units || []).map((u, idx) => {
+                      const isSelected = selectedUnitIndex === idx;
+                      return (
+                        <button
+                          key={u.id || idx}
+                          type="button"
+                          onClick={() => handleSelectUnitForDetail(idx)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            padding: '0.5rem 0.85rem',
+                            borderRadius: '8px',
+                            border: isSelected ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                            background: isSelected ? '#eff6ff' : '#ffffff',
+                            color: isSelected ? '#0369a1' : '#334155',
+                            fontWeight: isSelected ? 900 : 700,
+                            fontSize: '0.82rem',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <span>{u.unit_name ? (u.unit_name.length > 25 ? u.unit_name.slice(0, 25) + '...' : u.unit_name) : `Unidad ${idx + 1}`}</span>
+                          <span style={{
+                            background: isSelected ? '#0284c7' : '#e2e8f0',
+                            color: isSelected ? '#ffffff' : '#475569',
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            padding: '0.1rem 0.4rem',
+                            borderRadius: '999px'
+                          }}>
+                            {u.class_count || 8} cl / {u.hours_count || 16} h
+                          </span>
+                        </button>
+                      );
+                    })}
+
+                    <button
+                      type="button"
+                      onClick={handleAddNewUnitToPlan}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.5rem 0.85rem',
+                        borderRadius: '8px',
+                        border: '1px dashed #0284c7',
+                        background: '#f0f9ff',
+                        color: '#0284c7',
+                        fontWeight: 800,
+                        fontSize: '0.8rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Plus size={15} />
+                      Agregar Unidad
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* FORMULARIO DE DETALLE DE LA UNIDAD */}
+              <div style={{
+                background: '#ffffff',
+                border: '1.5px solid #000000',
+                borderRadius: '12px',
+                padding: '1.5rem',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.04)'
+              }}>
+                <div style={{
+                  borderBottom: '2px solid #000000',
+                  paddingBottom: '0.75rem',
+                  marginBottom: '1.25rem',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem'
+                }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, textTransform: 'uppercase', color: '#000000' }}>
+                      Planificación Didáctica • {unitForm.unit_name || `Unidad ${selectedUnitIndex + 1}`}
+                    </h3>
+                    <span style={{ fontSize: '0.76rem', color: '#555555' }}>
+                      Estándar Marco de la Buena Enseñanza y Bases Curriculares MINEDUC
+                    </span>
+                  </div>
+                  <span style={{
+                    background: '#0284c7',
+                    color: '#ffffff',
+                    padding: '0.2rem 0.6rem',
+                    borderRadius: '6px',
+                    fontSize: '0.74rem',
+                    fontWeight: 900
+                  }}>
+                    UNIDAD N° {unitForm.unit_number || selectedUnitIndex + 1}
+                  </span>
+                </div>
+
+                {/* FILA 1: DATOS CLAVE Y ESTIMACIONES */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: '1rem',
+                  marginBottom: '1.25rem',
+                  background: '#f8fafc',
+                  padding: '1rem',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0'
+                }}>
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', color: '#1e293b', marginBottom: '0.35rem' }}>
+                      Título o Nombre de la Unidad: *
+                    </label>
+                    <input
+                      type="text"
+                      value={unitForm.unit_name}
+                      onChange={e => setUnitForm({ ...unitForm, unit_name: e.target.value })}
+                      placeholder="Ej: Unidad 1: Nivelación y Diagnóstico Inicial"
+                      style={{ width: '100%', padding: '0.55rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 700 }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', color: '#1e293b', marginBottom: '0.35rem' }}>
+                      N° de Clases (Estimadas): *
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={unitForm.class_count || 8}
+                      onChange={e => setUnitForm({ ...unitForm, class_count: parseInt(e.target.value, 10) || 1 })}
+                      style={{ width: '100%', padding: '0.55rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 800 }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', color: '#1e293b', marginBottom: '0.35rem' }}>
+                      N° de Horas Pedagógicas: *
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      value={unitForm.hours_count || 16}
+                      onChange={e => setUnitForm({ ...unitForm, hours_count: parseInt(e.target.value, 10) || 1 })}
+                      style={{ width: '100%', padding: '0.55rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 800 }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', color: '#1e293b', marginBottom: '0.35rem' }}>
+                      Temporalidad (Semanas):
+                    </label>
+                    <input
+                      type="text"
+                      value={unitForm.temporality || '8 Semanas'}
+                      onChange={e => setUnitForm({ ...unitForm, temporality: e.target.value })}
+                      placeholder="Ej: 8 Semanas"
+                      style={{ width: '100%', padding: '0.55rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', color: '#1e293b', marginBottom: '0.35rem' }}>
+                      Fecha Estimada (Período): *
+                    </label>
+                    <input
+                      type="text"
+                      value={unitForm.estimated_date || ''}
+                      onChange={e => setUnitForm({ ...unitForm, estimated_date: e.target.value })}
+                      placeholder="Ej: 15 de Marzo al 30 de Abril 2026"
+                      style={{ width: '100%', padding: '0.55rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
+                    />
+                  </div>
+                </div>
+
+                {/* FILA 2: OBJETIVO DE LA UNIDAD Y OBJETIVOS DE APRENDIZAJE */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem', marginBottom: '1.25rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 900, textTransform: 'uppercase', color: '#0f172a', marginBottom: '0.4rem' }}>
+                      🎯 Objetivo de la Unidad (Propósito Formativo): *
+                    </label>
+                    <p style={{ margin: '0 0 0.4rem', fontSize: '0.73rem', color: '#64748b' }}>
+                      Describe la meta global, conceptos articuladores y habilidades que los estudiantes dominarán al finalizar la unidad.
+                    </p>
+                    <textarea
+                      rows={5}
+                      value={unitForm.unit_goal || ''}
+                      onChange={e => setUnitForm({ ...unitForm, unit_goal: e.target.value })}
+                      placeholder="Ej: Comprender y aplicar los principios fundamentales de la disciplina a través de la resolución de problemas prácticos y el análisis crítico..."
+                      style={{ width: '100%', padding: '0.65rem', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.84rem', lineHeight: 1.45 }}
+                    />
+                  </div>
+
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                      <label style={{ fontSize: '0.82rem', fontWeight: 900, textTransform: 'uppercase', color: '#0f172a' }}>
+                        📚 Objetivos de Aprendizaje (OA MINEDUC): *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={openOaPickerForUnitTab}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.3rem',
+                          background: '#e0f2fe',
+                          color: '#0369a1',
+                          border: '1px solid #bae6fd',
+                          padding: '0.25rem 0.6rem',
+                          borderRadius: '6px',
+                          fontSize: '0.74rem',
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Search size={13} />
+                        Catálogo OAs
+                      </button>
+                    </div>
+                    <p style={{ margin: '0 0 0.4rem', fontSize: '0.73rem', color: '#64748b' }}>
+                      OAs basales y complementarios seleccionados para esta unidad didáctica.
+                    </p>
+                    <textarea
+                      rows={5}
+                      value={unitForm.learning_goals || ''}
+                      onChange={e => setUnitForm({ ...unitForm, learning_goals: e.target.value })}
+                      placeholder="OA 1: Describir y fundamentar...&#10;&#10;OA 3: Resolver problemas contextualizados..."
+                      style={{ width: '100%', padding: '0.65rem', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.84rem', lineHeight: 1.45 }}
+                    />
+                  </div>
+                </div>
+
+                {/* FILA 3: TRANSVERSALES Y RECURSOS */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem', marginBottom: '1.25rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 900, textTransform: 'uppercase', color: '#0f172a', marginBottom: '0.4rem' }}>
+                      ⭐ Objetivos de Aprendizaje Transversales (OAT): *
+                    </label>
+                    <p style={{ margin: '0 0 0.4rem', fontSize: '0.73rem', color: '#64748b' }}>
+                      Valores institucionales, actitudes, rigor técnico-profesional y convivencia formativa.
+                    </p>
+                    <textarea
+                      rows={4}
+                      value={unitForm.transversal_goals || ''}
+                      onChange={e => setUnitForm({ ...unitForm, transversal_goals: e.target.value })}
+                      placeholder="Ej: Demostrar puntualidad, rigor en el uso de herramientas, trabajo colaborativo y respeto por las normas de seguridad..."
+                      style={{ width: '100%', padding: '0.65rem', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.84rem', lineHeight: 1.45 }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 900, textTransform: 'uppercase', color: '#0f172a', marginBottom: '0.4rem' }}>
+                      📦 Recursos Didácticos, Tecnológicos y de Taller: *
+                    </label>
+                    <p style={{ margin: '0 0 0.4rem', fontSize: '0.73rem', color: '#64748b' }}>
+                      Materiales impresos, proyectores, computadores, laboratorio, herramientas TP y software.
+                    </p>
+                    <textarea
+                      rows={4}
+                      value={unitForm.resources || ''}
+                      onChange={e => setUnitForm({ ...unitForm, resources: e.target.value })}
+                      placeholder="Ej: Guías de aprendizaje impresas, proyector multimedia, textos escolares MINEDUC, software especializado, instrumental de laboratorio..."
+                      style={{ width: '100%', padding: '0.65rem', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.84rem', lineHeight: 1.45 }}
+                    />
+                  </div>
+                </div>
+
+                {/* FILA 4: EVALUACIONES E INSTRUMENTOS */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 900, textTransform: 'uppercase', color: '#0f172a', marginBottom: '0.4rem' }}>
+                      📝 Tipo de Evaluación: *
+                    </label>
+                    <p style={{ margin: '0 0 0.4rem', fontSize: '0.73rem', color: '#64748b' }}>
+                      Modalidad pedagógica de valoración de los aprendizajes.
+                    </p>
+                    <select
+                      value={unitForm.evaluation_type || 'Formativa y Sumativa'}
+                      onChange={e => setUnitForm({ ...unitForm, evaluation_type: e.target.value })}
+                      style={{ width: '100%', padding: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.84rem', fontWeight: 700, marginBottom: '0.5rem' }}
+                    >
+                      <option value="Diagnóstica, Formativa y Sumativa">Diagnóstica, Formativa y Sumativa</option>
+                      <option value="Formativa y Sumativa">Formativa y Sumativa</option>
+                      <option value="Evaluación Formativa Continua">Evaluación Formativa Continua</option>
+                      <option value="Evaluación Sumativa y de Desempeño Práctico">Evaluación Sumativa y de Desempeño Práctico</option>
+                      <option value="Coevaluación y Autoevaluación">Coevaluación y Autoevaluación</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={unitForm.evaluation_type}
+                      onChange={e => setUnitForm({ ...unitForm, evaluation_type: e.target.value })}
+                      placeholder="O especifica un tipo personalizado..."
+                      style={{ width: '100%', padding: '0.55rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.82rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 900, textTransform: 'uppercase', color: '#0f172a', marginBottom: '0.4rem' }}>
+                      📋 Instrumentos de Evaluación: *
+                    </label>
+                    <p style={{ margin: '0 0 0.4rem', fontSize: '0.73rem', color: '#64748b' }}>
+                      Rúbricas analíticas, listas de cotejo, pruebas escritas o pautas de observación.
+                    </p>
+                    <textarea
+                      rows={4}
+                      value={unitForm.evaluation_instruments || ''}
+                      onChange={e => setUnitForm({ ...unitForm, evaluation_instruments: e.target.value })}
+                      placeholder="Ej: Evaluación diagnóstica inicial; Rúbrica de proceso para guías grupales; Prueba sumativa escrita; Pauta de cotejo para taller práctico..."
+                      style={{ width: '100%', padding: '0.65rem', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.84rem', lineHeight: 1.45 }}
+                    />
+                  </div>
+                </div>
+
+                {/* BOTÓN INFERIOR GUARDAR */}
+                <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0' }}>
+                  <button
+                    type="button"
+                    onClick={handlePrintUnitReport}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      background: '#f1f5f9',
+                      color: '#0f172a',
+                      padding: '0.6rem 1.1rem',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.84rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Printer size={16} /> Imprimir Ficha
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={savingUnit}
+                    onClick={handleSaveUnit}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                      background: '#0284c7',
+                      color: '#ffffff',
+                      padding: '0.6rem 1.5rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      fontSize: '0.85rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(2, 132, 199, 0.3)'
+                    }}
+                  >
+                    <Save size={16} />
+                    {savingUnit ? 'Guardando...' : 'Guardar Planificación de Unidad'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* PESTAÑA 3: PLANIFICACIÓN CLASE A CLASE (1X CADA SESIÓN)                */}
       {/* ===================================================================== */}
       {activeTab === 'lessons' && (
         <div>

@@ -4,6 +4,18 @@ import { authMiddleware, checkRoles, logAudit } from '../middleware/auth';
 
 const router = Router();
 
+// Garantizar columnas para Planificación por Unidad en Supabase PostgreSQL
+query(`
+  ALTER TABLE annual_curriculum_units 
+  ADD COLUMN IF NOT EXISTS class_count INT DEFAULT 8,
+  ADD COLUMN IF NOT EXISTS hours_count INT DEFAULT 16,
+  ADD COLUMN IF NOT EXISTS unit_goal TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS transversal_goals TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS resources TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS evaluation_type TEXT DEFAULT 'Formativa y Sumativa',
+  ADD COLUMN IF NOT EXISTS estimated_date VARCHAR(255) DEFAULT '';
+`).catch(() => {});
+
 // =============================================================================
 // 1. CATÁLOGO DE OBJETIVOS DE APRENDIZAJE (OA) MINEDUC
 // =============================================================================
@@ -255,8 +267,9 @@ router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director', 'D
         await query(`
           INSERT INTO annual_curriculum_units (
             id, plan_id, unit_number, unit_name, learning_goals,
-            evaluation_instruments, temporality, sort_order
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            evaluation_instruments, temporality, sort_order,
+            class_count, hours_count, unit_goal, transversal_goals, resources, evaluation_type, estimated_date
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         `, [
           unitId,
           planId,
@@ -265,7 +278,14 @@ router.post('/annual-plans', authMiddleware, checkRoles(['Admin', 'Director', 'D
           u.learning_goals || '',
           u.evaluation_instruments || '',
           u.temporality || '8 Semanas',
-          i + 1
+          i + 1,
+          parseInt(String(u.class_count || 8), 10),
+          parseInt(String(u.hours_count || 16), 10),
+          u.unit_goal || '',
+          u.transversal_goals || '',
+          u.resources || '',
+          u.evaluation_type || 'Formativa y Sumativa',
+          u.estimated_date || ''
         ]);
       }
     }
@@ -343,8 +363,9 @@ router.put('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director',
         await query(`
           INSERT INTO annual_curriculum_units (
             id, plan_id, unit_number, unit_name, learning_goals,
-            evaluation_instruments, temporality, sort_order
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            evaluation_instruments, temporality, sort_order,
+            class_count, hours_count, unit_goal, transversal_goals, resources, evaluation_type, estimated_date
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         `, [
           unitId,
           id,
@@ -353,7 +374,14 @@ router.put('/annual-plans/:id', authMiddleware, checkRoles(['Admin', 'Director',
           u.learning_goals || '',
           u.evaluation_instruments || '',
           u.temporality || '8 Semanas',
-          i + 1
+          i + 1,
+          parseInt(String(u.class_count || 8), 10),
+          parseInt(String(u.hours_count || 16), 10),
+          u.unit_goal || '',
+          u.transversal_goals || '',
+          u.resources || '',
+          u.evaluation_type || 'Formativa y Sumativa',
+          u.estimated_date || ''
         ]);
       }
     }
@@ -520,6 +548,73 @@ router.post('/transfer-plan', authMiddleware, checkRoles(['Admin', 'Director', '
   } catch (err: any) {
     console.error('Error al traspasar planificación:', err);
     res.status(500).json({ error: 'Error al traspasar planificación curricular.' });
+  }
+});
+
+// =============================================================================
+// 2.5. GESTIÓN Y PLANIFICACIÓN DETALLADA POR UNIDAD
+// =============================================================================
+
+// PUT /api/curriculum/units/:id - Actualizar una unidad individualmente con todos sus campos pedagógicos
+router.put('/units/:id', authMiddleware, checkRoles(['Admin', 'Director', 'Docente', 'Profesor', 'Profesor Jefe', 'Inspector General', 'Jefe UTP', 'Coordinador']), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      unit_name,
+      unit_number,
+      unit_goal,
+      class_count,
+      hours_count,
+      estimated_date,
+      learning_goals,
+      transversal_goals,
+      resources,
+      evaluation_type,
+      evaluation_instruments,
+      temporality
+    } = req.body;
+
+    const check = await query('SELECT * FROM annual_curriculum_units WHERE id = $1', [id]);
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Unidad de planificación no encontrada.' });
+    }
+
+    await query(`
+      UPDATE annual_curriculum_units SET
+        unit_name = COALESCE($1, unit_name),
+        unit_number = COALESCE($2, unit_number),
+        unit_goal = COALESCE($3, unit_goal),
+        class_count = COALESCE($4, class_count),
+        hours_count = COALESCE($5, hours_count),
+        estimated_date = COALESCE($6, estimated_date),
+        learning_goals = COALESCE($7, learning_goals),
+        transversal_goals = COALESCE($8, transversal_goals),
+        resources = COALESCE($9, resources),
+        evaluation_type = COALESCE($10, evaluation_type),
+        evaluation_instruments = COALESCE($11, evaluation_instruments),
+        temporality = COALESCE($12, temporality),
+        updated_at = NOW()
+      WHERE id = $13
+    `, [
+      unit_name,
+      unit_number ? parseInt(String(unit_number), 10) : null,
+      unit_goal,
+      class_count !== undefined && class_count !== null ? parseInt(String(class_count), 10) : null,
+      hours_count !== undefined && hours_count !== null ? parseInt(String(hours_count), 10) : null,
+      estimated_date,
+      learning_goals,
+      transversal_goals,
+      resources,
+      evaluation_type,
+      evaluation_instruments,
+      temporality,
+      id
+    ]);
+
+    res.json({ success: true, message: 'Unidad de aprendizaje actualizada exitosamente.' });
+  } catch (err: any) {
+    console.error('Error al actualizar unidad:', err);
+    res.status(500).json({ error: 'Error al actualizar unidad pedagógica.' });
   }
 });
 
@@ -938,7 +1033,7 @@ router.get('/coverage-stats', authMiddleware, async (req: Request, res: Response
 // =============================================================================
 
 interface AiAssistantRequestBody {
-  mode: 'suggest_class_activities' | 'suggest_annual_units' | 'suggest_evaluations' | 'suggest_dua';
+  mode: 'suggest_class_activities' | 'suggest_annual_units' | 'suggest_evaluations' | 'suggest_dua' | 'suggest_unit_detail';
   oa_code?: string;
   oa_title?: string;
   grade_level: string;
@@ -1184,6 +1279,18 @@ Si el modo es "suggest_annual_units":
   ]
 }
 
+Si el modo es "suggest_unit_detail":
+{
+  "unit_goal": "Propósito formativo integral y objetivo general de la unidad, vinculado a los aprendizajes clave MINEDUC.",
+  "transversal_goals": "Objetivos de Aprendizaje Transversales (OAT MINEDUC): actitudes, valores de responsabilidad, trabajo colaborativo, rigurosidad técnica y ética.",
+  "resources": "Recursos didácticos y materiales recomendados (guías de aprendizaje, textos de estudio, TIC, plataformas, instrumental de laboratorio o taller).",
+  "evaluation_type": "Diagnóstica, Formativa y Sumativa",
+  "evaluation_instruments": "Rúbrica de evaluación analítica, pautas de cotejo de desempeño, prueba sumativa mixta.",
+  "class_count": 8,
+  "hours_count": 16,
+  "estimated_date": "8 Semanas (Estimado)"
+}
+
 Responde SOLO el JSON válido, sin delimitadores adicionales innecesarios.
 `;
 }
@@ -1253,6 +1360,27 @@ function generatePedagogicalResponse(opts: any): any {
   if (opts.mode === 'suggest_evaluations') {
     return {
       evaluation_instruments: 'Diagnóstico inicial formativo (5 preguntas clave); Registro de observación durante el trabajo práctico; Prueba escrita mixta con resolución de problemas contextualizados; Pauta de cotejo para el cuaderno de aula.'
+    };
+  }
+
+  if (opts.mode === 'suggest_unit_detail') {
+    const isTp = opts.grade_level.includes('Técnico') || opts.grade_level.includes('Industrial') || opts.subject.includes('Industrial') || opts.subject.includes('Párvulo');
+    const uName = opts.unit_name || 'la Unidad';
+
+    return {
+      unit_goal: `Desarrollar y consolidar aprendizajes fundamentales en ${opts.subject} para ${opts.grade_level}, potenciando la capacidad de análisis, resolución de problemas y aplicación práctica contextualizada a través de ${uName}.`,
+      transversal_goals: `• OAT Dimensión Cognitiva: Desarrollar el pensamiento reflexivo y metacognitivo aplicando estrategias sistemáticas de indagación y resolución de problemas.
+• OAT Dimensión Trabajo y Proactividad: Demostrar rigor, puntualidad y perseverancia en el desarrollo de actividades escolares y técnicas individuales y grupales.
+• OAT Dimensión Afectiva y Social: Trabajar colaborativamente, respetando la diversidad de opiniones y cuidando el entorno de aprendizaje${isTp ? ' y las normas de seguridad en taller' : ''}.`,
+      resources: `• Guías de aprendizaje y aplicación práctica elaboradas por el docente.
+• Textos de estudio y lecturas MINEDUC complementarias.
+• Proyector multimedia, presentaciones interactivas y recursos digitales en red.
+• Material concreto e instrumental pedagógico especializado según requerimientos del aula${isTp ? ' y herramientas técnicas del taller' : ''}.`,
+      evaluation_type: 'Diagnóstica, Formativa y Sumativa',
+      evaluation_instruments: 'Evaluación diagnóstica inicial; Guías de avance formativo con retroalimentación inmediata; Rúbrica analítica de desempeño para la actividad central; Prueba sumativa de unidad con situaciones problemáticas contextualizadas.',
+      class_count: 8,
+      hours_count: 16,
+      estimated_date: '8 Semanas (Estimado)'
     };
   }
 
