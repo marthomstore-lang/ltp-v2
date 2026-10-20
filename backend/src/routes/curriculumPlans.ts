@@ -44,6 +44,12 @@ query(`
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
   );
+
+  ALTER TABLE pedagogical_continuity_activities 
+  ADD COLUMN IF NOT EXISTS slides_json JSONB,
+  ADD COLUMN IF NOT EXISTS scaffold_json JSONB,
+  ADD COLUMN IF NOT EXISTS stretch_json JSONB,
+  ADD COLUMN IF NOT EXISTS warm_up_json JSONB;
 `).catch((err) => {
   console.warn('Aviso al garantizar tabla pedagogical_continuity_activities:', err.message);
 });
@@ -1824,9 +1830,10 @@ router.post('/continuity-activities', authMiddleware, async (req: Request, res: 
         teacher_name, substitute_teacher_name, oa_code, oa_title, duration_minutes,
         activity_type, title, instructions_for_students, instructions_for_substitute,
         content_summary, activities_json, exit_ticket, answer_key, rubric_criteria,
-        status, created_by, updated_at
+        status, created_by, updated_at, slides_json, scaffold_json, stretch_json, warm_up_json
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW()
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW(),
+        $23, $24, $25, $26
       )
       ON CONFLICT (id) DO UPDATE SET
         annual_plan_id = EXCLUDED.annual_plan_id,
@@ -1848,6 +1855,10 @@ router.post('/continuity-activities', authMiddleware, async (req: Request, res: 
         answer_key = EXCLUDED.answer_key,
         rubric_criteria = EXCLUDED.rubric_criteria,
         status = EXCLUDED.status,
+        slides_json = COALESCE(EXCLUDED.slides_json, pedagogical_continuity_activities.slides_json),
+        scaffold_json = COALESCE(EXCLUDED.scaffold_json, pedagogical_continuity_activities.scaffold_json),
+        stretch_json = COALESCE(EXCLUDED.stretch_json, pedagogical_continuity_activities.stretch_json),
+        warm_up_json = COALESCE(EXCLUDED.warm_up_json, pedagogical_continuity_activities.warm_up_json),
         updated_at = NOW()
     `, [
       resolvedId,
@@ -1871,7 +1882,11 @@ router.post('/continuity-activities', authMiddleware, async (req: Request, res: 
       answer_key || '',
       rubric_criteria || '',
       status,
-      userEmail
+      userEmail,
+      JSON.stringify(req.body.slides_json || []),
+      JSON.stringify(req.body.scaffold_json || {}),
+      JSON.stringify(req.body.stretch_json || {}),
+      JSON.stringify(req.body.warm_up_json || {})
     ]);
 
     await logAudit(
@@ -1884,6 +1899,141 @@ router.post('/continuity-activities', authMiddleware, async (req: Request, res: 
   } catch (err: any) {
     console.error('Error al guardar actividad de continuidad:', err);
     res.status(500).json({ error: 'Error al guardar actividad de continuidad pedagógica.' });
+  }
+});
+
+// POST /api/curriculum/refine-activity - Asistente Co-Piloto estilo Chalkie para refinar actividades con IA
+router.post('/refine-activity', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { currentActivity, prompt } = req.body;
+    if (!currentActivity || !prompt) {
+      return res.status(400).json({ error: 'Actividad e instrucción de refinamiento son requeridas.' });
+    }
+
+    const geminiKey = process.env.GEMINI_API_KEY || '';
+    if (geminiKey) {
+      try {
+        const fullPrompt = `
+Actúa como un Diseñador Curricular experto de Chalkie AI adaptado al Liceo Técnico Profesional Campanario.
+El docente solicita modificar o enriquecer la siguiente actividad pedagógica:
+
+ACTIVIDAD ACTUAL:
+${JSON.stringify(currentActivity, null, 2)}
+
+INSTRUCCIÓN ESPECÍFICA DEL DOCENTE PARA EL REFINAMIENTO:
+"${prompt}"
+
+REGLAS DE REFINAMIENTO:
+- Modifica los campos necesarios respetando exactamente la instrucción dada.
+- Devuelve la misma estructura JSON completa:
+{
+  "title": "string",
+  "pedagogical_context": "string",
+  "instructions_for_students": "string",
+  "instructions_for_substitute": "string",
+  "content_summary": "string",
+  "activities": [ ... ],
+  "exit_ticket": "string",
+  "answer_key": "string",
+  "rubric_criteria": "string",
+  "slides": [
+    {
+      "slide_number": 1,
+      "title": "Título de la diapositiva",
+      "subtitle": "Subtítulo explicativo",
+      "bullets": ["Punto 1", "Punto 2", "Punto 3"],
+      "teacher_prompt": "Instrucción o pregunta para proyectar",
+      "time_estimate": "10 min"
+    }
+  ],
+  "scaffold": {
+    "title": "Versión de Apoyo DUA / PIE",
+    "hints": ["Pista 1...", "Pista 2..."],
+    "simplified_questions": ["Pregunta guiada 1...", "Pregunta guiada 2..."]
+  },
+  "stretch": {
+    "title": "Versión Desafío y Extensión",
+    "challenge_questions": ["Pregunta de pensamiento crítico y análisis avanzado..."]
+  }
+}
+Devuelve estrictamente el JSON sin texto introductorio ni explicaciones adicionales.
+`;
+
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: fullPrompt }] }],
+              generationConfig: {
+                temperature: 0.3,
+                maxOutputTokens: 3000,
+                responseMimeType: 'application/json'
+              }
+            })
+          }
+        );
+
+        if (geminiRes.ok) {
+          const geminiData = await geminiRes.json();
+          const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (rawText) {
+            const parsed = parseGeminiResponse(rawText, 'refined_activity');
+            if (parsed && parsed.title) {
+              return res.json({
+                success: true,
+                source: 'gemini-ai',
+                activity: {
+                  ...currentActivity,
+                  ...parsed
+                }
+              });
+            }
+          }
+        }
+      } catch (gemErr) {
+        console.warn('Fallo en Gemini al refinar actividad, aplicando motor pedagógico:', gemErr);
+      }
+    }
+
+    // Fallback motor pedagógico: aplicar modificaciones según prompt
+    const updated = { ...currentActivity };
+    const pLower = prompt.toLowerCase();
+
+    if (pLower.includes('dua') || pLower.includes('pie') || pLower.includes('facil') || pLower.includes('simple') || pLower.includes('apoyo')) {
+      updated.instructions_for_students += '\n\n• Adecuación DUA: Utiliza las pistas destacadas y apóyate en tu compañero asignado.';
+      if (updated.activities_json && Array.isArray(updated.activities_json)) {
+        updated.activities_json = updated.activities_json.map((act: any) => ({
+          ...act,
+          description: `${act.description} (Pista de apoyo: Subraya las palabras clave y revisa el ejemplo antes de responder).`
+        }));
+      }
+    } else if (pLower.includes('taller') || pLower.includes('practic') || pLower.includes('mecanic') || pLower.includes('parvulo')) {
+      updated.title = `${updated.title} (Enfoque Práctico de Taller LTP)`;
+      updated.content_summary += '\n\nAPLICACIÓN EN TALLER: Aplica los principios técnicos en las estaciones de trabajo bajo supervisión de seguridad y normas EPP.';
+    } else if (pLower.includes('desafio') || pLower.includes('avanzad') || pLower.includes('profund')) {
+      if (updated.activities_json && Array.isArray(updated.activities_json)) {
+        updated.activities_json.push({
+          number: updated.activities_json.length + 1,
+          title: 'Actividad de Desafío y Extensión (Pensamiento Crítico)',
+          points: 6,
+          description: 'Para estudiantes que deseen profundizar en la materia:',
+          questions: ['Plantea una solución innovadora vinculada al entorno productivo o comunal de Campanario.']
+        });
+      }
+    } else {
+      updated.pedagogical_context = `${updated.pedagogical_context || ''}\n• Nota de refinamiento: ${prompt}`;
+    }
+
+    res.json({
+      success: true,
+      source: 'pedagogical-engine',
+      activity: updated
+    });
+  } catch (err: any) {
+    console.error('Error al refinar actividad con IA:', err);
+    res.status(500).json({ error: 'Error al refinar la actividad.' });
   }
 });
 
@@ -2202,6 +2352,104 @@ PUNTAJE TOTAL: 24 PUNTOS.`;
 • Requiere Refuerzo (< 14 pts): Respuestas incompletas o erróneas; requiere apoyo del docente titular.`;
   }
 
+  const slides = [
+    {
+      slide_number: 1,
+      title: title,
+      subtitle: `${opts.course_name} • ${opts.subject_name}`,
+      bullets: [
+        `Docente Titular: ${opts.teacher_name}`,
+        `Docente a Cargo: ${opts.substitute_teacher_name || 'Docente de Apoyo'}`,
+        `Objetivo de Aprendizaje: ${oaCode}`
+      ],
+      teacher_prompt: 'Presentar en proyector al iniciar la sesión y verificar materiales.',
+      time_estimate: '5 min'
+    },
+    {
+      slide_number: 2,
+      title: 'Activación & Pregunta Detonante (Warm-up)',
+      subtitle: `Conexión con la clase previa: ${lastTopic.substring(0, 60)}...`,
+      bullets: [
+        '¿Qué recuerdas del último procedimiento o concepto visto en la clase anterior?',
+        '¿Dónde se aplica este conocimiento en situaciones cotidianas o en el taller?',
+        'Lluvia de ideas rápida (3 estudiantes voluntarios responden).'
+      ],
+      teacher_prompt: 'Moderar la participación en la pizarra antes de repartir las guías.',
+      time_estimate: '10 min'
+    },
+    {
+      slide_number: 3,
+      title: 'Conceptos Clave & Vocabulario Central',
+      subtitle: `Marco Teórico de la Unidad: ${opts.unit_name}`,
+      bullets: [
+        `Concepto Principal: ${oaTitle.substring(0, 80)}...`,
+        'Paso 1: Identificación y análisis ordenado de la información.',
+        'Paso 2: Aplicación del método o procedimiento paso a paso.',
+        'Paso 3: Verificación y redacción clara de conclusiones.'
+      ],
+      teacher_prompt: 'Dejar proyectado durante el trabajo autónomo para referencia.',
+      time_estimate: '15 min'
+    },
+    {
+      slide_number: 4,
+      title: 'Taller Práctico & Ejercitación Autónoma',
+      subtitle: `Tiempo de trabajo estimado: ${opts.duration_minutes - 25} minutos`,
+      bullets: [
+        'Modalidad: Trabajo individual o en parejas colaborativas.',
+        'Desarrollar ítems I, II y III de la guía impresa.',
+        'Dudas: Levantar la mano para atención en el puesto.',
+        'Ambiente de concentración, rigurosidad y respeto.'
+      ],
+      teacher_prompt: 'Monitorear la sala y circular entre las filas resolviendo consultas.',
+      time_estimate: `${opts.duration_minutes - 25} min`
+    },
+    {
+      slide_number: 5,
+      title: 'Cierre de Sesión & Ticket de Salida',
+      subtitle: 'Comprobación de Aprendizaje antes del Timbre',
+      bullets: [
+        '10 minutos antes: Detener el trabajo y responder el Ticket de Salida.',
+        'Responder individualmente las preguntas de síntesis.',
+        'Entregar la guía firmada al docente a cargo al sonar el timbre.',
+        'El profesor titular revisará y registrará tu avance al reincorporarse.'
+      ],
+      teacher_prompt: 'Recolectar todas las guías en orden de lista y entregar en UTP.',
+      time_estimate: '10 min'
+    }
+  ];
+
+  const scaffold = {
+    title: 'Nivel Apoyo / DUA / PIE (Scaffolded Tier)',
+    guidelines: 'Diseñado con organizadores visuales y pistas explícitas para estudiantes que requieren apoyo pedagógico adicional.',
+    hints: [
+      `Pista 1: Revisa el concepto clave destacado en el marco conceptual para responder el Ítem I.`,
+      `Pista 2: En el Ítem II, subraya los datos numéricos o palabras clave antes de realizar las operaciones.`,
+      `Pista 3: Puedes responder oralmente o con palabras clave breves si te resulta más claro.`
+    ],
+    simplified_questions: [
+      `1. ¿Cuál es la idea o paso más importante que aprendiste hoy sobre ${oaCode}?`,
+      `2. Completa la frase: "Para resolver esta situación, primero debemos..."`,
+      `3. Marca con un visto bueno (✓) la opción correcta según lo leído.`
+    ]
+  };
+
+  const stretch = {
+    title: 'Nivel Desafío y Extensión (Stretch Tier)',
+    guidelines: 'Para estudiantes que terminan con rapidez o requieren mayor profundización y pensamiento crítico avanzado.',
+    challenge_questions: [
+      `1. ¿Cómo transformarías el procedimiento de hoy para resolver un problema de mayor escala en una empresa o taller real?`,
+      `2. Diseña un contraejemplo o identifica una limitación del método aplicado.`,
+      `3. Propón una versión mejorada o alternativa de resolución justificando tu postura con criterios técnicos o científicos.`
+    ]
+  };
+
+  const warmUp = {
+    title: 'Dinámica de Inicio / Hook de 5 Minutos',
+    time_minutes: 5,
+    prompt: `¿Cómo aplicarías los conceptos de ${oaCode} en una situación cotidiana o en el taller productivo de Campanario?`,
+    instructions: 'Presentar la pregunta en la pizarra. Dar 1 minuto de reflexión individual y pedir a 2 estudiantes que compartan su respuesta.'
+  };
+
   return {
     title,
     pedagogical_context: contextText,
@@ -2211,7 +2459,11 @@ PUNTAJE TOTAL: 24 PUNTOS.`;
     activities,
     exit_ticket: exitTicket,
     answer_key: answerKey,
-    rubric_criteria: rubricCriteria
+    rubric_criteria: rubricCriteria,
+    slides,
+    scaffold,
+    stretch,
+    warm_up: warmUp
   };
 }
 
