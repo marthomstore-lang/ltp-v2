@@ -16,6 +16,38 @@ query(`
   ADD COLUMN IF NOT EXISTS estimated_date VARCHAR(255) DEFAULT '';
 `).catch(() => {});
 
+// Garantizar tabla para Material de Continuidad y Actividades de Reemplazo con IA
+query(`
+  CREATE TABLE IF NOT EXISTS pedagogical_continuity_activities (
+    id VARCHAR(150) PRIMARY KEY,
+    academic_year INT DEFAULT 2026,
+    annual_plan_id VARCHAR(150),
+    unit_name VARCHAR(255),
+    course_name VARCHAR(255) NOT NULL,
+    subject_name VARCHAR(255) NOT NULL,
+    teacher_name VARCHAR(255) NOT NULL,
+    substitute_teacher_name VARCHAR(255),
+    oa_code VARCHAR(100),
+    oa_title TEXT,
+    duration_minutes INT DEFAULT 90,
+    activity_type VARCHAR(100) DEFAULT 'guia_autonoma',
+    title VARCHAR(255) NOT NULL,
+    instructions_for_students TEXT,
+    instructions_for_substitute TEXT,
+    content_summary TEXT,
+    activities_json JSONB,
+    exit_ticket TEXT,
+    answer_key TEXT,
+    rubric_criteria TEXT,
+    status VARCHAR(50) DEFAULT 'generada',
+    created_by VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );
+`).catch((err) => {
+  console.warn('Aviso al garantizar tabla pedagogical_continuity_activities:', err.message);
+});
+
 // =============================================================================
 // 1. CATÁLOGO DE OBJETIVOS DE APRENDIZAJE (OA) MINEDUC
 // =============================================================================
@@ -1472,6 +1504,714 @@ function generatePedagogicalResponse(opts: any): any {
     pedagogical_resources: recursos,
     evaluation_indicators: indicadores,
     dua_accommodations: dua
+  };
+}
+
+// =============================================================================
+// 6. MÓDULO DE CONTINUIDAD PEDAGÓGICA Y ACTIVIDADES DE REEMPLAZO CON IA
+// =============================================================================
+
+// GET /api/curriculum/continuity-context - Detectar contexto curricular en tiempo real
+router.get('/continuity-context', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { course_name, subject_name, teacher_name } = req.query;
+    if (!course_name || !subject_name) {
+      return res.status(400).json({ error: 'course_name y subject_name son requeridos.' });
+    }
+
+    const cName = String(course_name).trim();
+    const sName = String(subject_name).trim();
+
+    // 1. Buscar plan anual vigente
+    let planSql = 'SELECT * FROM annual_curriculum_plans WHERE course_name ILIKE $1 AND subject_name ILIKE $2';
+    const planParams: any[] = [`%${cName}%`, `%${sName}%`];
+
+    if (teacher_name && String(teacher_name).trim()) {
+      planParams.push(`%${String(teacher_name).trim()}%`);
+      planSql += ` AND (teacher_name ILIKE $${planParams.length} OR substitute_teacher_name ILIKE $${planParams.length})`;
+    }
+    planSql += ' ORDER BY created_at DESC LIMIT 1';
+
+    const planRes = await query(planSql, planParams);
+    const annualPlan = planRes.rows[0] || null;
+
+    let units: any[] = [];
+    if (annualPlan) {
+      const unitsRes = await query(
+        'SELECT * FROM annual_curriculum_units WHERE plan_id = $1 ORDER BY unit_number ASC',
+        [annualPlan.id]
+      );
+      units = unitsRes.rows || [];
+    }
+
+    // 2. Buscar clases planificadas
+    const lessonsRes = await query(`
+      SELECT id, class_number, class_date, class_goal, status, oa_codes, unit_name, moment_start, moment_development, pedagogical_resources
+      FROM lesson_plans
+      WHERE course_name ILIKE $1 AND subject_name ILIKE $2
+      ORDER BY class_number ASC, class_date ASC
+    `, [`%${cName}%`, `%${sName}%`]);
+    const lessons = lessonsRes.rows || [];
+
+    const completedLessons = lessons.filter(l => l.status === 'realizada');
+    const pendingLessons = lessons.filter(l => l.status !== 'realizada');
+
+    const lastLesson = completedLessons.length > 0 
+      ? completedLessons[completedLessons.length - 1] 
+      : (lessons.length > 0 ? lessons[0] : null);
+
+    const nextLesson = pendingLessons.length > 0 
+      ? pendingLessons[0] 
+      : (completedLessons.length > 0 ? completedLessons[completedLessons.length - 1] : null);
+
+    // Deducir unidad sugerida
+    let suggestedUnit = nextLesson?.unit_name || lastLesson?.unit_name || '';
+    if (!suggestedUnit && units.length > 0) {
+      suggestedUnit = units[0].unit_name;
+    }
+
+    // Deducir OA sugerido
+    let suggestedOa = nextLesson?.oa_codes || lastLesson?.oa_codes || '';
+    if (!suggestedOa && units.length > 0) {
+      suggestedOa = units[0].learning_goals;
+    }
+
+    // Deducir resumen del último tema tratado
+    let lastCoveredSummary = '';
+    if (lastLesson) {
+      lastCoveredSummary = `Clase #${lastLesson.class_number}: ${lastLesson.class_goal || 'Sin objetivo registrado'}. ${lastLesson.oa_codes ? `(OA: ${lastLesson.oa_codes})` : ''}`;
+    }
+
+    res.json({
+      success: true,
+      annualPlan,
+      units,
+      lastLesson,
+      nextLesson,
+      suggestedUnit,
+      suggestedOa,
+      lastCoveredSummary,
+      recentLessons: lessons.slice(-6)
+    });
+  } catch (err: any) {
+    console.error('Error al obtener contexto de continuidad:', err);
+    res.status(500).json({ error: 'Error al obtener contexto pedagógico de continuidad.' });
+  }
+});
+
+// POST /api/curriculum/generate-continuity-activity - Generar material con Inteligencia Artificial
+router.post('/generate-continuity-activity', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const {
+      course_name,
+      subject_name,
+      teacher_name,
+      substitute_teacher_name,
+      annual_plan_id,
+      unit_name,
+      oa_code,
+      oa_title,
+      duration_minutes = 90,
+      activity_type = 'guia_autonoma',
+      last_covered_topics,
+      additional_instructions
+    } = req.body;
+
+    if (!course_name || !subject_name) {
+      return res.status(400).json({ error: 'Curso y asignatura son requeridos para generar el material.' });
+    }
+
+    const payload = {
+      course_name: String(course_name).trim(),
+      subject_name: String(subject_name).trim(),
+      teacher_name: String(teacher_name || 'Docente Titular').trim(),
+      substitute_teacher_name: String(substitute_teacher_name || 'Docente de Reemplazo / Apoyo').trim(),
+      annual_plan_id: annual_plan_id || null,
+      unit_name: String(unit_name || 'Unidad de Aprendizaje').trim(),
+      oa_code: String(oa_code || 'OA Priorizado').trim(),
+      oa_title: String(oa_title || 'Aplicación contextualizada y resolución de actividades prácticas').trim(),
+      duration_minutes: parseInt(String(duration_minutes), 10) || 90,
+      activity_type: activity_type || 'guia_autonoma',
+      last_covered_topics: String(last_covered_topics || '').trim(),
+      additional_instructions: String(additional_instructions || '').trim()
+    };
+
+    // 1. Intentar con Google Gemini API si está configurada la llave
+    const geminiKey = process.env.GEMINI_API_KEY || '';
+    if (geminiKey) {
+      try {
+        const prompt = `
+Actúa como un Diseñador Curricular y Asesor Técnico Pedagógico del Liceo Técnico Profesional Campanario (Chile).
+Crea una GUÍA DE TRABAJO AUTÓNOMO Y CONTINUIDAD PEDAGÓGICA lista para aplicar en el aula debido a la ausencia imprevista o licencia del profesor titular.
+La guía debe permitir que los estudiantes sigan avanzando sin perder tiempo pedagógico, guiados por un docente de reemplazo o asistente de aula.
+
+DATOS INSTITUCIONALES Y CURRICULARES:
+- Establecimiento: Liceo Técnico Profesional Campanario
+- Curso / Nivel: ${payload.course_name}
+- Asignatura o Módulo: ${payload.subject_name}
+- Docente Titular ausente: ${payload.teacher_name}
+- Docente de Reemplazo: ${payload.substitute_teacher_name}
+- Unidad Temática: ${payload.unit_name}
+- Objetivo de Aprendizaje (OA): ${payload.oa_code}: ${payload.oa_title}
+- Duración estimada: ${payload.duration_minutes} minutos (${Math.round(payload.duration_minutes / 45)} horas pedagógicas)
+- Tipo de material solicitado: ${payload.activity_type}
+- Lo último enseñado por el profesor titular (Continuidad): ${payload.last_covered_topics || 'Continuidad regular del programa'}
+- Instrucciones adicionales del solicitante: ${payload.additional_instructions || 'Ninguna'}
+
+Devuelve un JSON estrictamente estructurado sin texto adicional:
+{
+  "title": "Título formal y atractivo de la Guía de Aprendizaje",
+  "pedagogical_context": "Breve párrafo explicando cómo esta guía da continuidad al último tema enseñado por el profesor titular.",
+  "instructions_for_students": "Instrucciones claras y directas para el estudiante (lectura atenta, desarrollo ordenado, tiempo disponible, trabajo individual/duplas).",
+  "instructions_for_substitute": "Pauta e instrucciones paso a paso para el Docente de Reemplazo (minuto a minuto: cómo iniciar, monitoreo en sala, resolución de dudas y recolección final).",
+  "content_summary": "Marco teórico conceptual sintético (1/2 página con explicaciones accesibles, definiciones clave y 1 ejemplo resuelto paso a paso).",
+  "activities": [
+    {
+      "number": 1,
+      "title": "Actividad 1: Activación y Comprensión Conceptual",
+      "points": 6,
+      "description": "Instrucciones específicas de este ítem",
+      "questions": [
+        "1. Pregunta o ejercicio 1...",
+        "2. Pregunta o ejercicio 2...",
+        "3. Pregunta o ejercicio 3..."
+      ]
+    },
+    {
+      "number": 2,
+      "title": "Actividad 2: Aplicación Práctica / Resolución de Problemas",
+      "points": 10,
+      "description": "Instrucciones específicas de resolución o taller",
+      "questions": [
+        "1. Situación problemática o ejercicio práctico 1...",
+        "2. Situación problemática o ejercicio práctico 2..."
+      ]
+    },
+    {
+      "number": 3,
+      "title": "Actividad 3: Desafío de Pensamiento Crítico / Aplicación en la Vida Cotidiana o Taller TP",
+      "points": 8,
+      "description": "Desafío contextualizado de mayor profundidad",
+      "questions": [
+        "1. Caso o pregunta reflexiva..."
+      ]
+    }
+  ],
+  "exit_ticket": "Ticket de Salida (3 minutos antes del timbre): 2 preguntas breves de metacognición o síntesis para verificar el logro del objetivo.",
+  "answer_key": "Solucionario detallado para el Docente de Reemplazo con las respuestas esperadas ítem por ítem y desglose de puntajes.",
+  "rubric_criteria": "Criterios formativos de evaluación con escala de logro (Logrado: 20-24 pts, Medianamente Logrado: 14-19 pts, Por Lograr: <14 pts)."
+}
+`;
+
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0.4,
+                maxOutputTokens: 2500,
+                responseMimeType: 'application/json'
+              }
+            })
+          }
+        );
+
+        if (geminiRes.ok) {
+          const geminiData = await geminiRes.json();
+          const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (rawText) {
+            const parsed = parseGeminiResponse(rawText, 'continuity_activity');
+            if (parsed && parsed.title && parsed.activities) {
+              return res.json({
+                success: true,
+                source: 'gemini-ai',
+                data: parsed
+              });
+            }
+          }
+        }
+      } catch (geminiErr) {
+        console.warn('Fallo en Gemini para actividad de continuidad, usando motor pedagógico curricular integrado:', geminiErr);
+      }
+    }
+
+    // 2. Motor Curricular Pedagógico Integrado (LTP Campanario - Curriculum Engine)
+    const engineData = generatePedagogicalContinuityActivity(payload);
+
+    res.json({
+      success: true,
+      source: 'pedagogical-engine',
+      data: engineData
+    });
+  } catch (err: any) {
+    console.error('Error al generar actividad de continuidad:', err);
+    res.status(500).json({ error: 'Error al generar material de continuidad pedagógica.' });
+  }
+});
+
+// GET /api/curriculum/continuity-activities - Listar actividades de reemplazo guardadas
+router.get('/continuity-activities', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { course_name, subject_name, teacher_name, academic_year = 2026 } = req.query;
+    let sql = 'SELECT * FROM pedagogical_continuity_activities WHERE academic_year = $1';
+    const params: any[] = [parseInt(String(academic_year), 10)];
+
+    if (course_name && typeof course_name === 'string' && course_name.trim()) {
+      params.push(`%${course_name.trim()}%`);
+      sql += ` AND course_name ILIKE $${params.length}`;
+    }
+
+    if (subject_name && typeof subject_name === 'string' && subject_name.trim()) {
+      params.push(`%${subject_name.trim()}%`);
+      sql += ` AND subject_name ILIKE $${params.length}`;
+    }
+
+    if (teacher_name && typeof teacher_name === 'string' && teacher_name.trim()) {
+      params.push(`%${teacher_name.trim()}%`);
+      sql += ` AND (teacher_name ILIKE $${params.length} OR substitute_teacher_name ILIKE $${params.length})`;
+    }
+
+    sql += ' ORDER BY created_at DESC LIMIT 200';
+
+    const result = await query(sql, params);
+    res.json({ success: true, activities: result.rows || [] });
+  } catch (err: any) {
+    console.error('Error al listar actividades de continuidad:', err);
+    res.status(500).json({ error: 'Error al obtener actividades de continuidad pedagógica.' });
+  }
+});
+
+// POST /api/curriculum/continuity-activities - Guardar o actualizar actividad de reemplazo
+router.post('/continuity-activities', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const {
+      id,
+      academic_year = 2026,
+      annual_plan_id,
+      unit_name,
+      course_name,
+      subject_name,
+      teacher_name,
+      substitute_teacher_name,
+      oa_code,
+      oa_title,
+      duration_minutes = 90,
+      activity_type = 'guia_autonoma',
+      title,
+      instructions_for_students,
+      instructions_for_substitute,
+      content_summary,
+      activities_json,
+      exit_ticket,
+      answer_key,
+      rubric_criteria,
+      status = 'generada'
+    } = req.body;
+
+    if (!course_name || !subject_name || !title) {
+      return res.status(400).json({ error: 'Curso, asignatura y título de la actividad son obligatorios.' });
+    }
+
+    const userEmail = (req as any).user?.email || (req as any).user?.name || '';
+    const resolvedId = id || `ACT-CONT-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+
+    await query(`
+      INSERT INTO pedagogical_continuity_activities (
+        id, academic_year, annual_plan_id, unit_name, course_name, subject_name,
+        teacher_name, substitute_teacher_name, oa_code, oa_title, duration_minutes,
+        activity_type, title, instructions_for_students, instructions_for_substitute,
+        content_summary, activities_json, exit_ticket, answer_key, rubric_criteria,
+        status, created_by, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW()
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        annual_plan_id = EXCLUDED.annual_plan_id,
+        unit_name = EXCLUDED.unit_name,
+        course_name = EXCLUDED.course_name,
+        subject_name = EXCLUDED.subject_name,
+        teacher_name = EXCLUDED.teacher_name,
+        substitute_teacher_name = EXCLUDED.substitute_teacher_name,
+        oa_code = EXCLUDED.oa_code,
+        oa_title = EXCLUDED.oa_title,
+        duration_minutes = EXCLUDED.duration_minutes,
+        activity_type = EXCLUDED.activity_type,
+        title = EXCLUDED.title,
+        instructions_for_students = EXCLUDED.instructions_for_students,
+        instructions_for_substitute = EXCLUDED.instructions_for_substitute,
+        content_summary = EXCLUDED.content_summary,
+        activities_json = EXCLUDED.activities_json,
+        exit_ticket = EXCLUDED.exit_ticket,
+        answer_key = EXCLUDED.answer_key,
+        rubric_criteria = EXCLUDED.rubric_criteria,
+        status = EXCLUDED.status,
+        updated_at = NOW()
+    `, [
+      resolvedId,
+      parseInt(String(academic_year), 10) || 2026,
+      annual_plan_id || null,
+      unit_name || '',
+      course_name,
+      subject_name,
+      teacher_name || '',
+      substitute_teacher_name || null,
+      oa_code || '',
+      oa_title || '',
+      parseInt(String(duration_minutes), 10) || 90,
+      activity_type,
+      title,
+      instructions_for_students || '',
+      instructions_for_substitute || '',
+      content_summary || '',
+      JSON.stringify(activities_json || []),
+      exit_ticket || '',
+      answer_key || '',
+      rubric_criteria || '',
+      status,
+      userEmail
+    ]);
+
+    await logAudit(
+      req,
+      'SAVE_CONTINUITY_ACTIVITY',
+      `Actividad de Continuidad Pedagógica guardada: "${title}" para curso ${course_name} (${subject_name}).`
+    );
+
+    res.json({ success: true, message: 'Actividad de continuidad guardada exitosamente.', id: resolvedId });
+  } catch (err: any) {
+    console.error('Error al guardar actividad de continuidad:', err);
+    res.status(500).json({ error: 'Error al guardar actividad de continuidad pedagógica.' });
+  }
+});
+
+// DELETE /api/curriculum/continuity-activities/:id - Eliminar actividad de reemplazo
+router.delete('/continuity-activities/:id', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await query('DELETE FROM pedagogical_continuity_activities WHERE id = $1', [id]);
+    await logAudit(req, 'DELETE_CONTINUITY_ACTIVITY', `Actividad de continuidad ${id} eliminada.`);
+    res.json({ success: true, message: 'Actividad de continuidad eliminada exitosamente.' });
+  } catch (err: any) {
+    console.error('Error al eliminar actividad de continuidad:', err);
+    res.status(500).json({ error: 'Error al eliminar actividad de continuidad.' });
+  }
+});
+
+// Función de Motor Curricular para Actividades de Continuidad (LTP Campanario)
+function generatePedagogicalContinuityActivity(opts: any): any {
+  const isTp = opts.course_name.includes('Técnico') || opts.course_name.includes('Medio') && (opts.subject_name.includes('Mecánic') || opts.subject_name.includes('Párvulo') || opts.subject_name.includes('Industrial'));
+  const isMath = /matem|cálcul|financ/i.test(opts.subject_name);
+  const isLanguage = /lengua|lenguaje|literat/i.test(opts.subject_name);
+  const isScience = /ciencia|biolog|físic|químic/i.test(opts.subject_name);
+  const isHistory = /historia|geograf|social/i.test(opts.subject_name);
+  const isParvulo = /párvulo|infantil/i.test(opts.subject_name) || /párvulo/i.test(opts.course_name);
+  const isMecanica = /mecánic|torno|soldadur|mantenim/i.test(opts.subject_name) || /mecánic/i.test(opts.course_name);
+
+  const oaCode = opts.oa_code || 'OA 1';
+  const oaTitle = opts.oa_title || 'Aplicación contextualizada de conceptos y procedimientos fundamentales.';
+  const lastTopic = opts.last_covered_topics ? opts.last_covered_topics : 'los aprendizajes desarrollados en la sesión anterior';
+
+  let title = `Guía de Aprendizaje Autónomo: Continuidad y Aplicación en ${opts.subject_name}`;
+  let contextText = `Esta guía pedagógica ha sido diseñada para asegurar la continuidad del proceso formativo en el curso ${opts.course_name}, conectando directamente con ${lastTopic} en el marco de la ${opts.unit_name}. Los estudiantes consolidarán los aprendizajes vinculados a ${oaCode}.`;
+
+  let substituteGuide = `1. INICIO (10 min): 
+- Salude al curso y registre la asistencia.
+- Explique con claridad: "El profesor(a) ${opts.teacher_name} dejó esta guía de trabajo programada para dar continuidad a lo que estaban viendo sobre ${lastTopic}. Esta actividad será revisada y evaluada formativamente al reincorporarse".
+- Entregue una copia impresa a cada estudiante y verifique que todos cuenten con lápiz, goma y cuaderno.
+
+2. DESARROLLO (${opts.duration_minutes - 25} min):
+- Indique que lean con atención el marco conceptual resumido antes de responder las actividades.
+- Modalidad permitida: Trabajo individual o en parejas colaborativas según la disciplina del aula.
+- Monitoree activamente la sala, recorriendo los puestos y asegurando un clima de concentración y respeto.
+- En caso de dudas conceptuales, consulte el Solucionario y Pauta de Corrección adjunta a este documento.
+
+3. CIERRE (15 min):
+- Avise al curso 10 minutos antes del timbre para que completen el "Ticket de Salida" individual.
+- Recoja todas las guías ordenadas por lista o fila.
+- Entregue las guías en la Unidad Técnica Pedagógica (UTP) o en el casillero del docente titular.`;
+
+  let studentInstructions = `Estimado(a) estudiante:
+1. Lee atentamente el marco conceptual y los ejemplos incluidos en esta guía antes de responder.
+2. Desarrolla las actividades con letra clara, orden y rigurosidad en los espacios asignados.
+3. Puedes apoyarte en tu compañero(a) de puesto para discutir las respuestas con volumen moderado.
+4. Recuerda completar el Ticket de Salida antes de finalizar la clase, ya que será recolectado por el docente a cargo y entregado a tu profesor(a) titular para su evaluación.`;
+
+  let contentSummary = '';
+  let activities: any[] = [];
+  let exitTicket = '';
+  let answerKey = '';
+  let rubricCriteria = '';
+
+  if (isMath) {
+    title = `Guía Práctica y Modelamiento Matemático: Continuidad Curricular (${oaCode})`;
+    contentSummary = `CONCEPTOS CLAVE Y MODELAMIENTO MATEMÁTICO:
+En las sesiones anteriores analizamos los principios de resolución numérica y algebraico-geométrica. Para dar continuidad efectiva a ${lastTopic}, recordemos los 3 pasos fundamentales para la resolución de situaciones problemáticas:
+1. Identificación de datos e incógnita: Leer el enunciado subrayando los datos explícitos y la pregunta central.
+2. Formulación y modelamiento: Expresar la relación matemática mediante operaciones ordenadas, ecuaciones o proporciones pertinentes.
+3. Ejecución, verificación y respuesta contextualizada: Realizar los cálculos con cuidado en los signos y redactar la respuesta indicando las unidades correspondientes ($, cm, %, horas, etc.).
+
+EJEMPLO GUIADO:
+Si en un taller se requiere calcular el rendimiento de un proceso donde entran 120 piezas y se aprueban 108:
+- Proporción de aprobación = 108 / 120 = 0.90 -> 90% de eficiencia.
+- Merma o descarte = 120 - 108 = 12 piezas (10%).`;
+
+    activities = [
+      {
+        number: 1,
+        title: "Ítem I: Ejercitación Directa y Comprensión Numérica (6 Puntos)",
+        points: 6,
+        description: "Resuelve los siguientes ejercicios de cálculo directo aplicando las propiedades matemáticas revisadas:",
+        questions: [
+          "a) Resuelve la operación paso a paso justificando el orden de prioridad: 45 + 15 x (8 - 3).",
+          "b) Calcula el valor correspondiente al 18% de un total de $350.000 aplicado a insumos técnicos.",
+          "c) Determina el valor de la incógnita en la proporción directa: x / 24 = 15 / 6."
+        ]
+      },
+      {
+        number: 2,
+        title: "Ítem II: Resolución de Situaciones Problemáticas Contextualizadas (10 Puntos)",
+        points: 10,
+        description: "Analiza el siguiente caso de la vida práctica y resuelve demostrando tu desarrollo completo:",
+        questions: [
+          "Caso 1: En una microempresa comunal de Campanario se adquieren 8 cajas de repuestos por un valor neto total de $160.000. Si se debe agregar el 19% de IVA y se ofrece un descuento promocional del 5% sobre el total bruto por pago al contado: ¿Cuál es el precio final a pagar? Realiza el desglose ordenado.",
+          "Caso 2: Un equipo de trabajo avanza a una razón de 12 metros de cerca construidos cada 3 horas de jornada. Si deben completar un tramo total de 68 metros: ¿Cuántas horas completas de trabajo requerirán y cuántos metros quedarán para la última fracción?"
+        ]
+      },
+      {
+        number: 3,
+        title: "Ítem III: Desafío de Análisis Crítico y Toma de Decisiones (8 Puntos)",
+        points: 8,
+        description: "Evalúa las dos opciones de presupuesto y fundamenta cuál es la más conveniente económica y técnicamente para el Liceo:",
+        questions: [
+          "Opción A: Proveedor local que cobra $4.500 por unidad con entrega inmediata sin costo de flete.",
+          "Opción B: Proveedor de la capital provincial que cobra $3.800 por unidad, pero agrega un costo fijo de envío de $15.000. ¿A partir de cuántas unidades conviene contratar la Opción B? Justifica con una tabla o ecuación."
+        ]
+      }
+    ];
+
+    exitTicket = `TICKET DE SALIDA (Para entregar al docente de reemplazo):
+1. ¿Cuál fue el paso matemático que te demandó mayor atención o esfuerzo durante los ejercicios de hoy?
+2. Resuelve en 1 minuto: Si un valor pasa de 50 a 60, ¿cuál fue el porcentaje exacto de incremento?`;
+
+    answerKey = `SOLUCIONARIO Y PAUTA DE CORRECCIÓN PARA EL DOCENTE DE REEMPLAZO:
+ÍTEM I (6 pts, 2 pts c/u):
+a) 45 + 15 x 5 = 45 + 75 = 120. (2 pts: 1 pt por prioridad de paréntesis/multiplicación, 1 pt resultado).
+b) 350.000 x 0.18 = $63.000. (2 pts).
+c) x = (24 x 15) / 6 = 360 / 6 = 60. (2 pts).
+
+ÍTEM II (10 pts, 5 pts c/u):
+Caso 1: Neto $160.000 -> IVA 19% = $30.400 -> Bruto = $190.400. Descuento 5% = $9.520 -> Total final = $180.880. (5 pts por desarrollo completo).
+Caso 2: Velocidad = 4 m/hora. Tiempo para 68 m = 68 / 4 = 17 horas exactas. (5 pts).
+
+ÍTEM III (8 pts):
+Igualdad de costos: 4.500x = 3.800x + 15.000 -> 700x = 15.000 -> x = 21.43 unidades.
+Conclusión: A partir de 22 unidades o más conviene la Opción B; para 21 unidades o menos conviene la Opción A. (8 pts por planteamiento y conclusión fundamentada).
+
+PUNTAJE TOTAL: 24 PUNTOS.`;
+
+    rubricCriteria = `ESCALA DE APRECIACIÓN Y LOGRO FORMATIVO:
+• Nivel Muy Bueno / Sobresaliente (20 a 24 puntos): Procedimientos matemáticos correctos, fundamentación clara y ticket de salida completo.
+• Nivel Aceptable / En Desarrollo (14 a 19 puntos): Comprende los conceptos centrales, comete errores menores de cálculo pero mantiene la coherencia.
+• Nivel Inicial / Requiere Reforzamiento (< 14 puntos): Dificultad para formular el modelo; requiere apoyo del profesor titular en la próxima clase.`;
+
+  } else if (isMecanica) {
+    title = `Guía Técnica de Taller y Mantenimiento Industrial: Continuidad Formativa (${oaCode})`;
+    contentSummary = `MARCO CONCEPTUAL TÉCNICO Y SEGURIDAD INDUSTRIAL:
+En el área Técnico-Profesional de Mecánica Industrial del LTP Campanario, la precisión dimensional y el cumplimiento irrestricto de las normas de prevención de riesgos son indispensables.
+Dando continuidad a ${lastTopic}:
+1. Metrología y Tolerancias: El uso de instrumentos de medición directa (calibre pie de metro milimétrico y en fracciones de pulgada, micrómetro de exteriores) exige verificar siempre el cero del instrumento y evitar el error de paralaje.
+2. Parámetros de Operación en Máquinas Herramientas: La velocidad de corte (Vc), avance (f) y profundidad de pasada (ap) determinan la vida útil del inserto de metal duro o herramienta de acero rápido (HSS) y la rugosidad superficial (Ra).
+3. Normativa de Seguridad: Jamás operar máquinas con ropa holgada, cabello suelto, guantes en zonas de husillos giratorios o sin lentes de protección contra viruta proyectada.`;
+
+    activities = [
+      {
+        number: 1,
+        title: "Ítem I: Seguridad de Taller y Vocabulario Técnico (6 Puntos)",
+        points: 6,
+        description: "Responde de forma clara las preguntas fundamentales de taller:",
+        questions: [
+          "a) Explica por qué está estrictamente prohibido utilizar guantes al operar el torno convencional o la taladradora de columna.",
+          "b) Define qué es el error de paralaje en una lectura de nonio y cómo debe colocarse el operador para evitarlo.",
+          "c) ¿Cuál es la diferencia entre mantenimiento preventivo sistemático y mantenimiento correctivo en una línea de producción?"
+        ]
+      },
+      {
+        number: 2,
+        title: "Ítem II: Cálculo de Parámetros de Mecanizado y Metrología (10 Puntos)",
+        points: 10,
+        description: "Aplica las fórmulas técnicas aprendidas para resolver las siguientes situaciones:",
+        questions: [
+          "Problema 1: Se debe tornear un eje cilíndrico de acero SAE 1020 con un diámetro inicial de 50 mm. Si la velocidad de corte recomendada por el fabricante del inserto es Vc = 80 m/min, calcula las RPM que se deben seleccionar en la caja Norton del torno (Fórmula: N = (Vc x 1000) / (pi x D)).",
+          "Problema 2: En una medición con pie de metro de precisión 0.05 mm, el cero del nonio se ubica pasado los 37 mm de la regla principal y coincide exactamente en la 7° línea del nonio. ¿Cuál es la lectura milimétrica exacta? Explica el cálculo."
+        ]
+      },
+      {
+        number: 3,
+        title: "Ítem III: Análisis de Caso de Taller y Prevención de Fallas (8 Puntos)",
+        points: 8,
+        description: "Analiza el caso técnico y propón una solución según el estándar TP:",
+        questions: [
+          "Caso: Durante el cilindrado de una pieza esbelta de 300 mm de largo sostenida solo en el plato de tres mordazas, el estudiante nota una vibración excesiva (chatter) y un acabado superficial rugoso e irregular. Identifica 2 causas probables de esta anomalía y describe 2 acciones correctivas inmediatas que debió tomar antes de continuar."
+        ]
+      }
+    ];
+
+    exitTicket = `TICKET DE SALIDA TÉCNICO:
+1. Nombra el EPP más crítico e indispensable antes de pulsar el botón de encendido de cualquier máquina herramienta.
+2. Si una pieza torneada queda cónica en vez de perfectamente cilíndrica, ¿qué elemento mecánico del torno podría estar desalineado?`;
+
+    answerKey = `SOLUCIONARIO TÉCNICO PARA EL DOCENTE DE REEMPLAZO:
+ÍTEM I (6 pts):
+a) Porque el guante puede ser atrapado por la viruta o el husillo giratorio, provocando un arrastre severo y amputación. (2 pts).
+b) Es la desviación de lectura por mirar oblicuamente la escala; se evita situando la vista en ángulo de 90° exactos frente a la escala. (2 pts).
+c) El preventivo se realiza antes de la falla según horas de servicio; el correctivo repara una avería ya ocurrida. (2 pts).
+
+ÍTEM II (10 pts):
+Problema 1: N = (80 x 1000) / (3.1416 x 50) = 80.000 / 157.08 = 509.29 RPM. Se selecciona la velocidad estándar más cercana en la caja (ej: 500 RPM). (5 pts).
+Problema 2: Lectura = 37 mm + (7 x 0.05 mm) = 37 mm + 0.35 mm = 37.35 mm. (5 pts).
+
+ÍTEM III (8 pts):
+Causas: Falta de apoyo en contrapunto (voladizo excesivo sin centro giratorio), velocidad o avance inadecuado, herramienta desalineada o desafilada.
+Acciones: Montar contrapunto con centro giratorio o luneta fija, verificar altura del buril al centro del torno y reducir la profundidad de pasada. (8 pts).
+
+PUNTAJE TOTAL: 24 PUNTOS.`;
+
+    rubricCriteria = `CRITERIOS DE LOGRO TÉCNICO PROFESIONAL:
+• Competente Destacado (20-24 pts): Demuestra dominio riguroso de normas de seguridad, fórmulas de mecanizado y diagnóstico técnico.
+• En Desarrollo Técnico (14-19 pts): Aplica fórmulas pero omite detalles de seguridad o unidades.
+• No Alcanzado (< 14 pts): Confunde conceptos elementales de taller; requiere supervisión directa del docente titular.`;
+
+  } else if (isParvulo) {
+    title = `Guía Didáctica de Educación Parvularia: Continuidad Curricular (${oaCode})`;
+    contentSummary = `PRINCIPIOS PEDAGÓGICOS EN EDUCACIÓN PARVULARIA (BCEP MINEDUC):
+Dando continuidad a ${lastTopic}, recordamos los principios rectores de las Bases Curriculares:
+1. Principio de Bienestar y Singularidad: Cada niña y niño es un sujeto de derechos único, con ritmo y estilo de aprendizaje propio.
+2. Principio del Juego y Actividad: El juego es la herramienta pedagógica y natural por excelencia en la primera infancia; no es un momento accesorio, sino el eje del aprendizaje significativo.
+3. Principio de Relación y Potenciación: Ambientes afectivos y seguros que potencian la autonomía progresiva, el lenguaje verbal y la convivencia democrática.`;
+
+    activities = [
+      {
+        number: 1,
+        title: "Ítem I: Fundamentos y Bases Curriculares (6 Puntos)",
+        points: 6,
+        description: "Responde brevemente según la normativa educativa vigente:",
+        questions: [
+          "a) Define en tus palabras el Principio del Juego según las BCEP y menciona una situación donde se aplique.",
+          "b) ¿Cuál es la diferencia entre el Núcleo de Lenguaje Verbal y el Núcleo de Convivencia y Ciudadanía?",
+          "c) ¿Qué rol cumple la educadora/asistente de párvulos en la mediación de un conflicto entre dos párvulos de nivel medio?"
+        ]
+      },
+      {
+        number: 2,
+        title: "Ítem II: Diseño de Experiencias de Aprendizaje Lúdicas (10 Puntos)",
+        points: 10,
+        description: "Elabora una propuesta concreta de micro-experiencia para niños y niñas de Nivel Transición (Pre-Kínder o Kínder):",
+        questions: [
+          "Propuesta: Diseña una actividad de 25 minutos con Inicio (activación lúdica), Desarrollo (manipulación de material concreto no estructurado) y Cierre (canción o metacognición sencilla) que favorezca la motricidad fina y la expresión artística.",
+          "Especifica: Materiales seguros a utilizar, rol de la asistente durante la experiencia e indicador de observación para la pauta de evaluación."
+        ]
+      },
+      {
+        number: 3,
+        title: "Ítem III: Protocolos de Convivencia y Primeros Auxilios en el Aula Infantil (8 Puntos)",
+        points: 8,
+        description: "Analiza el siguiente caso de aula y fundamenta tu actuar profesional:",
+        questions: [
+          "Caso: Durante el recreo en el patio techado, un párvulo sufre un tropiezo y golpe leve en la rodilla con raspadura. Describe los pasos ordenados del protocolo a seguir: contención emocional, atención de primeros auxilios básicos, aviso a la educadora y registro en la libreta/ficha institucional."
+        ]
+      }
+    ];
+
+    exitTicket = `TICKET DE SALIDA PEDAGÓGICO:
+1. Menciona un material didáctico reciclado que potencie la imaginación sin representar riesgo de ingesta o asfixia para los niños.
+2. ¿Por qué es fundamental anticipar la rutina diaria a los párvulos al inicio de cada jornada?`;
+
+    answerKey = `SOLUCIONARIO Y PAUTA DE EVALUACIÓN PARA EL DOCENTE DE REEMPLAZO:
+ÍTEM I (6 pts): 2 pts por cada respuesta fundamentada en las BCEP MINEDUC.
+ÍTEM II (10 pts): Estructura clara con inicio, desarrollo y cierre coherente (6 pts); materiales pertinentes y seguros (2 pts); indicador observable de logro (2 pts).
+ÍTEM III (8 pts): Pasos ordenados: Calmar y contener al párvulo (2 pts); limpiar con suero/agua y cubrir sin aplicar medicamentos sin autorización (3 pts); comunicar y registrar formalmente (3 pts).
+PUNTAJE TOTAL: 24 PUNTOS.`;
+
+    rubricCriteria = `ESCALA DE EVALUACIÓN TÉCNICA:
+• Excelente (20-24 pts): Demuestra vocación pedagógica, apego irrestricto a normas de protección infantil y creatividad lúdica.
+• Adecuado (14-19 pts): Experiencia lúdica válida pero con imprecisiones en los tiempos o evaluación.
+• Insuficiente (< 14 pts): Falta de conocimiento de los principios básicos de la educación parvularia.`;
+
+  } else {
+    // Humanista / General (Lenguaje, Historia, Ciencias, Inglés, etc.)
+    title = `Guía de Aprendizaje y Análisis Autónomo: Continuidad Pedagógica (${oaCode})`;
+    contentSummary = `MARCO TEÓRICO Y CONCEPTOS FUNDAMENTALES:
+Dando continuidad a los aprendizajes del curso ${opts.course_name} y conectando directamente con ${lastTopic}:
+1. Ideas Centrales: Los contenidos curriculares cobran sentido cuando los conectamos con la realidad, la sociedad y nuestro propio pensamiento crítico.
+2. Estrategia de Comprensión y Análisis:
+- Lectura Global: Comprender de qué trata el tema en su conjunto.
+- Localización de Evidencias: Identificar hechos, datos o argumentos que respaldan una afirmación.
+- Inferencia e Interpretación: Explicar las causas, consecuencias y significados no explícitos.
+- Valoración Crítica: Expresar una opinión informada fundamentada con argumentos sólidos.`;
+
+    activities = [
+      {
+        number: 1,
+        title: "Actividad 1: Reconocimiento y Comprensión Directa (6 Puntos)",
+        points: 6,
+        description: "Responde de forma concisa basándote en los contenidos estudiados:",
+        questions: [
+          `a) Explica con tus propias palabras el concepto principal trabajado en ${oaCode}.`,
+          "b) Identifica 2 diferencias o características esenciales asociadas al tema central.",
+          "c) ¿De qué manera este contenido se vincula con lo que aprendiste en la clase anterior?"
+        ]
+      },
+      {
+        number: 2,
+        title: "Actividad 2: Análisis Aplicado y Argumentación (10 Puntos)",
+        points: 10,
+        description: "Desarrolla las siguientes situaciones de análisis y fundamenta tus respuestas:",
+        questions: [
+          "a) Analiza la siguiente afirmación y explica si estás de acuerdo o en desacuerdo, aportando al menos dos argumentos sólidos.",
+          "b) Elabora un esquema, mapa conceptual o cuadro comparativo de 4 elementos que sintetice las ideas centrales de la unidad."
+        ]
+      },
+      {
+        number: 3,
+        title: "Actividad 3: Reflexión Contextualizada en el Entorno Escolar o Comunitario (8 Puntos)",
+        points: 8,
+        description: "Conecta lo aprendido con tu entorno y vida diaria:",
+        questions: [
+          "a) Plantea un ejemplo real de tu comunidad (Campanario, Yungay o región de Ñuble) donde este aprendizaje sea útil o visible.",
+          "b) Propón una solución innovadora o mejora ante un problema detectado en relación con este tema."
+        ]
+      }
+    ];
+
+    exitTicket = `TICKET DE SALIDA (Para entregar al docente de reemplazo):
+1. ¿Qué concepto o idea clave de la sesión de hoy te pareció más relevante y por qué?
+2. Escribe una pregunta o duda que te gustaría que el profesor titular responda al regresar a clases.`;
+
+    answerKey = `SOLUCIONARIO Y PAUTA PARA EL DOCENTE DE REEMPLAZO:
+Actividad 1 (6 pts): 2 pts por definición clara, 2 pts por las dos diferencias identificadas y 2 pts por la conexión con la clase previa.
+Actividad 2 (10 pts): 5 pts por argumentación lógica fundamentada en hechos o lecturas; 5 pts por el organizador gráfico con al menos 4 elementos clave.
+Actividad 3 (8 pts): 4 pts por pertinencia del ejemplo comunitario local; 4 pts por la propuesta de mejora factible y coherente.
+PUNTAJE TOTAL: 24 PUNTOS.`;
+
+    rubricCriteria = `ESCALA DE EVALUACIÓN:
+• Logro Sobresaliente (20-24 pts): Respuestas completas, vocabulario adecuado y fundamentación sólida.
+• Logro Intermedio (14-19 pts): Respuestas correctas pero con escasa profundización o argumentación.
+• Requiere Refuerzo (< 14 pts): Respuestas incompletas o erróneas; requiere apoyo del docente titular.`;
+  }
+
+  return {
+    title,
+    pedagogical_context: contextText,
+    instructions_for_students: studentInstructions,
+    instructions_for_substitute: substituteGuide,
+    content_summary: contentSummary,
+    activities,
+    exit_ticket: exitTicket,
+    answer_key: answerKey,
+    rubric_criteria: rubricCriteria
   };
 }
 

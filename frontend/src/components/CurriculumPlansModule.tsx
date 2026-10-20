@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { SchoolSchedulesModule } from './SchoolSchedulesModule';
+import { PedagogicalContinuityModule } from './PedagogicalContinuityModule';
 
 interface LearningGoal {
   id: string;
@@ -137,7 +138,8 @@ interface CurriculumPlansModuleProps {
 }
 
 export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ token, user }) => {
-  const [activeTab, setActiveTab] = useState<'annual' | 'units' | 'lessons' | 'catalog' | 'ai_config' | 'schedules'>('annual');
+  const [activeTab, setActiveTab] = useState<'annual' | 'units' | 'lessons' | 'catalog' | 'ai_config' | 'schedules' | 'continuity'>('annual');
+  const [continuityPreselectedPlan, setContinuityPreselectedPlan] = useState<any>(null);
 
   // Modo de visualización: Editor (permite modificar y guardar) vs Solo Vista (lectura e impresión)
   const [viewMode, setViewMode] = useState<'edit' | 'readonly'>('edit');
@@ -2291,6 +2293,28 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
           <CalendarDays size={16} />
           6. Horarios Escolares & aSc Horarios
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('continuity')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            padding: '0.55rem 1rem',
+            borderRadius: '10px',
+            border: 'none',
+            background: activeTab === 'continuity' ? '#ffffff' : 'transparent',
+            color: activeTab === 'continuity' ? '#ea580c' : '#475569',
+            fontWeight: activeTab === 'continuity' ? 800 : 600,
+            fontSize: '0.84rem',
+            cursor: 'pointer',
+            boxShadow: activeTab === 'continuity' ? '0 2px 4px rgba(0,0,0,0.06)' : 'none'
+          }}
+        >
+          <Sparkles size={16} />
+          7. Actividades de Reemplazo (Continuidad IA)
+        </button>
       </div>
 
       {/* ===================================================================== */}
@@ -2519,6 +2543,32 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                   >
                     <Printer size={16} />
                     Imprimir Formato Oficial
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setContinuityPreselectedPlan(selectedPlan);
+                      setActiveTab('continuity');
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                      background: 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)',
+                      color: '#ffffff',
+                      padding: '0.55rem 1rem',
+                      borderRadius: '10px',
+                      border: 'none',
+                      fontSize: '0.82rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(234, 88, 12, 0.25)'
+                    }}
+                    title="Crear guías de trabajo autónomo para cuando el profesor no esté"
+                  >
+                    <Sparkles size={16} />
+                    Actividades de Reemplazo IA
                   </button>
 
                   {viewMode !== 'readonly' && (
@@ -3928,6 +3978,39 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
                       Imprimir Ficha & Ticket
                     </button>
 
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setContinuityPreselectedPlan({
+                          course_name: lessonForm.course_name || selectedPlan?.course_name,
+                          subject_name: lessonForm.subject_name || selectedPlan?.subject_name,
+                          teacher_name: lessonForm.teacher_name || selectedPlan?.teacher_name,
+                          unit_name: lessonForm.unit_name,
+                          oa_code: lessonForm.oa_codes,
+                          last_covered_topics: `Clase #${lessonForm.class_number}: ${lessonForm.class_goal || ''}`
+                        });
+                        setActiveTab('continuity');
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        background: 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)',
+                        color: '#ffffff',
+                        padding: '0.5rem 0.85rem',
+                        borderRadius: '8px',
+                        border: 'none',
+                        fontSize: '0.8rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(234, 88, 12, 0.25)'
+                      }}
+                      title="Generar material de reemplazo para esta clase si el profesor no asiste"
+                    >
+                      <Sparkles size={15} />
+                      Material de Reemplazo IA
+                    </button>
+
                     {viewMode !== 'readonly' && (
                       <button
                         type="submit"
@@ -4919,6 +5002,21 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
               setActiveTab('annual');
             }
           }}
+        />
+      )}
+
+      {/* ===================================================================== */}
+      {/* PESTAÑA 7: MATERIAL DE REEMPLAZO Y CONTINUIDAD PEDAGÓGICA CON IA     */}
+      {/* ===================================================================== */}
+      {activeTab === 'continuity' && (
+        <PedagogicalContinuityModule
+          token={token}
+          user={user}
+          coursesList={coursesList}
+          subjectsList={subjectsList}
+          teachersList={teachersList}
+          annualPlans={allAnnualPlans}
+          preselectedPlan={continuityPreselectedPlan || selectedPlan}
         />
       )}
 
