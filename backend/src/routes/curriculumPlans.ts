@@ -49,7 +49,8 @@ query(`
   ADD COLUMN IF NOT EXISTS slides_json JSONB,
   ADD COLUMN IF NOT EXISTS scaffold_json JSONB,
   ADD COLUMN IF NOT EXISTS stretch_json JSONB,
-  ADD COLUMN IF NOT EXISTS warm_up_json JSONB;
+  ADD COLUMN IF NOT EXISTS warm_up_json JSONB,
+  ADD COLUMN IF NOT EXISTS html_content TEXT;
 `).catch((err) => {
   console.warn('Aviso al garantizar tabla pedagogical_continuity_activities:', err.message);
 });
@@ -1517,6 +1518,53 @@ function generatePedagogicalResponse(opts: any): any {
 // 6. MÓDULO DE CONTINUIDAD PEDAGÓGICA Y ACTIVIDADES DE REEMPLAZO CON IA
 // =============================================================================
 
+// Helper para obtener clave de Google Gemini (desde .env o desde system_settings en Supabase)
+async function getGeminiApiKey(): Promise<string> {
+  const envKey = process.env.GEMINI_API_KEY || '';
+  if (envKey.trim()) return envKey.trim();
+
+  try {
+    const res = await query("SELECT config_value FROM system_settings WHERE config_key = 'gemini_api_key' LIMIT 1");
+    if (res.rows.length > 0 && res.rows[0].config_value) {
+      return String(res.rows[0].config_value).trim();
+    }
+  } catch (err) {}
+  return '';
+}
+
+// GET /api/curriculum/gemini-config - Verificar si la clave de Gemini está activa
+router.get('/gemini-config', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const key = await getGeminiApiKey();
+    const hasKey = Boolean(key && key.length > 5);
+    const masked = hasKey ? `${key.substring(0, 4)}...${key.substring(key.length - 4)}` : '';
+    res.json({ success: true, hasKey, maskedKey: masked });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al verificar clave de Gemini.' });
+  }
+});
+
+// POST /api/curriculum/gemini-config - Guardar o actualizar la clave de Gemini en la plataforma
+router.post('/gemini-config', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { apiKey } = req.body;
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length < 5) {
+      return res.status(400).json({ error: 'Clave de Google Gemini API inválida.' });
+    }
+
+    await query(`
+      INSERT INTO system_settings (id, config_key, config_value, updated_at)
+      VALUES ('SET-GEMINI-API-KEY', 'gemini_api_key', $1, NOW())
+      ON CONFLICT (config_key) DO UPDATE SET config_value = $1, updated_at = NOW()
+    `, [apiKey.trim()]);
+
+    await logAudit(req, 'SET_GEMINI_KEY', 'Clave Google Gemini API actualizada en el sistema.');
+    res.json({ success: true, message: 'Clave de Google Gemini API guardada exitosamente.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al guardar clave de Gemini en la base de datos.' });
+  }
+});
+
 // GET /api/curriculum/continuity-context - Detectar contexto curricular en tiempo real
 router.get('/continuity-context', authMiddleware, async (req: Request, res: Response) => {
   try {
@@ -1830,10 +1878,10 @@ router.post('/continuity-activities', authMiddleware, async (req: Request, res: 
         teacher_name, substitute_teacher_name, oa_code, oa_title, duration_minutes,
         activity_type, title, instructions_for_students, instructions_for_substitute,
         content_summary, activities_json, exit_ticket, answer_key, rubric_criteria,
-        status, created_by, updated_at, slides_json, scaffold_json, stretch_json, warm_up_json
+        status, created_by, updated_at, slides_json, scaffold_json, stretch_json, warm_up_json, html_content
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW(),
-        $23, $24, $25, $26
+        $23, $24, $25, $26, $27
       )
       ON CONFLICT (id) DO UPDATE SET
         annual_plan_id = EXCLUDED.annual_plan_id,
@@ -1859,6 +1907,7 @@ router.post('/continuity-activities', authMiddleware, async (req: Request, res: 
         scaffold_json = COALESCE(EXCLUDED.scaffold_json, pedagogical_continuity_activities.scaffold_json),
         stretch_json = COALESCE(EXCLUDED.stretch_json, pedagogical_continuity_activities.stretch_json),
         warm_up_json = COALESCE(EXCLUDED.warm_up_json, pedagogical_continuity_activities.warm_up_json),
+        html_content = COALESCE(EXCLUDED.html_content, pedagogical_continuity_activities.html_content),
         updated_at = NOW()
     `, [
       resolvedId,
@@ -1886,7 +1935,8 @@ router.post('/continuity-activities', authMiddleware, async (req: Request, res: 
       JSON.stringify(req.body.slides_json || []),
       JSON.stringify(req.body.scaffold_json || {}),
       JSON.stringify(req.body.stretch_json || {}),
-      JSON.stringify(req.body.warm_up_json || {})
+      JSON.stringify(req.body.warm_up_json || {}),
+      req.body.html_content || null
     ]);
 
     await logAudit(
@@ -2463,8 +2513,894 @@ PUNTAJE TOTAL: 24 PUNTOS.`;
     slides,
     scaffold,
     stretch,
-    warm_up: warmUp
+    warm_up: warmUp,
+    html_content: buildRichWorksheetHtml({
+      course_name: opts.course_name,
+      subject_name: opts.subject_name,
+      teacher_name: opts.teacher_name,
+      substitute_teacher_name: opts.substitute_teacher_name,
+      oa_code: oaCode,
+      oa_title: oaTitle,
+      unit_name: opts.unit_name,
+      title: title,
+      content_summary: contentSummary,
+      activities: activities,
+      exit_ticket: exitTicket,
+      last_covered_topics: lastTopic
+    })
   };
+}
+
+// Generador HTML de Guía de Aprendizaje Completa de 4 Páginas (Estilo Oficial MINEDUC / Chalkie)
+function buildRichWorksheetHtml(opts: any): string {
+  const is5toMat = (opts.course_name.includes('5°') || opts.course_name.includes('5')) && 
+                   (opts.subject_name.toLowerCase().includes('matem') || opts.oa_code.includes('15'));
+  
+  if (is5toMat) {
+    return `
+<div class="worksheet-document">
+  <style>
+    .worksheet-document {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #1e293b;
+      line-height: 1.45;
+      background: transparent;
+    }
+    .worksheet-page {
+      background: #ffffff;
+      padding: 35px 40px;
+      margin-bottom: 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+      border: 1px solid #e2e8f0;
+      position: relative;
+      box-sizing: border-box;
+      min-height: 1050px;
+    }
+    .header-bar {
+      border-left: 6px solid #2563eb;
+      padding-left: 14px;
+      margin-bottom: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .guide-title {
+      font-size: 1.35rem;
+      font-weight: 900;
+      color: #0f172a;
+      margin: 0 0 4px 0;
+      text-transform: uppercase;
+      letter-spacing: -0.01em;
+    }
+    .guide-sub {
+      font-size: 0.85rem;
+      color: #4b5563;
+      font-weight: 600;
+      margin: 0;
+    }
+    .curriculum-badge {
+      background: #1e40af;
+      color: #ffffff;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-weight: 800;
+      font-size: 0.78rem;
+      text-align: right;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .student-meta-box {
+      border: 1.5px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 8px 14px;
+      margin-bottom: 14px;
+      background: #f8fafc;
+      font-size: 0.84rem;
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 10px;
+    }
+    .oa-callout {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 0.8rem;
+      color: #334155;
+      margin-bottom: 16px;
+    }
+    .callout-yellow {
+      background: #fffbeb;
+      border: 1.5px solid #fef08a;
+      border-left: 5px solid #eab308;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      font-size: 0.84rem;
+      color: #713f12;
+    }
+    .callout-green {
+      background: #f0fdf4;
+      border: 1.5px solid #bbf7d0;
+      border-left: 5px solid #16a34a;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      font-size: 0.84rem;
+      color: #14532d;
+    }
+    .table-custom {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 16px 0;
+      font-size: 0.82rem;
+    }
+    .table-custom th {
+      background: #1e40af;
+      color: #ffffff;
+      padding: 7px 10px;
+      font-weight: 700;
+      border: 1px solid #1e40af;
+      text-align: left;
+    }
+    .table-custom td {
+      border: 1px solid #cbd5e1;
+      padding: 7px 10px;
+    }
+    .table-custom tr:nth-child(even) {
+      background: #f8fafc;
+    }
+    .page-footer {
+      position: absolute;
+      bottom: 20px;
+      left: 40px;
+      right: 40px;
+      display: flex;
+      justify-content: space-between;
+      border-top: 1px solid #cbd5e1;
+      padding-top: 8px;
+      font-size: 0.72rem;
+      color: #64748b;
+    }
+    .page-break {
+      page-break-after: always;
+      break-after: page;
+    }
+    @media print {
+      .worksheet-page {
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        min-height: 100vh !important;
+      }
+      .page-break {
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+    }
+  </style>
+
+  <!-- ==================== PÁGINA 1 ==================== -->
+  <div class="worksheet-page">
+    <div class="header-bar">
+      <div>
+        <h1 class="guide-title">GUÍA DE APRENDIZAJE: EL MISTERIO DEL EQUILIBRIO</h1>
+        <p class="guide-sub">Matemática • 5° Básico • Unidad: Patrones y Álgebra (Método COPISI)</p>
+      </div>
+      <div class="curriculum-badge">CURRÍCULUM CHILE • OA 15</div>
+    </div>
+
+    <div class="student-meta-box">
+      <div><strong>Estudiante:</strong> ____________________________________</div>
+      <div><strong>Curso:</strong> 5° Básico ___</div>
+      <div><strong>Fecha:</strong> ___ / ___ / 2026</div>
+    </div>
+
+    <div class="oa-callout">
+      <strong>Objetivo de Aprendizaje (OA 15):</strong> Resolver problemas, usando ecuaciones e inecuaciones de un paso, que involucren adiciones y sustracciones, en forma pictórica (dibujos y balanzas) y simbólica (números y letras).
+    </div>
+
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 14px 0 8px 0;">1. La Regla de Oro de la Balanza: ¿Qué es una Ecuación?</h3>
+
+    <div class="callout-yellow">
+      Una ecuación es una igualdad entre dos lados donde hay un valor desconocido llamado <strong>incógnita</strong> (que representamos con una figura misteriosa o con una letra como <strong>x, y, z</strong>). El signo igual (=) indica que la balanza está en <strong>perfecto equilibrio</strong>.<br><br>
+      💡 <strong>El Secreto del Detective (Operación Inversa):</strong> Para descubrir cuánto vale la incógnita x, debemos dejarla sola en su platillo. Si quitamos 3 bloques del lado izquierdo, ¡también debemos quitar 3 bloques del lado derecho para mantener el equilibrio!
+    </div>
+
+    <!-- ILUSTRACIÓN SVG DE LA BALANZA EN EQUILIBRIO -->
+    <div style="text-align: center; margin: 12px 0 16px 0; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0;">
+      <svg width="420" height="90" viewBox="0 0 420 90" style="max-width: 100%; height: auto;">
+        <!-- Base de la balanza -->
+        <polygon points="210,50 195,85 225,85" fill="#1e3a8a" />
+        <line x1="180" y1="85" x2="240" y2="85" stroke="#1e3a8a" stroke-width="4" stroke-linecap="round" />
+        <!-- Barra horizontal en equilibrio -->
+        <line x1="60" y1="50" x2="360" y2="50" stroke="#0284c7" stroke-width="6" stroke-linecap="round" />
+        <!-- Círculo central con signo = -->
+        <circle cx="210" cy="30" r="14" fill="#ffffff" stroke="#0284c7" stroke-width="2.5" />
+        <text x="210" y="36" font-size="16" font-weight="900" fill="#0284c7" text-anchor="middle">=</text>
+        <!-- Platillo izquierdo -->
+        <line x1="90" y1="50" x2="90" y2="60" stroke="#0284c7" stroke-width="3" />
+        <rect x="50" y="60" width="80" height="5" fill="#1e3a8a" rx="2" />
+        <!-- Elementos platillo izquierdo: Caja x + 3 cubos -->
+        <rect x="55" y="38" width="22" height="22" fill="#ea580c" rx="3" />
+        <text x="66" y="54" fill="#ffffff" font-size="12" font-weight="900" text-anchor="middle">x</text>
+        <rect x="80" y="44" width="15" height="15" fill="#38bdf8" rx="2" />
+        <rect x="97" y="44" width="15" height="15" fill="#38bdf8" rx="2" />
+        <rect x="114" y="44" width="15" height="15" fill="#38bdf8" rx="2" />
+        <!-- Platillo derecho -->
+        <line x1="330" y1="50" x2="330" y2="60" stroke="#0284c7" stroke-width="3" />
+        <rect x="290" y="60" width="80" height="5" fill="#1e3a8a" rx="2" />
+        <!-- 7 cubos derechos -->
+        <rect x="294" y="44" width="14" height="14" fill="#38bdf8" rx="2" />
+        <rect x="310" y="44" width="14" height="14" fill="#38bdf8" rx="2" />
+        <rect x="326" y="44" width="14" height="14" fill="#38bdf8" rx="2" />
+        <rect x="342" y="44" width="14" height="14" fill="#38bdf8" rx="2" />
+        <rect x="302" y="28" width="14" height="14" fill="#38bdf8" rx="2" />
+        <rect x="318" y="28" width="14" height="14" fill="#38bdf8" rx="2" />
+        <rect x="334" y="28" width="14" height="14" fill="#38bdf8" rx="2" />
+      </svg>
+      <div style="font-size: 0.78rem; font-weight: 700; color: #334155; margin-top: 4px;">
+        Representación Pictórica: 1 Caja (x) + 3 bloques = 7 bloques → Ecuación: x + 3 = 7 → Solución: x = 7 − 3 = 4
+      </div>
+    </div>
+
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 12px 0 6px 0;">2. Nivel 1: Desafío de Figuras en Equilibrio (Pictórico a Simbólico)</h3>
+    <p style="font-size: 0.8rem; color: #475569; margin: 0 0 6px 0;">Observa cada balanza equilibrada. Cada bloque 🧱 o moneda 🪙 equivale a 1 unidad. Descubre el valor oculto de cada figura:</p>
+
+    <table class="table-custom">
+      <thead>
+        <tr>
+          <th style="width: 35px; text-align: center;">N°</th>
+          <th style="width: 250px;">Balanza en Equilibrio (Pictórico)</th>
+          <th style="width: 140px;">Ecuación Simbólica</th>
+          <th>Operación Inversa y Valor</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">1</td>
+          <td>🔮 + 🧱🧱🧱🧱 = 🧱🧱🧱🧱🧱🧱🧱🧱🧱</td>
+          <td>x + 4 = 9</td>
+          <td>x = 9 − 4 → 🔮 = ______</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">2</td>
+          <td>🚀 + 🧱🧱🧱🧱🧱 = 🧱🧱🧱🧱🧱🧱🧱🧱🧱🧱🧱🧱</td>
+          <td>y + 5 = 12</td>
+          <td>y = 12 − ___ → 🚀 = ______</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">3</td>
+          <td>🧱🧱🧱🧱🧱🧱🧱🧱 = 🦖 + 🧱🧱🧱</td>
+          <td>8 = z + 3</td>
+          <td>z = 8 − ___ → 🦖 = ______</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">4</td>
+          <td>🎮 + 🪙🪙🪙🪙🪙🪙 = 🪙🪙🪙🪙🪙🪙🪙🪙🪙🪙</td>
+          <td>a + 6 = 10</td>
+          <td>a = ___ − ___ → 🎮 = ______</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">5</td>
+          <td>👑 + 🪙🪙🪙 = 🪙🪙🪙🪙🪙🪙🪙🪙🪙🪙🪙</td>
+          <td>m + ___ = 11</td>
+          <td>m = ___ − ___ → 👑 = ______</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">6</td>
+          <td>🎸 + 🧱🧱 = 🧱🧱🧱🧱🧱🧱🧱🧱🧱🧱</td>
+          <td>p + ___ = 10</td>
+          <td>p = ___ − ___ → 🎸 = ______</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">7</td>
+          <td>🪙🪙🪙🪙🪙🪙🪙🪙🪙🪙🪙🪙🪙 = 🏆 + 🪙🪙🪙🪙</td>
+          <td>13 = k + ___</td>
+          <td>k = ___ − ___ → 🏆 = ______</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="page-footer">
+      <div>Guía de Matemática 5° Básico • OA 15 (Ecuaciones e Inecuaciones)</div>
+      <div>Página 1 de 4</div>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- ==================== PÁGINA 2 ==================== -->
+  <div class="worksheet-page">
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 0 0 8px 0;">3. Nivel 2: Ecuaciones Simbólicas con Adición y Sustracción</h3>
+    <p style="font-size: 0.82rem; color: #475569; margin: 0 0 12px 0;">Aplica la operación inversa para despejar la incógnita: si un número está sumando, pasa al otro lado restando; y si está restando, pasa al otro lado sumando. Luego comprueba tu resultado.</p>
+
+    <!-- CUADRÍCULA DE 4 TARJETAS A, B, C, D -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px;">
+      <div style="border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px; background: #ffffff;">
+        <div style="font-weight: 800; font-size: 0.86rem; color: #1e40af; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 8px;">
+          A) Ecuación: x + 15 = 28
+        </div>
+        <div style="font-size: 0.8rem; line-height: 1.8; color: #334155;">
+          1. Operación inversa: x = 28 − 15<br>
+          2. Valor de la incógnita: x = ________<br>
+          3. Comprobación: ________ + 15 = 28
+        </div>
+      </div>
+
+      <div style="border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px; background: #ffffff;">
+        <div style="font-weight: 800; font-size: 0.86rem; color: #1e40af; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 8px;">
+          B) Ecuación: y − 12 = 20
+        </div>
+        <div style="font-size: 0.8rem; line-height: 1.8; color: #334155;">
+          1. Operación inversa: y = 20 + 12<br>
+          2. Valor de la incógnita: y = ________<br>
+          3. Comprobación: ________ − 12 = 20
+        </div>
+      </div>
+
+      <div style="border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px; background: #ffffff;">
+        <div style="font-weight: 800; font-size: 0.86rem; color: #1e40af; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 8px;">
+          C) Ecuación: 34 + m = 50
+        </div>
+        <div style="font-size: 0.8rem; line-height: 1.8; color: #334155;">
+          1. Operación inversa: m = 50 − ________<br>
+          2. Valor de la incógnita: m = ________<br>
+          3. Comprobación: 34 + ________ = 50
+        </div>
+      </div>
+
+      <div style="border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px; background: #ffffff;">
+        <div style="font-weight: 800; font-size: 0.86rem; color: #1e40af; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 8px;">
+          D) Ecuación: p − 18 = 27
+        </div>
+        <div style="font-size: 0.8rem; line-height: 1.8; color: #334155;">
+          1. Operación inversa: p = ________ + ________<br>
+          2. Valor de la incógnita: p = ________<br>
+          3. Comprobación: ________ − 18 = 27
+        </div>
+      </div>
+    </div>
+
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 16px 0 8px 0;">4. ¡Cuando la Balanza se Inclina! ¿Qué es una Inecuación?</h3>
+
+    <div class="callout-green">
+      Cuando los dos lados de una balanza <strong>NO pesan lo mismo</strong>, la balanza se inclina hacia el lado más pesado. Esta desigualdad con una incógnita se llama <strong>inecuación</strong> y utiliza los signos <strong>&lt; (menor que)</strong> o <strong>&gt; (mayor que)</strong>.<br><br>
+      🐊 <strong>Truco de memoria:</strong> La boca abierta del signo siempre apunta hacia el lado más pesado (el platillo que baja más en la balanza). A diferencia de una ecuación (que tiene una sola respuesta), una inecuación puede tener <strong>varias soluciones posibles</strong>.
+    </div>
+
+    <!-- ILUSTRACIÓN SVG DE BALANZAS INCLINADAS -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; text-align: center; margin-bottom: 16px;">
+      <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
+        <svg width="240" height="75" viewBox="0 0 240 75" style="max-width: 100%;">
+          <polygon points="120,40 110,70 130,70" fill="#1e3a8a" />
+          <!-- Barra inclinada hacia la derecha (platillo der más bajo/pesado) -->
+          <line x1="30" y1="30" x2="210" y2="50" stroke="#16a34a" stroke-width="5" stroke-linecap="round" />
+          <circle cx="120" cy="22" r="11" fill="#ffffff" stroke="#16a34a" stroke-width="2" />
+          <text x="120" y="27" font-size="12" font-weight="900" fill="#16a34a" text-anchor="middle">&lt;</text>
+          <!-- Platillo izq arriba -->
+          <rect x="30" y="20" width="14" height="14" fill="#ea580c" rx="2" />
+          <text x="37" y="31" fill="#ffffff" font-size="9" font-weight="900" text-anchor="middle">x</text>
+          <rect x="47" y="22" width="11" height="11" fill="#38bdf8" rx="2" />
+          <rect x="60" y="22" width="11" height="11" fill="#38bdf8" rx="2" />
+          <!-- Platillo der abajo -->
+          <rect x="165" y="40" width="11" height="11" fill="#38bdf8" rx="2" />
+          <rect x="178" y="40" width="11" height="11" fill="#38bdf8" rx="2" />
+          <rect x="191" y="40" width="11" height="11" fill="#38bdf8" rx="2" />
+        </svg>
+        <div style="font-size: 0.74rem; font-weight: 700; color: #166534;">Izquierda: x + 2 &lt; 6 → x &lt; 4 (x puede ser 1, 2 o 3)</div>
+      </div>
+
+      <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
+        <svg width="240" height="75" viewBox="0 0 240 75" style="max-width: 100%;">
+          <polygon points="120,40 110,70 130,70" fill="#1e3a8a" />
+          <!-- Barra inclinada hacia la izquierda (platillo izq más bajo/pesado) -->
+          <line x1="30" y1="50" x2="210" y2="30" stroke="#16a34a" stroke-width="5" stroke-linecap="round" />
+          <circle cx="120" cy="22" r="11" fill="#ffffff" stroke="#16a34a" stroke-width="2" />
+          <text x="120" y="27" font-size="12" font-weight="900" fill="#16a34a" text-anchor="middle">&gt;</text>
+          <!-- Platillo izq abajo -->
+          <rect x="40" y="40" width="14" height="14" fill="#9333ea" rx="2" />
+          <text x="47" y="51" fill="#ffffff" font-size="9" font-weight="900" text-anchor="middle">y</text>
+          <rect x="57" y="42" width="11" height="11" fill="#38bdf8" rx="2" />
+          <!-- Platillo der arriba -->
+          <rect x="170" y="22" width="11" height="11" fill="#38bdf8" rx="2" />
+          <rect x="183" y="22" width="11" height="11" fill="#38bdf8" rx="2" />
+        </svg>
+        <div style="font-size: 0.74rem; font-weight: 700; color: #166534;">Derecha: y + 3 &gt; 5 → y &gt; 2 (y puede ser 3, 4, 5, 6...)</div>
+      </div>
+    </div>
+
+    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 14px; font-size: 0.8rem; color: #334155;">
+      <strong>Ejemplo paso a paso de Inecuación:</strong> Si tenemos x + 2 &lt; 6, quitamos 2 bloques en ambos lados: x &lt; 6 − 2, por lo tanto x &lt; 4. Como la caja debe pesar números naturales menores que 4, los valores posibles de x son: <strong>1, 2 o 3</strong> (o también 0 si la caja está vacía).
+    </div>
+
+    <div class="page-footer">
+      <div>Guía de Matemática 5° Básico • OA 15 (Ecuaciones e Inecuaciones)</div>
+      <div>Página 2 de 4</div>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- ==================== PÁGINA 3 ==================== -->
+  <div class="worksheet-page">
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 0 0 6px 0;">5. Nivel 3: Práctica de Inecuaciones y Balanzas Desequilibradas</h3>
+    <p style="font-size: 0.8rem; color: #475569; margin: 0 0 8px 0;">Observa hacia qué lado se inclina cada balanza, completa la inecuación con &lt; o &gt;, resuélvela y escribe tres posibles valores para la incógnita (en los números naturales):</p>
+
+    <table class="table-custom">
+      <thead>
+        <tr>
+          <th style="width: 30px; text-align: center;">N°</th>
+          <th style="width: 220px;">Estado de la Balanza</th>
+          <th style="width: 100px;">Inecuación</th>
+          <th style="width: 160px;">Despeje</th>
+          <th>Posibles valores</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">1</td>
+          <td>Platillo izq. (📦 + 3) está más alto (liviano) que el der. (8)</td>
+          <td>x + 3 &lt; 8</td>
+          <td>x &lt; 8 − 3 → x &lt; 5</td>
+          <td>x puede ser: ________</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">2</td>
+          <td>Platillo izq. (💎 + 4) está más bajo (pesado) que el der. (10)</td>
+          <td>y + 4 &gt; 10</td>
+          <td>y &gt; 10 − ___ → y &gt; ___</td>
+          <td>y puede ser: ________</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">3</td>
+          <td>Platillo izq. (🤖 + 5) está más alto (liviano) que el der. (9)</td>
+          <td>z + 5 ___ 9</td>
+          <td>z &lt; ___ − ___ → z &lt; ___</td>
+          <td>z puede ser: ________</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">4</td>
+          <td>Resuelve la inecuación con resta: m − 3 &lt; 4</td>
+          <td>m − 3 &lt; 4</td>
+          <td>m &lt; 4 + ___ → m &lt; ___</td>
+          <td>m puede ser: ________</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">5</td>
+          <td>Platillo izq. (🛸 + 6) está más bajo (pesado) que el der. (11)</td>
+          <td>a + 6 ___ 11</td>
+          <td>a &gt; ___ − ___ → a &gt; ___</td>
+          <td>a puede ser: ________</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">6</td>
+          <td>Resuelve la inecuación con resta: p − 5 &gt; 7</td>
+          <td>p − 5 &gt; 7</td>
+          <td>p &gt; 7 + ___ → p &gt; ___</td>
+          <td>p puede ser: ________</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 16px 0 8px 0;">6. Nivel 4: Problemas de la Vida Cotidiana (Ecuaciones e Inecuaciones)</h3>
+
+    <!-- 4 PROBLEMAS CON BORDES DE COLORES -->
+    <div style="display: flex; flexDirection: column; gap: 10px;">
+      <div style="border: 1px solid #cbd5e1; border-left: 5px solid #2563eb; border-radius: 6px; padding: 10px 14px; background: #ffffff;">
+        <strong style="font-size: 0.84rem; color: #1e40af;">Problema A (Ecuación): El álbum de láminas coleccionables</strong>
+        <p style="font-size: 0.8rem; color: #334155; margin: 3px 0 6px 0;">Matías tenía varias láminas en su estuche. Su mejor amigo le regaló 14 láminas en el recreo y ahora tiene exactamente 42 láminas. ¿Cuántas láminas tenía Matías al principio?</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.78rem;">
+          <div>• Ecuación: ___________________________</div>
+          <div>• Resolución: _________________________</div>
+        </div>
+        <div style="font-size: 0.78rem; margin-top: 4px;">• Respuesta completa: ______________________________________________________________________</div>
+      </div>
+
+      <div style="border: 1px solid #cbd5e1; border-left: 5px solid #7c3aed; border-radius: 6px; padding: 10px 14px; background: #ffffff;">
+        <strong style="font-size: 0.84rem; color: #6d28d9;">Problema B (Ecuación): El escudo mágico del videojuego</strong>
+        <p style="font-size: 0.8rem; color: #334155; margin: 3px 0 6px 0;">Valentina tenía ahorradas varias monedas de oro en su juego favorito. Gastó 25 monedas comprando un escudo mágico y le quedaron 35 monedas. ¿Cuántas monedas tenía antes de comprar el escudo?</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.78rem;">
+          <div>• Ecuación: ___________________________</div>
+          <div>• Resolución: _________________________</div>
+        </div>
+        <div style="font-size: 0.78rem; margin-top: 4px;">• Respuesta completa: ______________________________________________________________________</div>
+      </div>
+
+      <div style="border: 1px solid #cbd5e1; border-left: 5px solid #059669; border-radius: 6px; padding: 10px 14px; background: #ffffff;">
+        <strong style="font-size: 0.84rem; color: #047857;">Problema C (Inecuación): El puente colgante del parque</strong>
+        <p style="font-size: 0.8rem; color: #334155; margin: 3px 0 6px 0;">En una excursión escolar, una mochila pesa x kg y le agregan una botella de agua de 2 kg. Para cruzar un puente colgante pequeño, el bolso total debe pesar menos de 7 kg. ¿Cuántos kilos enteros puede pesar la mochila x?</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.78rem;">
+          <div>• Inecuación: _________________________</div>
+          <div>• Resolución: _________________________</div>
+        </div>
+        <div style="font-size: 0.78rem; margin-top: 4px;">• Posibles pesos de la mochila: ______________________________________________________________</div>
+      </div>
+
+      <div style="border: 1px solid #cbd5e1; border-left: 5px solid #ea580c; border-radius: 6px; padding: 10px 14px; background: #ffffff;">
+        <strong style="font-size: 0.84rem; color: #c2410c;">Problema D (Inecuación): El torneo deportivo de 5° Básico</strong>
+        <p style="font-size: 0.8rem; color: #334155; margin: 3px 0 6px 0;">El equipo de básquetbol anotó p puntos en el primer tiempo y 12 puntos en el segundo tiempo. Para clasificar a la final, necesitan superar los 28 puntos en total. ¿Cuántos puntos pudieron haber anotado en el primer tiempo?</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.78rem;">
+          <div>• Inecuación: _________________________</div>
+          <div>• Resolución: _________________________</div>
+        </div>
+        <div style="font-size: 0.78rem; margin-top: 4px;">• Posibles puntos en el 1° tiempo: ___________________________________________________________</div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div>Guía de Matemática 5° Básico • OA 15 (Ecuaciones e Inecuaciones)</div>
+      <div>Página 3 de 4</div>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- ==================== PÁGINA 4 ==================== -->
+  <div class="worksheet-page">
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 0 0 6px 0;">7. Nivel 5: ¡Conviértete en Constructor de Balanzas! (De Simbólico a Pictórico)</h3>
+    <p style="font-size: 0.8rem; color: #475569; margin: 0 0 10px 0;">Dibuja en los platillos de cada balanza una caja misteriosa para la incógnita y los bloques unitarios (⬜) necesarios para representar la expresión indicada. Luego calcula su resultado debajo:</p>
+
+    <!-- 2 CAJAS PARA DIBUJAR BALANZAS -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
+      <div style="border: 1.5px dashed #94a3b8; border-radius: 8px; padding: 10px; text-align: center; background: #fafafa;">
+        <div style="font-weight: 800; font-size: 0.84rem; color: #1e40af; margin-bottom: 6px;">A) Representa y resuelve: x + 4 = 9</div>
+        <div style="height: 65px; border: 1px dotted #cbd5e1; border-radius: 6px; background: #ffffff; display: flex; align-items: center; justify-content: space-around; font-size: 0.74rem; color: #94a3b8;">
+          <span>Dibuja aquí (x + 4)</span>
+          <span style="font-weight: 900; color: #1e40af; font-size: 1rem;">=</span>
+          <span>Dibuja aquí (9)</span>
+        </div>
+        <div style="font-size: 0.78rem; margin-top: 6px; font-weight: 600; color: #334155;">
+          A) Desarrollo: x = ___ − ___ → x = _____
+        </div>
+      </div>
+
+      <div style="border: 1.5px dashed #94a3b8; border-radius: 8px; padding: 10px; text-align: center; background: #fafafa;">
+        <div style="font-weight: 800; font-size: 0.84rem; color: #1e40af; margin-bottom: 6px;">B) Representa y resuelve: y + 2 &lt; 6</div>
+        <div style="height: 65px; border: 1px dotted #cbd5e1; border-radius: 6px; background: #ffffff; display: flex; align-items: center; justify-content: space-around; font-size: 0.74rem; color: #94a3b8;">
+          <span>Dibuja aquí (y + 2)</span>
+          <span style="font-weight: 900; color: #16a34a; font-size: 1rem;">&lt;</span>
+          <span>Dibuja aquí (6)</span>
+        </div>
+        <div style="font-size: 0.78rem; margin-top: 6px; font-weight: 600; color: #334155;">
+          B) Desarrollo: y &lt; ___ − ___ → y &lt; _____ (Valores: _____)
+        </div>
+      </div>
+    </div>
+
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 12px 0 6px 0;">8. Nivel 6: Detective de Pistas (Traduce y Une con una Línea)</h3>
+    <p style="font-size: 0.8rem; color: #475569; margin: 0 0 10px 0;">Lee cada pista en lenguaje cotidiano y únela con una línea con la ecuación o inecuación simbólica que la representa correctamente. Luego escribe la solución en la columna derecha:</p>
+
+    <!-- TABLA DE UNIR CON UNA LÍNEA -->
+    <div style="border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; background: #ffffff; font-size: 0.82rem; margin-bottom: 16px;">
+      <div style="display: grid; grid-template-columns: 2fr 30px 1.2fr 30px 1.5fr; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #f1f5f9;">
+        <div>1. "A un número misterioso le sumé 9 y obtuve 21."</div>
+        <div style="text-align: center; color: #3b82f6; font-size: 1.2rem;">●</div>
+        <div style="font-family: monospace; font-weight: 700;">x − 8 = 15</div>
+        <div style="text-align: center; color: #3b82f6; font-size: 1.2rem;">●</div>
+        <div>Solución: ______________</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 2fr 30px 1.2fr 30px 1.5fr; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #f1f5f9;">
+        <div>2. "Mi edad más 5 años es menor que 16 años."</div>
+        <div style="text-align: center; color: #3b82f6; font-size: 1.2rem;">●</div>
+        <div style="font-family: monospace; font-weight: 700;">x + 10 &gt; 25</div>
+        <div style="text-align: center; color: #3b82f6; font-size: 1.2rem;">●</div>
+        <div>Solución: ______________</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 2fr 30px 1.2fr 30px 1.5fr; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #f1f5f9;">
+        <div>3. "Tenía varias canicas, perdí 8 y me quedaron 15."</div>
+        <div style="text-align: center; color: #3b82f6; font-size: 1.2rem;">●</div>
+        <div style="font-family: monospace; font-weight: 700;">x + 9 = 21</div>
+        <div style="text-align: center; color: #3b82f6; font-size: 1.2rem;">●</div>
+        <div>Solución: ______________</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 2fr 30px 1.2fr 30px 1.5fr; gap: 8px; align-items: center; padding: 6px 0;">
+        <div>4. "Los puntos de mi equipo más 10 superan los 25."</div>
+        <div style="text-align: center; color: #3b82f6; font-size: 1.2rem;">●</div>
+        <div style="font-family: monospace; font-weight: 700;">x + 5 &lt; 16</div>
+        <div style="text-align: center; color: #3b82f6; font-size: 1.2rem;">●</div>
+        <div>Solución: ______________</div>
+      </div>
+    </div>
+
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 12px 0 6px 0;">9. Ticket de Salida y Autoevaluación de la Misión</h3>
+    <p style="font-size: 0.8rem; color: #475569; margin: 0 0 10px 0;">Antes de terminar la clase, demuestra lo aprendido resolviendo estos 3 desafíos finales y marca cómo te sentiste:</p>
+
+    <!-- 2 DESAFÍOS FINALES -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+      <div style="border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; background: #ffffff;">
+        <strong style="font-size: 0.82rem; color: #dc2626;">🎯 Desafío Final 1: Encuentra el Error</strong>
+        <p style="font-size: 0.78rem; color: #334155; margin: 4px 0 6px 0;">Pedro resolvió la ecuación <strong>x − 7 = 13</strong> diciendo que x = 13 − 7 = 6. ¿Cuál fue su error y cuál es el resultado correcto?</p>
+        <div style="font-size: 0.78rem; color: #475569;">
+          • Error de Pedro: ____________________________<br>
+          • Resultado correcto: x = ______
+        </div>
+      </div>
+
+      <div style="border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; background: #ffffff;">
+        <strong style="font-size: 0.82rem; color: #16a34a;">🎯 Desafío Final 2: ¿Cuál cumple la regla?</strong>
+        <p style="font-size: 0.78rem; color: #334155; margin: 4px 0 6px 0;">Encierra en un círculo TODOS los números de la lista que hacen verdadera la inecuación <strong>m + 8 &gt; 14</strong>:</p>
+        <div style="text-align: center; font-weight: 800; font-size: 0.95rem; letter-spacing: 0.4em; color: #1e40af; margin: 10px 0;">
+          [ 4 ]  [ 6 ]  [ 7 ]  [ 10 ]  [ 15 ]
+        </div>
+      </div>
+    </div>
+
+    <!-- AUTOEVALUACIÓN -->
+    <div style="background: #fffbeb; border: 1.5px solid #fef08a; border-radius: 8px; padding: 10px 14px; font-size: 0.8rem;">
+      <strong style="color: #854d0e;">🌟 Mi Autoevaluación de Hoy (Marca con un ✔ tu nivel de logro):</strong>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 6px; color: #713f12; font-size: 0.76rem;">
+        <div>⬜ <strong>¡Lo logré!</strong> Entiendo cómo equilibrar balanzas y despejar ecuaciones e inecuaciones solo/a.</div>
+        <div>⬜ <strong>En camino:</strong> Puedo resolver la mayoría, pero a veces necesito ayuda con la operación inversa.</div>
+        <div>⬜ <strong>Necesito apoyo:</strong> Todavía me confundo entre ecuaciones (=) e inecuaciones (&lt;, &gt;).</div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div>Guía de Matemática 5° Básico • OA 15 (Ecuaciones e Inecuaciones)</div>
+      <div>Página 4 de 4</div>
+    </div>
+  </div>
+</div>
+`;
+  }
+
+  // Plantilla Rica General de 4 Páginas para cualquier otra asignatura o curso
+  return `
+<div class="worksheet-document">
+  <style>
+    .worksheet-document { font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; line-height: 1.45; }
+    .worksheet-page { background: #ffffff; padding: 35px 40px; margin-bottom: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; position: relative; box-sizing: border-box; min-height: 1050px; }
+    .header-bar { border-left: 6px solid #2563eb; padding-left: 14px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: flex-start; }
+    .guide-title { font-size: 1.35rem; font-weight: 900; color: #0f172a; margin: 0 0 4px 0; text-transform: uppercase; }
+    .guide-sub { font-size: 0.85rem; color: #4b5563; font-weight: 600; margin: 0; }
+    .curriculum-badge { background: #1e40af; color: #ffffff; padding: 6px 14px; border-radius: 6px; font-weight: 800; font-size: 0.78rem; text-align: right; }
+    .student-meta-box { border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 8px 14px; margin-bottom: 14px; background: #f8fafc; font-size: 0.84rem; display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
+    .oa-callout { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; font-size: 0.8rem; color: #334155; margin-bottom: 16px; }
+    .callout-yellow { background: #fffbeb; border: 1.5px solid #fef08a; border-left: 5px solid #eab308; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 0.84rem; color: #713f12; }
+    .callout-green { background: #f0fdf4; border: 1.5px solid #bbf7d0; border-left: 5px solid #16a34a; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 0.84rem; color: #14532d; }
+    .table-custom { width: 100%; border-collapse: collapse; margin: 12px 0 16px 0; font-size: 0.82rem; }
+    .table-custom th { background: #1e40af; color: #ffffff; padding: 7px 10px; font-weight: 700; border: 1px solid #1e40af; text-align: left; }
+    .table-custom td { border: 1px solid #cbd5e1; padding: 7px 10px; }
+    .table-custom tr:nth-child(even) { background: #f8fafc; }
+    .page-footer { position: absolute; bottom: 20px; left: 40px; right: 40px; display: flex; justify-content: space-between; border-top: 1px solid #cbd5e1; padding-top: 8px; font-size: 0.72rem; color: #64748b; }
+    .page-break { page-break-after: always; break-after: page; }
+    @media print { .worksheet-page { box-shadow: none !important; border: none !important; padding: 0 !important; margin: 0 !important; min-height: 100vh !important; } .page-break { page-break-after: always !important; break-after: page !important; } }
+  </style>
+
+  <!-- PÁGINA 1 -->
+  <div class="worksheet-page">
+    <div class="header-bar">
+      <div>
+        <h1 class="guide-title">${opts.title}</h1>
+        <p class="guide-sub">${opts.subject_name} • ${opts.course_name} • ${opts.unit_name}</p>
+      </div>
+      <div class="curriculum-badge">CURRÍCULUM CHILE • ${opts.oa_code}</div>
+    </div>
+
+    <div class="student-meta-box">
+      <div><strong>Estudiante:</strong> ____________________________________</div>
+      <div><strong>Curso:</strong> ${opts.course_name}</div>
+      <div><strong>Fecha:</strong> ___ / ___ / 2026</div>
+    </div>
+
+    <div class="oa-callout">
+      <strong>Objetivo de Aprendizaje (${opts.oa_code}):</strong> ${opts.oa_title}
+    </div>
+
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 14px 0 8px 0;">1. Marco Teórico y Fundamentos Clave</h3>
+    <div class="callout-yellow">
+      ${opts.content_summary}<br><br>
+      💡 <strong>Clave Didáctica:</strong> Conecta los conceptos analizados con situaciones cotidianas para verificar tu comprensión paso a paso.
+    </div>
+
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 14px 0 8px 0;">2. Nivel 1: Exploración y Reconocimiento Conceptual</h3>
+    <table class="table-custom">
+      <thead>
+        <tr>
+          <th style="width: 40px; text-align: center;">N°</th>
+          <th>Situación o Concepto de Estudio</th>
+          <th style="width: 180px;">Registro o Procedimiento</th>
+          <th style="width: 140px;">Resultado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">1</td>
+          <td>Identificación del término clave vinculado a ${opts.oa_code}</td>
+          <td>Definición con palabras propias</td>
+          <td>________________</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">2</td>
+          <td>Primera regla operativa o principio de acción</td>
+          <td>Condición de aplicación</td>
+          <td>________________</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">3</td>
+          <td>Comparación de dos ejemplos del entorno</td>
+          <td>Diferencia principal</td>
+          <td>________________</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">4</td>
+          <td>Análisis de caso breve guiado</td>
+          <td>Resolución de primer orden</td>
+          <td>________________</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="page-footer">
+      <div>Liceo Técnico Profesional Campanario • ${opts.subject_name} (${opts.oa_code})</div>
+      <div>Página 1 de 4</div>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- PÁGINA 2 -->
+  <div class="worksheet-page">
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 0 0 10px 0;">3. Nivel 2: Aplicación Metódica y Ejercitación Gradual</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px;">
+      <div style="border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px; background: #ffffff;">
+        <div style="font-weight: 800; font-size: 0.86rem; color: #1e40af; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 8px;">Caso A: Procedimiento Inicial</div>
+        <div style="font-size: 0.8rem; line-height: 1.8; color: #334155;">
+          1. Identifica los elementos iniciales:<br>____________________________________<br>
+          2. Aplica el método correspondiente:<br>____________________________________<br>
+          3. Verifica tu conclusión: [  ] Correcto
+        </div>
+      </div>
+      <div style="border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px; background: #ffffff;">
+        <div style="font-weight: 800; font-size: 0.86rem; color: #1e40af; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 8px;">Caso B: Aplicación Intermedia</div>
+        <div style="font-size: 0.8rem; line-height: 1.8; color: #334155;">
+          1. Identifica las variables o datos:<br>____________________________________<br>
+          2. Resuelve ordenadamente:<br>____________________________________<br>
+          3. Verifica tu conclusión: [  ] Correcto
+        </div>
+      </div>
+      <div style="border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px; background: #ffffff;">
+        <div style="font-weight: 800; font-size: 0.86rem; color: #1e40af; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 8px;">Caso C: Transferencia Contextual</div>
+        <div style="font-size: 0.8rem; line-height: 1.8; color: #334155;">
+          1. Plantea el problema con tus palabras:<br>____________________________________<br>
+          2. Justifica el procedimiento:<br>____________________________________<br>
+          3. Resultado verificado: ________
+        </div>
+      </div>
+      <div style="border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px; background: #ffffff;">
+        <div style="font-weight: 800; font-size: 0.86rem; color: #1e40af; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 8px;">Caso D: Desafío de Precisión</div>
+        <div style="font-size: 0.8rem; line-height: 1.8; color: #334155;">
+          1. Detecta posibles errores comunes:<br>____________________________________<br>
+          2. Propón la corrección debida:<br>____________________________________<br>
+          3. Respuesta final validada: ________
+        </div>
+      </div>
+    </div>
+
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 16px 0 8px 0;">4. Profundización y Criterios Técnicos</h3>
+    <div class="callout-green">
+      En el desarrollo formativo del Liceo Técnico Profesional Campanario, la rigurosidad y el pensamiento reflexivo son esenciales. Analiza con atención cómo interactúan las variables antes de formular tu postura final.
+    </div>
+
+    <div class="page-footer">
+      <div>Liceo Técnico Profesional Campanario • ${opts.subject_name} (${opts.oa_code})</div>
+      <div>Página 2 de 4</div>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- PÁGINA 3 -->
+  <div class="worksheet-page">
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 0 0 10px 0;">5. Nivel 3: Práctica de Análisis y Sistematización</h3>
+    <table class="table-custom">
+      <thead>
+        <tr>
+          <th style="width: 40px; text-align: center;">N°</th>
+          <th>Criterio o Situación Planteada</th>
+          <th>Argumento o Justificación</th>
+          <th style="width: 140px;">Validación</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">1</td>
+          <td>¿Por qué es indispensable seguir la secuencia establecida?</td>
+          <td>________________________________________</td>
+          <td>Cumple [  ]</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">2</td>
+          <td>Efecto de modificar uno de los factores centrales</td>
+          <td>________________________________________</td>
+          <td>Cumple [  ]</td>
+        </tr>
+        <tr>
+          <td style="text-align: center; font-weight: 700;">3</td>
+          <td>Medida preventiva o de control de calidad aplicable</td>
+          <td>________________________________________</td>
+          <td>Cumple [  ]</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 16px 0 8px 0;">6. Nivel 4: Situaciones de la Vida Real y Contexto Comunal</h3>
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="border: 1px solid #cbd5e1; border-left: 5px solid #2563eb; border-radius: 6px; padding: 10px 14px; background: #ffffff;">
+        <strong style="font-size: 0.84rem; color: #1e40af;">Situación 1: Aplicación en el entorno productivo de Campanario</strong>
+        <p style="font-size: 0.8rem; color: #334155; margin: 3px 0 6px 0;">Describe cómo este aprendizaje es utilizado en actividades agrícolas, técnicas o de servicios de nuestra comuna.</p>
+        <div style="font-size: 0.78rem;">Desarrollo: ________________________________________________________________________________</div>
+      </div>
+      <div style="border: 1px solid #cbd5e1; border-left: 5px solid #7c3aed; border-radius: 6px; padding: 10px 14px; background: #ffffff;">
+        <strong style="font-size: 0.84rem; color: #6d28d9;">Situación 2: Resolución de un imprevisto en el aula o taller</strong>
+        <p style="font-size: 0.8rem; color: #334155; margin: 3px 0 6px 0;">Si durante una tarea se detecta una desviación en el resultado esperado, ¿qué paso correctivo debe aplicarse?</p>
+        <div style="font-size: 0.78rem;">Desarrollo: ________________________________________________________________________________</div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div>Liceo Técnico Profesional Campanario • ${opts.subject_name} (${opts.oa_code})</div>
+      <div>Página 3 de 4</div>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- PÁGINA 4 -->
+  <div class="worksheet-page">
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 0 0 8px 0;">7. Nivel 5: Modelamiento y Esquematización Gráfica</h3>
+    <p style="font-size: 0.8rem; color: #475569; margin: 0 0 10px 0;">Elabora un esquema, mapa mental o dibujo técnico que resuma el flujo de trabajo del objetivo de la clase:</p>
+    <div style="height: 120px; border: 1.5px dashed #94a3b8; border-radius: 8px; background: #fafafa; display: flex; align-items: center; justify-content: center; font-size: 0.82rem; color: #94a3b8; margin-bottom: 16px;">
+      Espacio para dibujo esquemático o mapa conceptual del estudiante
+    </div>
+
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 12px 0 8px 0;">8. Nivel 6: Relación y Conexión de Conceptos</h3>
+    <div style="border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; background: #ffffff; font-size: 0.82rem; margin-bottom: 16px;">
+      <div style="display: grid; grid-template-columns: 2fr 30px 2fr; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #f1f5f9;">
+        <div>1. Concepto inicial o definición base</div>
+        <div style="text-align: center; color: #3b82f6;">●</div>
+        <div>Aplicación práctica correspondiente</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 2fr 30px 2fr; gap: 8px; align-items: center; padding: 6px 0;">
+        <div>2. Conclusión o resultado esperado</div>
+        <div style="text-align: center; color: #3b82f6;">●</div>
+        <div>Verificación y estándar de calidad</div>
+      </div>
+    </div>
+
+    <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e40af; margin: 12px 0 8px 0;">9. Ticket de Salida y Autoevaluación de la Misión</h3>
+    <div style="border: 2px solid #0f172a; border-radius: 8px; padding: 10px 14px; background: #fafafa; margin-bottom: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <strong style="font-size: 0.84rem; color: #0f172a;">🎟️ TICKET DE SALIDA (Completar antes del timbre)</strong>
+        <span style="font-size: 0.72rem; font-weight: 800; color: #dc2626;">OBLIGATORIO</span>
+      </div>
+      <div style="font-size: 0.8rem; color: #334155; line-height: 1.8;">
+        1. ¿Cuál fue el aprendizaje más significativo de la sesión de hoy?<br>
+        ____________________________________________________________________________________<br>
+        2. ¿En qué situación concreta podrás aplicar este conocimiento?<br>
+        ____________________________________________________________________________________
+      </div>
+    </div>
+
+    <div style="background: #fffbeb; border: 1.5px solid #fef08a; border-radius: 8px; padding: 10px 14px; font-size: 0.8rem;">
+      <strong style="color: #854d0e;">🌟 Mi Autoevaluación de Hoy:</strong>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 6px; color: #713f12; font-size: 0.76rem;">
+        <div>⬜ <strong>¡Lo logré!</strong> Comprendí el objetivo y resolví las actividades de forma autónoma.</div>
+        <div>⬜ <strong>En camino:</strong> Pude avanzar pero necesité aclarar dudas puntuales con el docente.</div>
+        <div>⬜ <strong>Requiere refuerzo:</strong> Necesito repasar los conceptos fundamentales con mi profesor.</div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div>Liceo Técnico Profesional Campanario • ${opts.subject_name} (${opts.oa_code})</div>
+      <div>Página 4 de 4</div>
+    </div>
+  </div>
+</div>
+`;
 }
 
 export default router;

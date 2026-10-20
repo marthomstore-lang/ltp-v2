@@ -34,7 +34,13 @@ import {
   Target,
   Wand2,
   FileCheck,
-  Award
+  Award,
+  Key,
+  Download,
+  ExternalLink,
+  FileCode,
+  Settings,
+  Code
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 
@@ -101,6 +107,7 @@ export interface ContinuityActivity {
   scaffold_json?: ScaffoldTier;
   stretch_json?: StretchTier;
   warm_up_json?: WarmUpItem;
+  html_content?: string;
   status?: string;
   created_at?: string;
 }
@@ -173,6 +180,20 @@ export const PedagogicalContinuityModule: React.FC<PedagogicalContinuityModulePr
   const [historySearch, setHistorySearch] = useState<string>('');
   const [historyCourseFilter, setHistoryCourseFilter] = useState<string>('all');
 
+  // Modo de visualización de la ficha (PDF / Visual HTML vs Simplificada)
+  const [worksheetViewMode, setWorksheetViewMode] = useState<'rich_pdf' | 'simplified'>('rich_pdf');
+
+  // Configuración de clave API de Gemini
+  const [showGeminiConfigModal, setShowGeminiConfigModal] = useState<boolean>(false);
+  const [geminiConfig, setGeminiConfig] = useState<{ hasKey: boolean; maskedKey: string; source: string }>({ hasKey: false, maskedKey: '', source: 'none' });
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState<string>('');
+  const [isSavingKey, setIsSavingKey] = useState<boolean>(false);
+
+  // Importar Guía Externa (HTML o Markdown de Gemini)
+  const [showImportModal, setShowImportModal] = useState<boolean>(false);
+  const [importTitle, setImportTitle] = useState<string>('');
+  const [importHtml, setImportHtml] = useState<string>('');
+
   // Sincronizar preselectedPlan
   useEffect(() => {
     if (preselectedPlan) {
@@ -183,9 +204,10 @@ export const PedagogicalContinuityModule: React.FC<PedagogicalContinuityModulePr
     }
   }, [preselectedPlan]);
 
-  // Cargar historial
+  // Cargar historial y configuración Gemini
   useEffect(() => {
     loadHistory();
+    checkGeminiConfig();
   }, []);
 
   // Detectar automáticamente el contexto cuando cambia curso o asignatura
@@ -263,6 +285,206 @@ export const PedagogicalContinuityModule: React.FC<PedagogicalContinuityModulePr
     }
   };
 
+  const checkGeminiConfig = async () => {
+    try {
+      const res = await fetch('/api/curriculum/gemini-config', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGeminiConfig(data);
+      }
+    } catch (err) {
+      console.warn('Error al verificar configuración de Gemini:', err);
+    }
+  };
+
+  const handleSaveGeminiKey = async () => {
+    if (!geminiApiKeyInput.trim()) {
+      Swal.fire('Atención', 'Por favor ingresa una clave de API de Gemini válida.', 'warning');
+      return;
+    }
+    setIsSavingKey(true);
+    try {
+      const res = await fetch('/api/curriculum/gemini-config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ apiKey: geminiApiKeyInput.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Error al guardar clave');
+      setGeminiConfig({
+        hasKey: true,
+        maskedKey: geminiApiKeyInput.slice(0, 6) + '...' + geminiApiKeyInput.slice(-4),
+        source: 'database'
+      });
+      setShowGeminiConfigModal(false);
+      setGeminiApiKeyInput('');
+      Swal.fire({
+        icon: 'success',
+        title: '¡Clave de Gemini Conectada!',
+        text: 'Ahora las guías y recursos se generarán directamente con Google Gemini AI.',
+        timer: 2500,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      Swal.fire('Error', err.message || 'No se pudo guardar la clave.', 'error');
+    } finally {
+      setIsSavingKey(false);
+    }
+  };
+
+  const handleOpenInNewTab = () => {
+    if (!currentActivity?.html_content) return;
+    const blob = new Blob([currentActivity.html_content], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (!win) {
+      Swal.fire('Pop-up bloqueado', 'Por favor habilita las ventanas emergentes en tu navegador para ver la guía lista para imprimir.', 'info');
+    }
+  };
+
+  const handleDownloadHtml = () => {
+    if (!currentActivity?.html_content) return;
+    const blob = new Blob([currentActivity.html_content], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Guia_${(currentActivity.course_name || 'Curso').replace(/\\s+/g, '_')}_${(currentActivity.oa_code || 'OA').replace(/\\s+/g, '_')}_LTP.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportCustomGuide = () => {
+    if (!importHtml.trim()) {
+      Swal.fire('Atención', 'Por favor pega el código HTML o contenido de la guía generada en Gemini.', 'warning');
+      return;
+    }
+    const customActivity: ContinuityActivity = {
+      academic_year: 2026,
+      unit_name: unitName || 'Unidad de Aprendizaje',
+      course_name: courseName || '5° Básico',
+      subject_name: subjectName || 'Matemática',
+      teacher_name: teacherName || user?.name || 'Docente Titular',
+      substitute_teacher_name: substituteTeacherName || 'Docente de Reemplazo / Asistente',
+      oa_code: oaCode || 'OA 15',
+      oa_title: oaTitle || 'Ecuaciones e Inecuaciones de un paso',
+      duration_minutes: durationMinutes,
+      activity_type: 'guia_autonoma',
+      title: importTitle || 'Guía de Aprendizaje Personalizada (Gemini)',
+      instructions_for_students: 'Desarrolla cada actividad en el orden presentado respetando los tiempos.',
+      instructions_for_substitute: 'Supervisar el avance de las páginas 1 a 4 y recolectar el ticket de salida al final.',
+      content_summary: 'Guía visual completa importada desde Gemini / Chalkie.',
+      activities_json: [],
+      exit_ticket: 'Completar el ticket de salida en la última página.',
+      answer_key: 'Pauta en solucionario oficial.',
+      rubric_criteria: 'Evaluación formativa y autoevaluación.',
+      html_content: importHtml,
+      status: 'generada'
+    };
+    setCurrentActivity(customActivity);
+    setShowImportModal(false);
+    setSubTab('worksheet');
+    setWorksheetViewMode('rich_pdf');
+    Swal.fire({
+      icon: 'success',
+      title: '¡Guía Cargada en el Visor!',
+      text: 'Ya puedes revisarla en alta definición, imprimirla en formato oficial o guardarla.',
+      timer: 2000,
+      showConfirmButton: false
+    });
+  };
+
+  const handleLoadModelGuide = async () => {
+    setCourseName('5° Básico');
+    setSubjectName('Matemática');
+    setUnitName('Unidad 2: Álgebra, Ecuaciones e Inecuaciones');
+    setOaCode('OA 15');
+    setOaTitle('Resolver problemas usando ecuaciones e inecuaciones de un paso con balanzas y operaciones inversas');
+    setSelectedTool('guia_autonoma');
+    setDurationMinutes(90);
+
+    setIsGenerating(true);
+    try {
+      const payload = {
+        course_name: '5° Básico',
+        subject_name: 'Matemática',
+        teacher_name: teacherName || user?.name || 'Prof. David (Matemática)',
+        substitute_teacher_name: substituteTeacherName || 'Docente de Apoyo',
+        unit_name: 'Unidad 2: Álgebra, Ecuaciones e Inecuaciones',
+        oa_code: 'OA 15',
+        oa_title: 'Resolver problemas usando ecuaciones e inecuaciones de un paso con balanzas y operaciones inversas',
+        duration_minutes: 90,
+        activity_type: 'guia_autonoma',
+        pedagogical_context: 'Guía Modelo oficial de 4 páginas con balanzas interactivas SVG, metodología COPISI, desafíos con emojis, problemas contextualizados y ticket de salida desprendible.',
+        additional_notes: 'Idéntica a la guía PDF de referencia de 5° Básico OA 15.'
+      };
+
+      const res = await fetch('/api/curriculum/generate-continuity-activity', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) throw new Error('Error al generar guía modelo.');
+      const data = await res.json();
+      const generated = data.activity;
+
+      const newActivity: ContinuityActivity = {
+        academic_year: 2026,
+        unit_name: 'Unidad 2: Álgebra, Ecuaciones e Inecuaciones',
+        course_name: '5° Básico',
+        subject_name: 'Matemática',
+        teacher_name: teacherName || user?.name || 'Prof. David (Matemática)',
+        substitute_teacher_name: substituteTeacherName || 'Docente de Apoyo',
+        oa_code: 'OA 15',
+        oa_title: 'Resolver problemas usando ecuaciones e inecuaciones de un paso con balanzas y operaciones inversas',
+        duration_minutes: 90,
+        activity_type: 'guia_autonoma',
+        title: generated.title || 'Guía de Aprendizaje 5° Básico: El Misterio del Equilibrio',
+        pedagogical_context: generated.pedagogical_context || '',
+        instructions_for_students: generated.instructions_for_students || '',
+        instructions_for_substitute: generated.instructions_for_substitute || '',
+        content_summary: generated.content_summary || '',
+        activities_json: generated.activities || [],
+        exit_ticket: generated.exit_ticket || '',
+        answer_key: generated.answer_key || '',
+        rubric_criteria: generated.rubric_criteria || '',
+        slides_json: generated.slides || [],
+        scaffold_json: generated.scaffold || undefined,
+        stretch_json: generated.stretch || undefined,
+        warm_up_json: generated.warm_up || undefined,
+        html_content: generated.html_content || undefined,
+        status: 'generada'
+      };
+
+      setCurrentActivity(newActivity);
+      setSubTab('worksheet');
+      setWorksheetViewMode('rich_pdf');
+
+      Swal.fire({
+        icon: 'success',
+        title: '¡Guía Modelo 5° Básico OA 15 Cargada!',
+        text: 'Se ha renderizado el formato idéntico al PDF de referencia con balanzas SVG, COPISI y 4 páginas listas para imprimir.',
+        timer: 3000,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      console.error('Error al cargar guía modelo:', err);
+      Swal.fire('Error', err.message || 'No se pudo cargar la guía modelo.', 'error');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   // Generar Material con Inteligencia Artificial estilo Chalkie
   const handleGenerateActivity = async () => {
     if (!courseName || !subjectName) {
@@ -330,6 +552,7 @@ export const PedagogicalContinuityModule: React.FC<PedagogicalContinuityModulePr
         scaffold_json: generated.scaffold || undefined,
         stretch_json: generated.stretch || undefined,
         warm_up_json: generated.warm_up || undefined,
+        html_content: generated.html_content || undefined,
         status: 'generada'
       };
 
@@ -542,14 +765,30 @@ ${currentActivity.answer_key}
       {/* ===================================================================== */}
       <style>{`
         @media print {
+          @page {
+            size: A4 portrait;
+            margin: 8mm 10mm;
+          }
           body * { visibility: hidden; }
           #printable-worksheet, #printable-worksheet * { visibility: visible; }
           #printable-worksheet {
             position: absolute; left: 0; top: 0; width: 100%;
             background: #ffffff !important; color: #000000 !important;
-            padding: 1cm; font-family: 'Arial', sans-serif !important;
+            padding: 0 !important; margin: 0 !important;
           }
-          .no-print { display: none !important; }
+          .page {
+            page-break-after: always !important;
+            break-after: page !important;
+            box-shadow: none !important;
+            border: none !important;
+            margin: 0 !important;
+            width: 100% !important;
+          }
+          .page:last-child {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+          }
+          .no-print, header, nav, .sidebar { display: none !important; }
         }
       `}</style>
 
@@ -605,7 +844,72 @@ ${currentActivity.answer_key}
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={handleLoadModelGuide}
+            title="Carga de inmediato el modelo oficial de 4 páginas idéntico al PDF de referencia con balanzas SVG y COPISI"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.6rem 1rem',
+              borderRadius: '10px',
+              border: 'none',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              color: '#ffffff',
+              fontWeight: 900,
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              boxShadow: '0 4px 10px rgba(16, 185, 129, 0.3)'
+            }}
+          >
+            <Zap size={15} />
+            Guía Modelo 5° Básico OA 15
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowImportModal(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.6rem 0.95rem',
+              borderRadius: '10px',
+              border: '1px solid rgba(255,255,255,0.2)',
+              background: 'rgba(255,255,255,0.1)',
+              color: '#ffffff',
+              fontWeight: 800,
+              fontSize: '0.82rem',
+              cursor: 'pointer'
+            }}
+          >
+            <FileCode size={15} />
+            Importar Guía Gemini
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowGeminiConfigModal(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.6rem 0.95rem',
+              borderRadius: '10px',
+              border: geminiConfig.hasKey ? '1px solid rgba(74, 222, 128, 0.4)' : '2px solid #f59e0b',
+              background: geminiConfig.hasKey ? 'rgba(34, 197, 94, 0.2)' : 'rgba(245, 158, 11, 0.25)',
+              color: '#ffffff',
+              fontWeight: 800,
+              fontSize: '0.82rem',
+              cursor: 'pointer'
+            }}
+          >
+            <Key size={15} color={geminiConfig.hasKey ? '#86efac' : '#fde047'} />
+            {geminiConfig.hasKey ? 'Gemini Conectado' : 'Conectar Clave Gemini'}
+          </button>
+
           <button
             type="button"
             onClick={() => setSubTab('studio')}
@@ -626,6 +930,7 @@ ${currentActivity.answer_key}
             <Sparkles size={16} />
             Crear Recurso
           </button>
+
           <button
             type="button"
             onClick={() => { setSubTab('history'); loadHistory(); }}
@@ -1111,7 +1416,55 @@ ${currentActivity.answer_key}
             </button>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.4rem' }}>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            {currentActivity?.html_content && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleOpenInNewTab}
+                  title="Abrir en pestaña nueva con vista completa y limpia para imprimir"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    padding: '0.55rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid #c7d2fe',
+                    background: '#eef2ff',
+                    color: '#3730a3',
+                    fontWeight: 700,
+                    fontSize: '0.8rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <ExternalLink size={15} />
+                  Pestaña Imprimible
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadHtml}
+                  title="Descargar archivo HTML de la guía para usar sin internet"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    padding: '0.55rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#334155',
+                    fontWeight: 700,
+                    fontSize: '0.8rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Download size={15} />
+                  Descargar HTML
+                </button>
+              </>
+            )}
+
             <button
               type="button"
               onClick={() => window.print()}
@@ -1130,7 +1483,7 @@ ${currentActivity.answer_key}
               }}
             >
               <Printer size={16} />
-              Imprimir
+              Imprimir / PDF
             </button>
 
             <button
@@ -1314,213 +1667,286 @@ ${currentActivity.answer_key}
       {/* VISTA 1: FICHA / GUÍA DE AULA IMPRIMIBLE                              */}
       {/* ===================================================================== */}
       {subTab === 'worksheet' && currentActivity && (
-        <div id="printable-worksheet" style={{
-          background: '#ffffff',
-          borderRadius: '16px',
-          padding: '2.5rem',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
-          maxWidth: '900px',
-          margin: '0 auto',
-          color: '#0f172a'
-        }}>
-          {/* ENCABEZADO OFICIAL */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            borderBottom: '2.5px solid #0f172a',
-            paddingBottom: '1rem',
-            marginBottom: '1.25rem'
-          }}>
-            <div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                República de Chile — Región de Ñuble — Comuna de Yungay
-              </div>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', margin: '0.2rem 0' }}>
-                LICEO TÉCNICO PROFESIONAL CAMPANARIO
-              </h1>
-              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#4338ca' }}>
-                Unidad Técnica Pedagógica • Ficha de Trabajo y Continuidad Curricular
-              </div>
-            </div>
-
-            <table style={{ borderCollapse: 'collapse', border: '1.5px solid #0f172a', fontSize: '0.75rem', textAlign: 'center' }}>
-              <thead>
-                <tr style={{ background: '#f1f5f9' }}>
-                  <th style={{ border: '1px solid #0f172a', padding: '0.25rem 0.5rem' }}>Puntaje Ideal</th>
-                  <th style={{ border: '1px solid #0f172a', padding: '0.25rem 0.5rem' }}>Puntaje Obtenido</th>
-                  <th style={{ border: '1px solid #0f172a', padding: '0.25rem 0.5rem' }}>Nota</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style={{ border: '1px solid #0f172a', padding: '0.4rem', fontWeight: 800 }}>24 pts</td>
-                  <td style={{ border: '1px solid #0f172a', padding: '0.4rem', minWidth: '70px' }}></td>
-                  <td style={{ border: '1px solid #0f172a', padding: '0.4rem', minWidth: '70px' }}></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* DATOS DEL ESTUDIANTE */}
-          <div style={{
-            border: '1.5px solid #cbd5e1',
-            borderRadius: '8px',
-            padding: '0.75rem 1rem',
-            marginBottom: '1.25rem',
-            background: '#fafafa',
-            fontSize: '0.84rem'
-          }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.5rem' }}>
-              <div><strong>Estudiante:</strong> __________________________________________________</div>
-              <div><strong>Curso:</strong> {currentActivity.course_name}</div>
-              <div><strong>Fecha:</strong> ____ / ____ / 2026</div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1.5fr 1fr', gap: '0.75rem' }}>
-              <div><strong>Asignatura:</strong> {currentActivity.subject_name}</div>
-              <div><strong>Docente Titular:</strong> {currentActivity.teacher_name}</div>
-              <div><strong>Tiempo:</strong> {currentActivity.duration_minutes} min</div>
-            </div>
-          </div>
-
-          {/* TÍTULO Y OBJETIVO */}
-          <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a', margin: '0 0 0.35rem 0', textTransform: 'uppercase' }}>
-              {currentActivity.title}
-            </h2>
-            <div style={{
-              display: 'inline-block',
-              background: '#eef2ff',
-              border: '1px solid #c7d2fe',
-              borderRadius: '6px',
-              padding: '0.35rem 0.75rem',
-              fontSize: '0.8rem',
-              color: '#312e81'
+        <div>
+          {/* BARRA DE ALTERNANCIA DE FORMATO (RICH PDF VS SIMPLIFICADA) */}
+          {currentActivity.html_content && (
+            <div className="no-print" style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              borderRadius: '12px',
+              padding: '0.6rem 1rem',
+              maxWidth: '920px',
+              margin: '0 auto 1.25rem auto',
+              flexWrap: 'wrap',
+              gap: '0.5rem'
             }}>
-              <strong>Objetivo de Aprendizaje:</strong> {currentActivity.oa_code} — {currentActivity.oa_title}
-            </div>
-          </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1e293b' }}>
+                  🎨 Visualización de Guía:
+                </span>
+                <div style={{ display: 'inline-flex', background: '#e2e8f0', borderRadius: '8px', padding: '2px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setWorksheetViewMode('rich_pdf')}
+                    style={{
+                      padding: '0.35rem 0.75rem',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: worksheetViewMode === 'rich_pdf' ? '#4338ca' : 'transparent',
+                      color: worksheetViewMode === 'rich_pdf' ? '#ffffff' : '#475569',
+                      fontWeight: 700,
+                      fontSize: '0.78rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    📄 Guía Gráfica Oficial (4 Páginas • Balanzas SVG • COPISI)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorksheetViewMode('simplified')}
+                    style={{
+                      padding: '0.35rem 0.75rem',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: worksheetViewMode === 'simplified' ? '#4338ca' : 'transparent',
+                      color: worksheetViewMode === 'simplified' ? '#ffffff' : '#475569',
+                      fontWeight: 700,
+                      fontSize: '0.78rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    📝 Vista Básica
+                  </button>
+                </div>
+              </div>
 
-          {/* INSTRUCCIONES */}
-          <div style={{
-            background: '#fffbeb',
-            borderLeft: '4px solid #f59e0b',
-            padding: '0.75rem 1rem',
-            marginBottom: '1.25rem',
-            borderRadius: '4px',
-            fontSize: '0.82rem',
-            color: '#78350f',
-            lineHeight: 1.4
-          }}>
-            <strong>INSTRUCCIONES DE TRABAJO:</strong>
-            <p style={{ margin: '0.3rem 0 0 0', whiteSpace: 'pre-line' }}>
-              {currentActivity.instructions_for_students}
-            </p>
-          </div>
-
-          {/* MARCO CONCEPTUAL */}
-          {currentActivity.content_summary && (
-            <div style={{
-              border: '1.5px solid #e2e8f0',
-              borderRadius: '8px',
-              padding: '1rem',
-              marginBottom: '1.5rem',
-              background: '#f8fafc'
-            }}>
-              <h3 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.5rem 0', textTransform: 'uppercase' }}>
-                📖 Marco Conceptual y Síntesis de Contenidos:
-              </h3>
-              <div style={{ fontSize: '0.84rem', color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-line' }}>
-                {currentActivity.content_summary}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ fontSize: '0.75rem', color: '#059669', background: '#ecfdf5', padding: '0.2rem 0.5rem', borderRadius: '6px', fontWeight: 700, border: '1px solid #a7f3d0' }}>
+                  ✓ Idéntica a Guía Gemini PDF
+                </span>
               </div>
             </div>
           )}
 
-          {/* ACTIVIDADES */}
-          <div style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 900, color: '#0f172a', margin: '0 0 1rem 0', borderBottom: '2px solid #0f172a', paddingBottom: '0.3rem' }}>
-              ACTIVIDADES DE DESARROLLO Y APLICACIÓN:
-            </h3>
-
-            {currentActivity.activities_json.map((act, idx) => (
-              <div key={idx} style={{
-                marginBottom: '1.5rem',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                padding: '1rem',
-                background: '#ffffff'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', borderBottom: '1px dashed #cbd5e1', paddingBottom: '0.4rem' }}>
-                  <h4 style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                    {act.title}
-                  </h4>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#4338ca', background: '#e0e7ff', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
-                    {act.points} Puntos
-                  </span>
-                </div>
-
-                {act.description && (
-                  <p style={{ fontSize: '0.82rem', color: '#475569', margin: '0 0 0.75rem 0', fontStyle: 'italic' }}>
-                    {act.description}
-                  </p>
-                )}
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {act.questions.map((q, qIdx) => (
-                    <div key={qIdx} style={{ fontSize: '0.84rem', color: '#1e293b' }}>
-                      <div style={{ fontWeight: 600, marginBottom: '0.4rem' }}>{q}</div>
-                      <div style={{
-                        height: '60px',
-                        borderBottom: '1px dotted #94a3b8',
-                        background: 'repeating-linear-gradient(transparent, transparent 24px, #e2e8f0 25px)',
-                        borderRadius: '4px'
-                      }}></div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* TICKET DE SALIDA */}
-          {currentActivity.exit_ticket && (
-            <div style={{
-              border: '2px solid #0f172a',
-              borderRadius: '8px',
-              padding: '1rem',
-              background: '#fafafa',
-              marginTop: '1.5rem'
+          {worksheetViewMode === 'rich_pdf' && currentActivity.html_content ? (
+            <div
+              id="printable-worksheet"
+              style={{ maxWidth: '920px', margin: '0 auto' }}
+              dangerouslySetInnerHTML={{ __html: currentActivity.html_content }}
+            />
+          ) : (
+            <div id="printable-worksheet" style={{
+              background: '#ffffff',
+              borderRadius: '16px',
+              padding: '2.5rem',
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
+              maxWidth: '900px',
+              margin: '0 auto',
+              color: '#0f172a'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                <h4 style={{ fontSize: '0.86rem', fontWeight: 900, color: '#0f172a', margin: 0, textTransform: 'uppercase' }}>
-                  🎟️ TICKET DE SALIDA (Completar y entregar 3 minutos antes del timbre)
-                </h4>
-                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#dc2626' }}>OBLIGATORIO</span>
-              </div>
-              <div style={{ fontSize: '0.82rem', color: '#334155', whiteSpace: 'pre-line', lineHeight: 1.4, marginBottom: '0.5rem' }}>
-                {currentActivity.exit_ticket}
-              </div>
+              {/* ENCABEZADO OFICIAL */}
               <div style={{
-                height: '50px',
-                borderBottom: '1px dotted #94a3b8',
-                background: 'repeating-linear-gradient(transparent, transparent 24px, #e2e8f0 25px)'
-              }}></div>
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                borderBottom: '2.5px solid #0f172a',
+                paddingBottom: '1rem',
+                marginBottom: '1.25rem'
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    República de Chile — Región de Ñuble — Comuna de Yungay
+                  </div>
+                  <h1 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', margin: '0.2rem 0' }}>
+                    LICEO TÉCNICO PROFESIONAL CAMPANARIO
+                  </h1>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#4338ca' }}>
+                    Unidad Técnica Pedagógica • Ficha de Trabajo y Continuidad Curricular
+                  </div>
+                </div>
+
+                <table style={{ borderCollapse: 'collapse', border: '1.5px solid #0f172a', fontSize: '0.75rem', textAlign: 'center' }}>
+                  <thead>
+                    <tr style={{ background: '#f1f5f9' }}>
+                      <th style={{ border: '1px solid #0f172a', padding: '0.25rem 0.5rem' }}>Puntaje Ideal</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '0.25rem 0.5rem' }}>Puntaje Obtenido</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '0.25rem 0.5rem' }}>Nota</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style={{ border: '1px solid #0f172a', padding: '0.4rem', fontWeight: 800 }}>24 pts</td>
+                      <td style={{ border: '1px solid #0f172a', padding: '0.4rem', minWidth: '70px' }}></td>
+                      <td style={{ border: '1px solid #0f172a', padding: '0.4rem', minWidth: '70px' }}></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* DATOS DEL ESTUDIANTE */}
+              <div style={{
+                border: '1.5px solid #cbd5e1',
+                borderRadius: '8px',
+                padding: '0.75rem 1rem',
+                marginBottom: '1.25rem',
+                background: '#fafafa',
+                fontSize: '0.84rem'
+              }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                  <div><strong>Estudiante:</strong> __________________________________________________</div>
+                  <div><strong>Curso:</strong> {currentActivity.course_name}</div>
+                  <div><strong>Fecha:</strong> ____ / ____ / 2026</div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1.5fr 1fr', gap: '0.75rem' }}>
+                  <div><strong>Asignatura:</strong> {currentActivity.subject_name}</div>
+                  <div><strong>Docente Titular:</strong> {currentActivity.teacher_name}</div>
+                  <div><strong>Tiempo:</strong> {currentActivity.duration_minutes} min</div>
+                </div>
+              </div>
+
+              {/* TÍTULO Y OBJETIVO */}
+              <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+                <h2 style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a', margin: '0 0 0.35rem 0', textTransform: 'uppercase' }}>
+                  {currentActivity.title}
+                </h2>
+                <div style={{
+                  display: 'inline-block',
+                  background: '#eef2ff',
+                  border: '1px solid #c7d2fe',
+                  borderRadius: '6px',
+                  padding: '0.35rem 0.75rem',
+                  fontSize: '0.8rem',
+                  color: '#312e81'
+                }}>
+                  <strong>Objetivo de Aprendizaje:</strong> {currentActivity.oa_code} — {currentActivity.oa_title}
+                </div>
+              </div>
+
+              {/* INSTRUCCIONES */}
+              <div style={{
+                background: '#fffbeb',
+                borderLeft: '4px solid #f59e0b',
+                padding: '0.75rem 1rem',
+                marginBottom: '1.25rem',
+                borderRadius: '4px',
+                fontSize: '0.82rem',
+                color: '#78350f',
+                lineHeight: 1.4
+              }}>
+                <strong>INSTRUCCIONES DE TRABAJO:</strong>
+                <p style={{ margin: '0.3rem 0 0 0', whiteSpace: 'pre-line' }}>
+                  {currentActivity.instructions_for_students}
+                </p>
+              </div>
+
+              {/* MARCO CONCEPTUAL */}
+              {currentActivity.content_summary && (
+                <div style={{
+                  border: '1.5px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  marginBottom: '1.5rem',
+                  background: '#f8fafc'
+                }}>
+                  <h3 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.5rem 0', textTransform: 'uppercase' }}>
+                    📖 Marco Conceptual y Síntesis de Contenidos:
+                  </h3>
+                  <div style={{ fontSize: '0.84rem', color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-line' }}>
+                    {currentActivity.content_summary}
+                  </div>
+                </div>
+              )}
+
+              {/* ACTIVIDADES */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 900, color: '#0f172a', margin: '0 0 1rem 0', borderBottom: '2px solid #0f172a', paddingBottom: '0.3rem' }}>
+                  ACTIVIDADES DE DESARROLLO Y APLICACIÓN:
+                </h3>
+
+                {currentActivity.activities_json.map((act, idx) => (
+                  <div key={idx} style={{
+                    marginBottom: '1.5rem',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '1rem',
+                    background: '#ffffff'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', borderBottom: '1px dashed #cbd5e1', paddingBottom: '0.4rem' }}>
+                      <h4 style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                        {act.title}
+                      </h4>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#4338ca', background: '#e0e7ff', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
+                        {act.points} Puntos
+                      </span>
+                    </div>
+
+                    {act.description && (
+                      <p style={{ fontSize: '0.82rem', color: '#475569', margin: '0 0 0.75rem 0', fontStyle: 'italic' }}>
+                        {act.description}
+                      </p>
+                    )}
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {act.questions.map((q, qIdx) => (
+                        <div key={qIdx} style={{ fontSize: '0.84rem', color: '#1e293b' }}>
+                          <div style={{ fontWeight: 600, marginBottom: '0.4rem' }}>{q}</div>
+                          <div style={{
+                            height: '60px',
+                            borderBottom: '1px dotted #94a3b8',
+                            background: 'repeating-linear-gradient(transparent, transparent 24px, #e2e8f0 25px)',
+                            borderRadius: '4px'
+                          }}></div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* TICKET DE SALIDA */}
+              {currentActivity.exit_ticket && (
+                <div style={{
+                  border: '2px solid #0f172a',
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  background: '#fafafa',
+                  marginTop: '1.5rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                    <h4 style={{ fontSize: '0.86rem', fontWeight: 900, color: '#0f172a', margin: 0, textTransform: 'uppercase' }}>
+                      🎟️ TICKET DE SALIDA (Completar y entregar 3 minutos antes del timbre)
+                    </h4>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#dc2626' }}>OBLIGATORIO</span>
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: '#334155', whiteSpace: 'pre-line', lineHeight: 1.4, marginBottom: '0.5rem' }}>
+                    {currentActivity.exit_ticket}
+                  </div>
+                  <div style={{
+                    height: '50px',
+                    borderBottom: '1px dotted #94a3b8',
+                    background: 'repeating-linear-gradient(transparent, transparent 24px, #e2e8f0 25px)'
+                  }}></div>
+                </div>
+              )}
+
+              <div style={{
+                marginTop: '2rem',
+                paddingTop: '0.75rem',
+                borderTop: '1px solid #cbd5e1',
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: '0.72rem',
+                color: '#64748b'
+              }}>
+                <div>LTP Campanario — Excelencia Técnico Profesional y Humana</div>
+                <div>Recurso generado con Chalkie LTP Curricular AI</div>
+              </div>
             </div>
           )}
-
-          <div style={{
-            marginTop: '2rem',
-            paddingTop: '0.75rem',
-            borderTop: '1px solid #cbd5e1',
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontSize: '0.72rem',
-            color: '#64748b'
-          }}>
-            <div>LTP Campanario — Excelencia Técnico Profesional y Humana</div>
-            <div>Recurso generado con Chalkie LTP Curricular AI</div>
-          </div>
         </div>
       )}
 
@@ -2208,6 +2634,279 @@ ${currentActivity.answer_key}
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL 1: CONFIGURACIÓN DE CLAVE GEMINI API                           */}
+      {/* ===================================================================== */}
+      {showGeminiConfigModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            maxWidth: '520px',
+            width: '100%',
+            padding: '1.75rem',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            border: '1px solid #cbd5e1'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <div style={{ background: '#e0e7ff', color: '#4338ca', padding: '0.5rem', borderRadius: '10px' }}>
+                  <Key size={22} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>
+                    Conexión Google Gemini AI
+                  </h3>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    Motor de Inteligencia Artificial para Guías y Clases
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGeminiConfigModal(false)}
+                style={{ background: 'transparent', border: 'none', fontSize: '1.2rem', color: '#64748b', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{
+              background: geminiConfig.hasKey ? '#f0fdf4' : '#fffbeb',
+              border: `1px solid ${geminiConfig.hasKey ? '#bbf7d0' : '#fde68a'}`,
+              borderRadius: '10px',
+              padding: '0.8rem',
+              marginBottom: '1rem',
+              fontSize: '0.8rem',
+              color: geminiConfig.hasKey ? '#166534' : '#92400e'
+            }}>
+              <strong>Estado actual: </strong>
+              {geminiConfig.hasKey ? (
+                <span>
+                  🟢 Conectado con éxito ({geminiConfig.maskedKey}) • Fuente: {geminiConfig.source === 'env' ? 'Servidor (.env)' : 'Base de datos LTP'}
+                </span>
+              ) : (
+                <span>
+                  🟠 Sin clave configurada. La plataforma está utilizando plantillas internas estructuradas de alta calidad.
+                </span>
+              )}
+            </div>
+
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>
+                Nueva Clave de API de Google Gemini (AI Studio):
+              </label>
+              <input
+                type="password"
+                value={geminiApiKeyInput}
+                onChange={e => setGeminiApiKeyInput(e.target.value)}
+                placeholder="AIzaSy..."
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.8rem',
+                  borderRadius: '8px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '0.85rem',
+                  fontFamily: 'monospace',
+                  marginBottom: '0.5rem'
+                }}
+              />
+              <div style={{ fontSize: '0.74rem', color: '#64748b', lineHeight: 1.4 }}>
+                ¿No tienes una clave? Puedes obtener una clave gratuita en pocos segundos desde{' '}
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: '#4338ca', fontWeight: 700, textDecoration: 'underline' }}
+                >
+                  Google AI Studio (aistudio.google.com)
+                </a>.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
+              <button
+                type="button"
+                onClick={() => setShowGeminiConfigModal(false)}
+                style={{
+                  padding: '0.55rem 1rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                disabled={isSavingKey || !geminiApiKeyInput.trim()}
+                onClick={handleSaveGeminiKey}
+                style={{
+                  padding: '0.55rem 1.25rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#4338ca',
+                  color: '#ffffff',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  opacity: (isSavingKey || !geminiApiKeyInput.trim()) ? 0.6 : 1
+                }}
+              >
+                {isSavingKey ? 'Guardando...' : 'Guardar y Activar Clave'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL 2: IMPORTAR O PEGAR GUÍA DE GEMINI                              */}
+      {/* ===================================================================== */}
+      {showImportModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            maxWidth: '680px',
+            width: '100%',
+            padding: '1.75rem',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
+            border: '1px solid #cbd5e1'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <div style={{ background: '#ecfdf5', color: '#059669', padding: '0.5rem', borderRadius: '10px' }}>
+                  <FileCode size={22} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>
+                    Importar o Pegar Guía Creada en Gemini
+                  </h3>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    Visualiza e imprime guías generadas externamente con el membrete oficial del Liceo
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                style={{ background: 'transparent', border: 'none', fontSize: '1.2rem', color: '#64748b', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                Título de la Guía:
+              </label>
+              <input
+                type="text"
+                value={importTitle}
+                onChange={e => setImportTitle(e.target.value)}
+                placeholder="Ej: Guía de Aprendizaje 5° Básico - Ecuaciones e Inecuaciones (OA 15)"
+                style={{
+                  width: '100%',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.85rem'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                Contenido HTML o Texto de la Guía:
+              </label>
+              <textarea
+                value={importHtml}
+                onChange={e => setImportHtml(e.target.value)}
+                placeholder="Pega aquí el código HTML completo o contenido generado en Gemini..."
+                rows={11}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem',
+                  borderRadius: '8px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '0.8rem',
+                  fontFamily: 'monospace',
+                  resize: 'vertical'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                style={{
+                  padding: '0.55rem 1rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!importHtml.trim()}
+                onClick={handleImportCustomGuide}
+                style={{
+                  padding: '0.55rem 1.25rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#059669',
+                  color: '#ffffff',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  opacity: !importHtml.trim() ? 0.6 : 1
+                }}
+              >
+                Cargar en Visor Oficial
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
