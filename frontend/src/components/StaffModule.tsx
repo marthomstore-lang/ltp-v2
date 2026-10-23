@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { UserCheck, Award, Briefcase, Plus, ShieldCheck, Edit2, Search, Trash2, CheckCircle2, User } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { formatPhone } from '../utils/phone';
+import { TableSkeleton, EmptyState, Button, Badge } from './ui';
 
 interface StaffMember {
   id: string;
@@ -39,10 +40,12 @@ interface StaffModuleProps {
 export const StaffModule: React.FC<StaffModuleProps> = ({ token }) => {
   const [activeTab, setActiveTab] = useState<'todos' | 'docentes' | 'asistentes' | 'directivos'>('todos');
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
 
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
 
   const fetchStaffData = () => {
+    setLoading(true);
     fetch('/api/staff', { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => {
@@ -82,7 +85,8 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ token }) => {
           setStaffList(mapped);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
@@ -317,75 +321,96 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ token }) => {
       </div>
 
       {/* TABLA DE PERSONAL E INFORMACIÓN DE PERFILES */}
-      <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-          <thead>
-            <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              <th style={{ padding: '0.8rem 1rem', textAlign: 'left' }}>RUT</th>
-              <th style={{ padding: '0.8rem 1rem', textAlign: 'left' }}>Nombre Completo</th>
-              <th style={{ padding: '0.8rem 1rem', textAlign: 'left' }}>Perfil / Rol</th>
-              <th style={{ padding: '0.8rem 1rem', textAlign: 'left' }}>Cargo / Función</th>
-              <th style={{ padding: '0.8rem 0.75rem', textAlign: 'center' }}>Horas</th>
-              <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Idoneidad</th>
-              <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredStaff.map(s => (
-              <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '0.75rem 1rem', fontWeight: 800, fontFamily: 'monospace', color: '#0f172a' }}>{s.run}</td>
-                <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#0f172a' }}>
-                  <div>{s.name}</div>
-                  {s.email && <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400 }}>{s.email}</div>}
-                </td>
-                <td style={{ padding: '0.75rem 1rem' }}>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                    {(Array.isArray(s.roles) && s.roles.length > 0 ? s.roles : [s.role || s.staff_type]).map((r: string, idx: number) => (
-                      <span key={idx} style={{
-                        background: r === 'Admin' ? '#fee2e2' : r === 'Director' ? '#e0e7ff' : r === 'Docente' ? '#dcfce7' : '#fef3c7',
-                        color: r === 'Admin' ? '#991b1b' : r === 'Director' ? '#3730a3' : r === 'Docente' ? '#166534' : '#92400e',
-                        padding: '0.22rem 0.55rem',
-                        borderRadius: '9999px',
-                        fontSize: '0.72rem',
-                        fontWeight: 800,
-                        border: idx === 0 ? '1.5px solid currentColor' : 'none'
-                      }}>
-                        {idx === 0 ? '⭐ ' : ''}{r}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-                <td style={{ padding: '0.75rem 1rem', color: '#334155', fontWeight: 600 }}>{s.job_function}</td>
-                <td style={{ padding: '0.75rem 0.75rem', textAlign: 'center', fontWeight: 700, color: '#475569' }}>{s.contract_hours} hrs</td>
-                <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                  <span style={{ background: '#dcfce7', color: '#15803d', padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    <ShieldCheck size={13} />
-                    {s.suitability}
-                  </span>
-                </td>
-                <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '0.4rem' }}>
-                    <button
-                      onClick={() => handleOpenEdit(s)}
-                      style={{ background: '#e0e7ff', color: '#4338ca', border: 'none', padding: '0.35rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                      title="Modificar información del perfil"
-                    >
-                      <Edit2 size={13} /> Modificar Perfil
-                    </button>
-                    <button
-                      onClick={() => handleDeleteStaff(s.id, s.name)}
-                      style={{ background: '#fee2e2', color: '#b91c1c', border: 'none', padding: '0.35rem 0.5rem', borderRadius: '6px', cursor: 'pointer' }}
-                      title="Eliminar registro"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                </td>
+      {loading ? (
+        <TableSkeleton rows={6} cols={7} />
+      ) : (
+        <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                <th style={{ padding: '0.8rem 1rem', textAlign: 'left' }}>RUT</th>
+                <th style={{ padding: '0.8rem 1rem', textAlign: 'left' }}>Nombre Completo</th>
+                <th style={{ padding: '0.8rem 1rem', textAlign: 'left' }}>Perfil / Rol</th>
+                <th style={{ padding: '0.8rem 1rem', textAlign: 'left' }}>Cargo / Función</th>
+                <th style={{ padding: '0.8rem 0.75rem', textAlign: 'center' }}>Horas</th>
+                <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Idoneidad</th>
+                <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Acciones</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {filteredStaff.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ padding: '2.5rem 1rem' }}>
+                    <EmptyState
+                      icon={<Briefcase size={32} color="#6366f1" />}
+                      title="No se encontraron funcionarios"
+                      description="No hay registros de personal que coincidan con la categoría o el término de búsqueda ingresado."
+                      actionLabel={searchTerm || activeTab !== 'todos' ? 'Ver Todos los Funcionarios' : undefined}
+                      onAction={() => {
+                        setSearchTerm('');
+                        setActiveTab('todos');
+                      }}
+                    />
+                  </td>
+                </tr>
+              ) : (
+                filteredStaff.map(s => (
+                  <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '0.75rem 1rem', fontWeight: 800, fontFamily: 'monospace', color: '#0f172a' }}>{s.run}</td>
+                    <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#0f172a' }}>
+                      <div>{s.name}</div>
+                      {s.email && <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400 }}>{s.email}</div>}
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem' }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {(Array.isArray(s.roles) && s.roles.length > 0 ? s.roles : [s.role || s.staff_type]).map((r: string, idx: number) => (
+                          <span key={idx} style={{
+                            background: r === 'Admin' ? '#fee2e2' : r === 'Director' ? '#e0e7ff' : r === 'Docente' ? '#dcfce7' : '#fef3c7',
+                            color: r === 'Admin' ? '#991b1b' : r === 'Director' ? '#3730a3' : r === 'Docente' ? '#166534' : '#92400e',
+                            padding: '0.22rem 0.55rem',
+                            borderRadius: '9999px',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            border: idx === 0 ? '1.5px solid currentColor' : 'none'
+                          }}>
+                            {idx === 0 ? '⭐ ' : ''}{r}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem', color: '#334155', fontWeight: 600 }}>{s.job_function}</td>
+                    <td style={{ padding: '0.75rem 0.75rem', textAlign: 'center', fontWeight: 700, color: '#475569' }}>{s.contract_hours} hrs</td>
+                    <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                      <span style={{ background: '#dcfce7', color: '#15803d', padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <ShieldCheck size={13} />
+                        {s.suitability}
+                      </span>
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '0.4rem' }}>
+                        <button
+                          onClick={() => handleOpenEdit(s)}
+                          style={{ background: '#e0e7ff', color: '#4338ca', border: 'none', padding: '0.35rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          title="Modificar información del perfil"
+                        >
+                          <Edit2 size={13} /> Modificar Perfil
+                        </button>
+                        <button
+                          onClick={() => handleDeleteStaff(s.id, s.name)}
+                          style={{ background: '#fee2e2', color: '#b91c1c', border: 'none', padding: '0.35rem 0.5rem', borderRadius: '6px', cursor: 'pointer' }}
+                          title="Eliminar registro"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* MODAL PARA CREAR O EDITAR PERFIL DE FUNCIONARIO */}
       {showModal && (

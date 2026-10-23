@@ -639,7 +639,7 @@ export const InspectorPassesModule: React.FC<InspectorPassesModuleProps> = ({ to
 
       {/* CONTENIDO PESTAÑA 1: EMISIÓN DE PASE RÁPIDO */}
       {activeTab === 'emit' && (
-        <div style={{ display: 'grid', gridTemplateColumns: selectedStudent ? '1fr 1fr' : '1fr', gap: '1.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: selectedStudent ? 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))' : '1fr', gap: '1.5rem' }}>
           {/* COLUMNA 1: BUSCADOR DE ESTUDIANTE */}
           <div style={{ background: '#ffffff', borderRadius: '14px', padding: '1.5rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
             <h2 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

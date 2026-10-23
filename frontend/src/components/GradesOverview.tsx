@@ -487,7 +487,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
       </div>
 
       {/* 3. SECCIÓN DIVIDIDA EN DOS COLUMNAS (ASIGNATURAS Y RENDIMIENTO) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
         
         {/* TARJETA IZQUIERDA: ASIGNATURAS DEL CURSO */}
         <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px solid #e5e7eb', padding: '1.25rem', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>

@@ -4,6 +4,7 @@ import { formatRut } from '../utils/rut';
 import { Eye, EyeOff, KeyRound } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
+import { Button } from './ui';
 
 interface RoleConfig {
   title: string;
@@ -243,7 +244,16 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f172a', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.5rem', boxSizing: 'border-box' }}>
+    <div style={{
+      minHeight: '100vh',
+      background: 'radial-gradient(ellipse at 50% 0%, #1e293b 0%, #0f172a 100%)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '1.5rem',
+      boxSizing: 'border-box'
+    }}>
       
       {showForgotPasswordModal && (
         <ForgotPasswordModal
@@ -596,25 +606,16 @@ export const Login: React.FC = () => {
             </button>
           </div>
 
-          <button
+          <Button
             type="submit"
-            disabled={loading}
+            size="lg"
+            variant="primary"
+            fullWidth
+            loading={loading}
             aria-label="Botón Iniciar Sesión. Presione Enter para ingresar a la plataforma."
-            className="btn btn-primary"
-            style={{
-              width: '100%',
-              padding: '0.85rem',
-              fontSize: '1rem',
-              fontWeight: 700,
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              textAlign: 'center',
-              boxSizing: 'border-box'
-            }}
           >
-            {loading ? 'Ingresando...' : 'Iniciar Sesión'}
-          </button>
+            Iniciar Sesión
+          </Button>
 
           {/* GUÍA RÁPIDA DE ACCESO PARA APODERADOS Y ESTUDIANTES */}
           <div

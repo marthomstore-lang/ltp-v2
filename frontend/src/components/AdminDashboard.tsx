@@ -33,6 +33,8 @@ const PedagogicalTripsModule = lazy(() => import('./PedagogicalTripsModule').the
 const TeacherCoursesGrid = lazy(() => import('./TeacherCoursesGrid').then(m => ({ default: m.TeacherCoursesGrid })));
 const CurriculumPlansModule = lazy(() => import('./CurriculumPlansModule').then(m => ({ default: m.CurriculumPlansModule })));
 const ImpersonateUserModal = lazy(() => import('./ImpersonateUserModal').then(m => ({ default: m.ImpersonateUserModal })));
+const StudentsModule = lazy(() => import('./StudentsModule').then(m => ({ default: m.StudentsModule })));
+import { ErrorBoundary } from './ui/ErrorBoundary';
 import { DEFAULT_PERMISSIONS_MATRIX } from './PermissionsMatrix';
 
 const ModuleLoader: React.FC = () => (
@@ -979,6 +981,18 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         <Suspense fallback={null}>
+        {/* Modal Ficha Completa de Estudiante */}
+        {selectedStudent && (
+          <StudentWindow
+            student={selectedStudent}
+            token={token || ''}
+            readOnly={!canEdit('students')}
+            onClose={() => setSelectedStudent(null)}
+            onSave={() => loadAllData()}
+            onPrint={(s) => setPrintStudent(s)}
+          />
+        )}
+
         {/* Modal Ficha Oficial de Impresión FIDE */}
         {printStudent && (
           <OfficialEnrollmentForm
@@ -2052,8 +2066,9 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         {/* VISTA SEGÚN EL ROL SELECCIONADO (SI ES APODERADO O ESTUDIANTE SE MUESTRA EL PORTAL FAMILIAR/ESTUDIANTIL) */}
-        <Suspense fallback={<ModuleLoader />}>
-        {(user?.role === 'Apoderado' || user?.role === 'Estudiante') && activeTab === 'home' ? (
+        <ErrorBoundary fallbackTitle="Inconveniente al cargar la sección seleccionada">
+          <Suspense fallback={<ModuleLoader />}>
+          {(user?.role === 'Apoderado' || user?.role === 'Estudiante') && activeTab === 'home' ? (
           <ApoderadoView token={token || ''} />
         ) : !canAccess(activeTab) ? (
           /* ACCESO DENEGADO POR MATRIZ DE PERMISOS */
@@ -2383,525 +2398,21 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         {/* VISTA 2: MATRÍCULA COMPLETA MINEDUC/FIDE */}
-        {activeTab === 'students' && (() => {
-          const scopeStudents = courseFilter === 'Todos' ? yearStudents : yearStudents.filter(s => getStudentCourse(s) === courseFilter);
-          const totalRegistros = scopeStudents.length;
-          const retiradosList = scopeStudents.filter(s => isStudentRetired(s));
-          const cantidadRetirados = retiradosList.length;
-
-          const activosList = scopeStudents.filter(s => !isStudentRetired(s));
-          const matriculaActiva = activosList.length;
-
-          const varonesActivos = activosList.filter(s => {
-            const g = String(s.gender || s.genero || s.sexo || s.GENERO || '').toUpperCase();
-            return g === 'M' || g === '1' || g.includes('MASC') || g.includes('VAR');
-          }).length;
-
-          const damasActivas = activosList.filter(s => {
-            const g = String(s.gender || s.genero || s.sexo || s.GENERO || '').toUpperCase();
-            return g === 'F' || g === '2' || g.includes('FEM') || g.includes('DAM');
-          }).length;
-
-          const pctVarones = matriculaActiva > 0 ? Math.round((varonesActivos / matriculaActiva) * 100) : 0;
-          const pctDamas = matriculaActiva > 0 ? Math.round((damasActivas / matriculaActiva) * 100) : 0;
-
-          return (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.25rem', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                  <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '1.35rem', fontWeight: 700, margin: '0 0 0.2rem 0' }}>
-                    Nómina Institucional de Estudiantes
-                  </h2>
-                  <p style={{ color: '#64748b', fontSize: '0.85rem', margin: 0 }}>
-                    Fichas FIDE, apoderados titulares, suplentes, padres y prioridades SEP/PIE
-                  </p>
-                </div>
-
-                {/* SELECTOR DE AÑO LECTIVO DINÁMICO */}
-                <div style={{
-                  display: 'flex',
-                  gap: '0.5rem',
-                  alignItems: 'center',
-                  background: 'linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%)',
-                  padding: '0.4rem 0.85rem',
-                  borderRadius: '10px',
-                  border: '1.5px solid #6366f1',
-                  boxShadow: '0 1px 3px rgba(99,102,241,0.12)'
-                }}>
-                  <Calendar size={17} color="#4f46e5" />
-                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1e1b4b' }}>Año Lectivo:</span>
-                  <select
-                    value={selectedYear}
-                    onChange={e => {
-                      const y = parseInt(e.target.value, 10);
-                      setSelectedYear(y);
-                      setCourseFilter('Todos');
-                      try { localStorage.setItem('ltp_selected_academic_year', String(y)); } catch (_) {}
-                    }}
-                    style={{
-                      border: 'none',
-                      background: 'transparent',
-                      outline: 'none',
-                      fontWeight: 800,
-                      fontSize: '0.88rem',
-                      color: '#4338ca',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {availableYears.map(y => {
-                      const count = students.filter(s => getStudentYear(s) === y).length;
-                      return (
-                        <option key={y} value={y}>
-                          📅 Año {y} {y === 2026 ? '(Vigente)' : y === 2027 ? '(Próximo)' : ''} ({count} alumnos)
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-
-                {/* FILTRADO POR CURSO */}
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', background: '#ffffff', padding: '0.4rem 0.8rem', borderRadius: '10px', border: '1px solid #cbd5e1' }}>
-                  <Filter size={16} color="#64748b" />
-                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155' }}>Filtrar por Curso:</span>
-                  <select
-                    value={courseFilter}
-                    onChange={e => setCourseFilter(e.target.value)}
-                    style={{ border: 'none', background: 'transparent', outline: 'none', fontWeight: 700, fontSize: '0.85rem', color: '#4f46e5', cursor: 'pointer' }}
-                  >
-                    <option value="Todos">🏫 Todos los Cursos ({yearStudents.length})</option>
-                    {availableCourses.map(c => {
-                      const countInCourse = yearStudents.filter(s => getStudentCourse(s) === c).length;
-                      return (
-                        <option key={c} value={c}>{c} ({countInCourse})</option>
-                      );
-                    })}
-                  </select>
-                </div>
-
-                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                  {canAccess('pedagogical_trips') && (
-                    <button 
-                      onClick={() => setActiveTab('pedagogical_trips')} 
-                      className="btn btn-secondary" 
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '0.45rem', 
-                        background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', 
-                        border: '1.5px solid #86efac', 
-                        color: '#166534', 
-                        fontWeight: 700 
-                      }}
-                      title="Crear y autorizar salidas a terreno con nómina de estudiantes"
-                    >
-                      <Compass size={17} color="#15803d" /> Salidas Pedagógicas
-                    </button>
-                  )}
-                  {canEdit('students') && (
-                    <>
-                      <button onClick={() => setShowReorderModal(true)} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <ArrowUpDown size={16} /> Reordenar A-Z
-                      </button>
-                      <button onClick={() => setSelectedStudent({ anno: selectedYear, academic_year: selectedYear })} className="btn btn-primary">
-                        + Nueva Matrícula {selectedYear}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* ALERTA DE BASE DE DATOS DESCONECTADA */}
-              {dbDisconnected && (
-                <div style={{
-                  background: '#fef2f2',
-                  border: '2px solid #ef4444',
-                  borderRadius: '14px',
-                  padding: '1.25rem 1.5rem',
-                  marginBottom: '1.5rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1.25rem',
-                  boxShadow: '0 10px 15px -3px rgba(239, 68, 68, 0.12)'
-                }}>
-                  <div style={{
-                    background: '#fee2e2',
-                    color: '#dc2626',
-                    padding: '0.85rem',
-                    borderRadius: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <ShieldAlert size={32} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 900, fontSize: '1.05rem', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span>⛔ Base de Datos Desconectada — Bloqueo de Seguridad Activo</span>
-                    </div>
-                    <div style={{ fontSize: '0.86rem', color: '#b91c1c', marginTop: '0.35rem', lineHeight: 1.5 }}>
-                      No hay comunicación con el servidor de base de datos MySQL (127.0.0.1:3306). Para salvaguardar la privacidad y confidencialidad institucional, la nómina de estudiantes permanece completamente bloqueada y no se muestran registros en pantalla.
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => loadAllData()}
-                    className="btn"
-                    style={{
-                      background: '#dc2626',
-                      color: '#ffffff',
-                      fontWeight: 700,
-                      fontSize: '0.85rem',
-                      padding: '0.6rem 1.1rem',
-                      borderRadius: '8px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.4rem',
-                      boxShadow: '0 2px 4px rgba(220, 38, 38, 0.3)'
-                    }}
-                  >
-                    🔄 Reintentar
-                  </button>
-                </div>
-              )}
-
-              {/* TARJETAS DE MÉTRICAS KPI Y REPORTE DE MATRÍCULA Y RETIRADOS */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-                gap: '1rem',
-                marginBottom: '1.5rem'
-              }}>
-                {/* CARD 1: MATRÍCULA EFECTIVA ACTIVA */}
-                <div style={{
-                  background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)',
-                  border: '1px solid #bbf7d0',
-                  borderRadius: '14px',
-                  padding: '1.1rem 1.25rem',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.03)'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Matrícula Activa
-                    </span>
-                    <div style={{ background: '#dcfce7', color: '#15803d', padding: '0.35rem', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
-                      <UserCheck size={18} />
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#14532d', lineHeight: 1 }}>
-                    {dbDisconnected ? '-' : matriculaActiva} <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#16a34a' }}>{dbDisconnected ? 'no disponible' : 'alumnos activos'}</span>
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#15803d', marginTop: '0.4rem', fontWeight: 600 }}>
-                    {dbDisconnected ? 'Base de datos offline' : (cantidadRetirados > 0 ? `Descontados los ${cantidadRetirados} retirados` : '0 alumnos retirados en este filtro')}
-                  </div>
-                </div>
-
-                {/* CARD 2: VARONES (HOMBRES) */}
-                <div style={{
-                  background: 'linear-gradient(135deg, #ffffff 0%, #eff6ff 100%)',
-                  border: '1px solid #bfdbfe',
-                  borderRadius: '14px',
-                  padding: '1.1rem 1.25rem',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.03)'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Varones (Hombres)
-                    </span>
-                    <div style={{ background: '#dbeafe', color: '#1d4ed8', padding: '0.35rem', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
-                      <User size={18} />
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#1e3a8a', lineHeight: 1 }}>
-                    {dbDisconnected ? '-' : varonesActivos} {!dbDisconnected && <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#2563eb' }}>({pctVarones}%)</span>}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#2563eb', marginTop: '0.4rem', fontWeight: 600 }}>
-                    {dbDisconnected ? 'Base de datos offline' : 'Alumnos varones activos'}
-                  </div>
-                </div>
-
-                {/* CARD 3: DAMAS (MUJERES) */}
-                <div style={{
-                  background: 'linear-gradient(135deg, #ffffff 0%, #fdf2f8 100%)',
-                  border: '1px solid #fbcfe8',
-                  borderRadius: '14px',
-                  padding: '1.1rem 1.25rem',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.03)'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#9d174d', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Damas (Mujeres)
-                    </span>
-                    <div style={{ background: '#fce7f3', color: '#be185d', padding: '0.35rem', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
-                      <Heart size={18} />
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#831843', lineHeight: 1 }}>
-                    {dbDisconnected ? '-' : damasActivas} {!dbDisconnected && <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#db2777' }}>({pctDamas}%)</span>}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#db2777', marginTop: '0.4rem', fontWeight: 600 }}>
-                    {dbDisconnected ? 'Base de datos offline' : 'Alumnas damas activas'}
-                  </div>
-                </div>
-
-                {/* CARD 4: ALUMNOS RETIRADOS */}
-                <div style={{
-                  background: 'linear-gradient(135deg, #ffffff 0%, #fef2f2 100%)',
-                  border: '1px solid #fecaca',
-                  borderRadius: '14px',
-                  padding: '1.1rem 1.25rem',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.03)'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#991b1b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Estudiantes Retirados
-                    </span>
-                    <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.35rem', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
-                      <UserX size={18} />
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#7f1d1d', lineHeight: 1 }}>
-                    {dbDisconnected ? '-' : cantidadRetirados} {!dbDisconnected && <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#dc2626' }}>retirados</span>}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#dc2626', marginTop: '0.4rem', fontWeight: 600 }}>
-                    {dbDisconnected ? 'Base de datos offline' : `Bajas del año (${totalRegistros} reg. en sistema)`}
-                  </div>
-                </div>
-              </div>
-
-              {/* BARRA DE BÚSQUEDA DESTACADA (ALTO CONTRASTE) */}
-              <div style={{
-                background: '#ffffff',
-                borderRadius: '14px',
-                padding: '0.85rem 1.25rem',
-                marginBottom: '1.25rem',
-                border: '1.5px solid #cbd5e1',
-                boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '1rem',
-                flexWrap: 'wrap'
-              }}>
-                {/* INPUT DE BÚSQUEDA */}
-                <div style={{
-                  flex: '1 1 360px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  background: '#f8fafc',
-                  border: searchTerm ? '2px solid #4f46e5' : '1.5px solid #94a3b8',
-                  borderRadius: '10px',
-                  padding: '0.55rem 0.95rem',
-                  gap: '0.75rem',
-                  boxShadow: searchTerm ? '0 0 0 3px rgba(79, 70, 229, 0.15)' : 'none',
-                  transition: 'all 0.2s ease'
-                }}>
-                  <Search size={20} color={searchTerm ? '#4f46e5' : '#475569'} style={{ flexShrink: 0 }} />
-                  <input
-                    type="text"
-                    placeholder="🔍 Buscar estudiante por Nombre, Apellido o RUT (ej: 21.456.789-0 o González)..."
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    style={{
-                      border: 'none',
-                      outline: 'none',
-                      background: 'transparent',
-                      fontSize: '0.95rem',
-                      fontWeight: 600,
-                      color: '#0f172a',
-                      width: '100%'
-                    }}
-                  />
-                  {searchTerm && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchTerm('')}
-                      style={{
-                        border: 'none',
-                        background: '#e0e7ff',
-                        color: '#4338ca',
-                        borderRadius: '6px',
-                        padding: '0.2rem 0.55rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        flexShrink: 0
-                      }}
-                      title="Borrar texto"
-                    >
-                      × Borrar
-                    </button>
-                  )}
-                </div>
-
-                {/* CONTADOR DE RESULTADOS */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.55rem',
-                  background: searchTerm ? '#eef2ff' : '#f1f5f9',
-                  padding: '0.5rem 0.95rem',
-                  borderRadius: '8px',
-                  border: searchTerm ? '1px solid #c7d2fe' : '1px solid #e2e8f0',
-                  color: searchTerm ? '#3730a3' : '#334155',
-                  fontSize: '0.84rem',
-                  fontWeight: 700,
-                  flexShrink: 0
-                }}>
-                  <Users size={16} color={searchTerm ? '#4f46e5' : '#64748b'} />
-                  <span>
-                    {searchTerm
-                      ? `${filteredStudents.length} coincidencia${filteredStudents.length === 1 ? '' : 's'}`
-                      : `${filteredStudents.length} alumnos en lista`}
-                  </span>
-                  {searchTerm && (
-                    <span style={{ fontSize: '0.75rem', color: '#6366f1', fontWeight: 600 }}>
-                      (de {yearStudents.length})
-                    </span>
-                  )}
-                </div>
-              </div>
-
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>N° Lista</th>
-                    <th>RUT Alumno</th>
-                    <th>Nombre Completo</th>
-                    <th>Curso</th>
-                    <th>Profesor Jefe</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStudents.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} style={{ textAlign: 'center', padding: '3.5rem 1rem' }}>
-                        {dbDisconnected ? (
-                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '0.85rem' }}>
-                            <div style={{ background: '#fee2e2', color: '#dc2626', padding: '1rem', borderRadius: '50%', display: 'inline-flex' }}>
-                              <ShieldAlert size={40} />
-                            </div>
-                            <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#991b1b' }}>
-                              Nómina Bloqueada: Base de Datos Desconectada
-                            </div>
-                            <p style={{ fontSize: '0.88rem', color: '#b91c1c', margin: 0, maxWidth: '520px', lineHeight: 1.55 }}>
-                              No es posible desplegar información de los estudiantes porque el motor de base de datos MySQL (127.0.0.1:3306) se encuentra fuera de línea. Por estrictas políticas de protección de datos, ningún alumno es renderizado sin conexión activa y verificada.
-                            </p>
-                            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-                              <button
-                                onClick={() => loadAllData()}
-                                className="btn"
-                                style={{ background: '#dc2626', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', padding: '0.5rem 1.1rem' }}
-                              >
-                                🔄 Reintentar Conexión
-                              </button>
-                            </div>
-                          </div>
-                        ) : searchTerm.trim() ? (
-                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', color: '#64748b' }}>
-                            <div style={{ background: '#f1f5f9', color: '#6366f1', padding: '0.85rem', borderRadius: '50%', display: 'inline-flex' }}>
-                              <Search size={32} />
-                            </div>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b' }}>
-                              No se encontraron estudiantes para "{searchTerm}"
-                            </div>
-                            <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0, maxWidth: '440px' }}>
-                              Verifique si el nombre o RUT está bien escrito, o intente buscar por un fragmento.
-                            </p>
-                            <button
-                              onClick={() => setSearchTerm('')}
-                              className="btn btn-secondary"
-                              style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}
-                            >
-                              Limpiar Búsqueda
-                            </button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', color: '#64748b' }}>
-                            <div style={{ background: '#e0e7ff', color: '#4f46e5', padding: '0.85rem', borderRadius: '50%', display: 'inline-flex' }}>
-                              <Calendar size={32} />
-                            </div>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b' }}>
-                              No hay estudiantes registrados en el Año Lectivo {selectedYear}
-                            </div>
-                            <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0, maxWidth: '440px' }}>
-                              {courseFilter !== 'Todos'
-                                ? `No hay alumnos matriculados para el curso "${courseFilter}" en el periodo escolar ${selectedYear}.`
-                                : `El año académico ${selectedYear} aún no cuenta con matrícula activa o registros coincidentes.`}
-                            </p>
-                            <button
-                              onClick={() => setSelectedStudent({ anno: selectedYear, academic_year: selectedYear })}
-                              className="btn btn-primary"
-                              style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}
-                            >
-                              + Iniciar Nueva Matrícula {selectedYear}
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredStudents.map((s: any, idx: number) => {
-                      const studentWithYear = { ...s, anno: getStudentYear(s) };
-                      const retired = isStudentRetired(s);
-                      const retiredDate = getStudentWithdrawalDate(s);
-                      return (
-                        <tr key={s.id} style={retired ? { background: '#fef2f2', color: '#991b1b' } : {}}>
-                          <td><span style={{ fontWeight: 700, color: retired ? '#dc2626' : '#4f46e5' }}>#{s.list_number || idx + 1}</span></td>
-                          <td>
-                            <div><strong style={retired ? { color: '#dc2626', textDecoration: 'line-through' } : {}}>{s.run || s.RUT}</strong></div>
-                            {(s.enrollment_number || s.numero_matricula) && (
-                              <div style={{ fontSize: '0.72rem', color: '#6366f1', fontWeight: 800 }}>Matrícula: {s.enrollment_number || s.numero_matricula}</div>
-                            )}
-                          </td>
-                          <td>
-                            <span style={retired ? { textDecoration: 'line-through', color: '#dc2626', fontWeight: 700 } : { fontWeight: 600 }}>
-                              {s.full_name || s.Nombres}
-                            </span>
-                            {retired && (
-                              <span style={{ marginLeft: '8px', fontSize: '0.72rem', background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', padding: '0.15rem 0.5rem', borderRadius: '9999px', fontWeight: 700 }}>
-                                🔴 RETIRADO {retiredDate ? `(${retiredDate})` : ''}
-                              </span>
-                            )}
-                          </td>
-                          <td><span className={retired ? "status-chip danger" : "status-chip info"}>{getStudentCourse(s)}</span></td>
-                          <td>{(!s.profesor_jefe || s.profesor_jefe === 'null' || s.profesor_jefe === 'undefined') ? (s.teacher_name && s.teacher_name !== 'null' ? s.teacher_name : 'Sin Asignar') : s.profesor_jefe}</td>
-                          <td>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                              <button onClick={() => setSelectedStudent(studentWithYear)} className="btn btn-primary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', background: retired ? '#dc2626' : undefined }}>
-                                {canEdit('students') ? '👁️ Ficha Completa' : '👁️ Ver Ficha'}
-                              </button>
-                              <button onClick={() => setPrintStudent(studentWithYear)} className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}>
-                                <Printer size={14} /> Imprimir FIDE
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {selectedStudent && (
-              <StudentWindow
-                student={selectedStudent}
+        {activeTab === 'students' && (
+          <ErrorBoundary fallbackTitle="Error al cargar la nómina de estudiantes">
+            <Suspense fallback={<ModuleLoader />}>
+              <StudentsModule
+                students={students}
                 token={token || ''}
-                readOnly={!canEdit('students')}
-                onClose={() => setSelectedStudent(null)}
-                onSave={() => loadAllData()}
-                onPrint={(s) => setPrintStudent(s)}
+                canEdit={canEdit('students')}
+                canAccessPedagogicalTrips={canAccess('pedagogical_trips')}
+                onNavigateToTrips={() => setActiveTab('pedagogical_trips')}
+                onDataReload={loadAllData}
+                dbDisconnected={dbDisconnected}
               />
-            )}
-          </div>
-        );
-      })()}
+            </Suspense>
+          </ErrorBoundary>
+        )}
 
         {/* VISTA 3: APARTADO ÚNICO DE CALIFICACIONES Y REPORTES POR ASIGNATURA */}
         {(activeTab === 'grades' || activeTab === 'overview') && (
@@ -3637,6 +3148,7 @@ export const AdminDashboard: React.FC = () => {
         </>
         )}
         </Suspense>
+        </ErrorBoundary>
       </div>
     </div>
     </div>

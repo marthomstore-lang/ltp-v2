@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { getStudentCourse, sortCoursesList } from '../utils/course';
 import { CourseMessageModal } from './CourseMessageModal';
 import { CourseSupportModal } from './CourseSupportModal';
+import { CardSkeletonGrid, EmptyState, Badge } from './ui';
 
 interface TeacherAssignmentCard {
   id: string;
@@ -333,32 +334,22 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
 
       {/* ESTADO DE CARGA */}
       {loading && (
-        <div style={{ textAlign: 'center', padding: '4rem 1rem', color: '#64748b' }}>
-          <div className="spinner" style={{ margin: '0 auto 1rem', width: '32px', height: '32px', border: '3px solid #cbd5e1', borderTopColor: '#4f46e5', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-          <p style={{ fontWeight: 600 }}>Cargando asignaturas y cursos asignados...</p>
-        </div>
+        <CardSkeletonGrid count={6} />
       )}
 
       {/* SIN RESULTADOS */}
       {!loading && filteredCards.length === 0 && (
-        <div style={{
-          background: '#ffffff',
-          borderRadius: '14px',
-          padding: '3.5rem 2rem',
-          textAlign: 'center',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
-        }}>
-          <AlertTriangle size={48} color="#d97706" style={{ margin: '0 auto 1rem' }} />
-          <h3 style={{ color: '#92400e', marginBottom: '0.5rem', fontWeight: 700, fontSize: '1.2rem' }}>
-            {searchTerm ? 'No se encontraron coincidencias' : 'Sin asignaturas ni cursos vinculados'}
-          </h3>
-          <p style={{ color: '#b45309', maxWidth: '580px', margin: '0 auto', fontSize: '0.92rem', lineHeight: '1.6' }}>
-            {searchTerm
-              ? `No hay asignaturas que coincidan con "${searchTerm}". Intenta con otro término.`
-              : `Tu perfil docente (${user?.name}) no tiene asignaciones vigentes registradas en el sistema para el año académico ${selectedYear}. Solicita al Administrador o a UTP registrar tus asignaciones docentes.`}
-          </p>
-        </div>
+        <EmptyState
+          icon={<BookOpen size={36} color="#4f46e5" />}
+          title={searchTerm ? 'No se encontraron coincidencias' : 'Sin asignaturas ni cursos vinculados'}
+          description={
+            searchTerm
+              ? `No hay asignaturas que coincidan con "${searchTerm}". Intenta buscar con otro término.`
+              : `Tu perfil docente (${user?.name}) no tiene asignaciones vigentes registradas en el sistema para el año académico ${selectedYear}. Solicita al Administrador o a UTP registrar tus asignaciones docentes.`
+          }
+          actionLabel={searchTerm ? 'Limpiar Búsqueda' : undefined}
+          onAction={searchTerm ? () => setSearchTerm('') : undefined}
+        />
       )}
 
       {/* VISTA EN CUADRÍCULA (GRID IDÉNTICO A LA CAPTURA) */}

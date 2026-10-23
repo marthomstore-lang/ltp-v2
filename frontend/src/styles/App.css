@@ -885,3 +885,156 @@ table {
   box-shadow: 2px 0 5px rgba(0,0,0,0.06) !important;
 }
 
+/* =============================================================================
+   SISTEMA DE COMPONENTES SAAS PREMIUM (UI KIT UNIFICADO)
+   ============================================================================= */
+
+/* Botones UI */
+.btn-ui {
+  position: relative;
+  outline: none;
+}
+.btn-ui:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+.btn-ui-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+  filter: brightness(1.05);
+}
+.btn-ui-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.25);
+}
+.btn-ui-secondary:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+.btn-ui-outline:hover:not(:disabled) {
+  background: #eef2ff;
+  border-color: #a5b4fc;
+}
+.btn-ui-ghost:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+.btn-ui-danger:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.35);
+}
+.btn-ui-success:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+
+/* Tarjetas y Estadísticas */
+.card-ui {
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.card-hoverable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px -5px rgba(15, 23, 42, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.03);
+}
+
+.stat-card-ui:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px -4px rgba(15, 23, 42, 0.08);
+  border-color: #cbd5e1;
+}
+
+/* Skeleton Loaders (Animación Shimmer Fluida) */
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 50%, #f1f5f9 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* Inputs y Selects Focus SaaS */
+input:focus, select:focus, textarea:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
+}
+
+/* Modales Responsivos Universales */
+.modal-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.modal-dialog-panel {
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+  border: 1px solid #e2e8f0;
+  width: 100%;
+  max-width: 720px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .modal-dialog-panel {
+    border-radius: 16px 16px 0 0;
+    max-height: 94vh;
+    position: fixed;
+    bottom: 0;
+  }
+}
+
+/* Layouts interactivos adaptables */
+.lab-split-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .lab-split-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+

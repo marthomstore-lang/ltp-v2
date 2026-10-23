@@ -17,6 +17,7 @@ import {
   Info
 } from 'lucide-react';
 import { sortCoursesList } from '../utils/course';
+import { EmptyState } from './ui/EmptyState';
 
 interface ComputerLabModuleProps {
   token: string;
@@ -420,7 +421,7 @@ export const ComputerLabModule: React.FC<ComputerLabModuleProps> = ({ token, use
       </div>
 
       {/* LAYOUT PRINCIPAL: SPLIT-VIEW */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.55fr) minmax(0, 1fr)', gap: '1.5rem', alignItems: 'start' }}>
+      <div className="lab-split-layout">
         
         {/* LADO IZQUIERDO: CALENDARIO INTERNO INTERACTIVO POR BLOQUES Y MES */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -834,8 +835,14 @@ export const ComputerLabModule: React.FC<ComputerLabModuleProps> = ({ token, use
                 <tbody>
                   {filteredReservations.length === 0 ? (
                     <tr>
-                      <td colSpan={6} style={{ textAlign: 'center', padding: '1.5rem', color: '#94a3b8' }}>
-                        No hay reservas registradas {filterDate ? `para el ${filterDate}` : ''}.
+                      <td colSpan={6} style={{ padding: '2rem 1rem' }}>
+                        <EmptyState
+                          icon={<CalendarIcon size={28} color="#6366f1" />}
+                          title="No hay reservas registradas"
+                          description={filterDate ? `No se encontraron reservas agendadas para el día ${filterDate}.` : 'Aún no se han registrado reservas para esta sala.'}
+                          actionLabel={filterDate ? 'Ver todas las fechas' : undefined}
+                          onAction={filterDate ? () => setFilterDate('') : undefined}
+                        />
                       </td>
                     </tr>
                   ) : (

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Users, Search, Phone, Mail, Briefcase, GraduationCap, Printer, Shield, UserCheck, Eye, X, Filter, AlertTriangle } from 'lucide-react';
 import Swal from 'sweetalert2';
+import { Button, EmptyState, TableSkeleton } from './ui';
 
 interface GuardiansListModuleProps {
   token: string;
@@ -272,7 +273,7 @@ export const GuardiansListModule: React.FC<GuardiansListModuleProps> = ({ token 
         <>
           {/* BARRA DE FILTROS & BÚSQUEDA APODERADOS */}
           <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.1rem', marginBottom: '1.5rem', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '1rem', alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', alignItems: 'center' }}>
               {/* BUSCADOR LIBRE */}
               <div style={{ position: 'relative' }}>
                 <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
@@ -328,13 +329,19 @@ export const GuardiansListModule: React.FC<GuardiansListModuleProps> = ({ token 
           {/* TABLA PRINCIPAL DE APODERADOS */}
           <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
             {loading ? (
-              <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b', fontWeight: 600 }}>
-                Cargando directorio unificado de apoderados...
-              </div>
+              <TableSkeleton rows={6} cols={7} />
             ) : filteredGuardians.length === 0 ? (
-              <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
-                No se encontraron apoderados que coincidan con los filtros aplicados.
-              </div>
+              <EmptyState
+                icon={<Users size={32} color="#6366f1" />}
+                title="No se encontraron apoderados"
+                description="Ningún apoderado coincide con los filtros de curso, parentesco o término de búsqueda ingresado."
+                actionLabel={searchQuery || courseFilter !== 'Todos' || relationFilter !== 'Todos' ? 'Limpiar Filtros' : undefined}
+                onAction={() => {
+                  setSearchQuery('');
+                  setCourseFilter('Todos');
+                  setRelationFilter('Todos');
+                }}
+              />
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', textAlign: 'left' }}>
