@@ -545,7 +545,9 @@ table {
     justify-content: space-between !important;
     background: linear-gradient(90deg, #0f172a 0%, #1e1b4b 100%) !important;
     color: #ffffff !important;
-    padding: 0.6rem 0.95rem !important;
+    height: 56px !important;
+    max-height: 56px !important;
+    padding: 0 0.85rem !important;
     position: sticky !important;
     top: 0 !important;
     left: 0 !important;
@@ -553,7 +555,133 @@ table {
     width: 100% !important;
     box-sizing: border-box !important;
     z-index: 999 !important;
-    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.25) !important;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.3) !important;
+  }
+
+  .mobile-top-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-shrink: 0;
+  }
+
+  .mobile-hamburger-btn {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .mobile-hamburger-btn:active {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  .mobile-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .mobile-brand-logo {
+    height: 32px !important;
+    width: 32px !important;
+    max-height: 32px !important;
+    max-width: 32px !important;
+    object-fit: contain !important;
+    border-radius: 6px !important;
+    background: #ffffff !important;
+    padding: 2px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .mobile-brand-title {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: #ffffff;
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+  }
+
+  .mobile-top-bar-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 0 0.4rem;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-section-badge {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #e0e7ff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.2rem 0.6rem;
+    border-radius: 9999px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+  }
+
+  .mobile-top-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .mobile-icon-btn {
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .mobile-notif-dot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: #ef4444;
+    color: #ffffff;
+    font-size: 0.62rem;
+    font-weight: 800;
+    padding: 1px 4px;
+    border-radius: 9999px;
+    min-width: 14px;
+    text-align: center;
+  }
+
+  .mobile-avatar-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 2px solid rgba(255, 255, 255, 0.3);
   }
 
   /* CAJÓN LATERAL DESLIZANTE (OFF-CANVAS DRAWER) */
@@ -563,7 +691,7 @@ table {
     top: 0 !important;
     left: 0 !important;
     bottom: 0 !important;
-    width: 295px !important;
+    width: 300px !important;
     max-width: 86vw !important;
     height: 100vh !important;
     min-height: 100vh !important;
@@ -576,7 +704,10 @@ table {
     background: var(--sidebar-bg) !important;
   }
 
-  .sidebar.mobile-open {
+  .sidebar.mobile-open,
+  .sidebar.collapsed.mobile-open {
+    width: 300px !important;
+    max-width: 86vw !important;
     transform: translateX(0) !important;
   }
 
@@ -591,6 +722,7 @@ table {
     z-index: 1150 !important;
   }
 
+  .desktop-collapse-btn,
   .desktop-sidebar-collapse-btn {
     display: none !important;
   }
@@ -743,6 +875,33 @@ table {
   
   .search-bar {
     padding: 0.65rem 1.1rem !important;
+  }
+
+  /* Submenús y pestañas de módulos en móvil con scroll horizontal táctil suave */
+  .sub-nav-tabs,
+  .tab-navigation-bar {
+    display: flex !important;
+    overflow-x: auto !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    padding-bottom: 4px !important;
+    box-sizing: border-box !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .sub-nav-tabs::-webkit-scrollbar,
+  .tab-navigation-bar::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .sub-nav-tabs button,
+  .sub-nav-tabs > *,
+  .tab-navigation-bar button,
+  .tab-navigation-bar > * {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
   }
 }
 

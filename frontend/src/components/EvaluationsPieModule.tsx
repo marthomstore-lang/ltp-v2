@@ -971,7 +971,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
       </div>
 
       {/* PESTAÑAS DE NAVEGACIÓN */}
-      <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.5rem', flexWrap: 'wrap', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
+      <div className="sub-nav-tabs" style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.5rem', overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
         <button
           onClick={() => setActiveTab('nueva')}
           style={{

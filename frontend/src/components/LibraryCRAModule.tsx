@@ -559,7 +559,7 @@ export const LibraryCRAModule: React.FC<Props> = ({ token, user }) => {
       </div>
 
       {/* MENÚ DE NAVEGACIÓN TAB NATIVO DEL MÓDULO CRA */}
-      <div style={{
+      <div className="sub-nav-tabs" style={{
         display: 'flex',
         gap: '0.4rem',
         background: '#ffffff',
@@ -568,6 +568,7 @@ export const LibraryCRAModule: React.FC<Props> = ({ token, user }) => {
         border: '1px solid #e2e8f0',
         marginBottom: '1.5rem',
         overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch',
         boxShadow: '0 2px 4px rgba(0,0,0,0.03)'
       }}>
         {[

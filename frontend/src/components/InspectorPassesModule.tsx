@@ -573,11 +573,13 @@ export const InspectorPassesModule: React.FC<InspectorPassesModuleProps> = ({ to
       </div>
 
       {/* BARRA DE NAVEGACIÓN POR PESTAÑAS */}
-      <div style={{
+      <div className="sub-nav-tabs" style={{
         display: 'flex',
         gap: '0.5rem',
         borderBottom: '2px solid #e2e8f0',
-        marginBottom: '1.5rem'
+        marginBottom: '1.5rem',
+        overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch'
       }}>
         <button
           onClick={() => setActiveTab('emit')}

@@ -849,6 +849,8 @@ export const AdminDashboard: React.FC = () => {
     return { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
   };
 
+  const isDrawerExpanded = !sidebarCollapsed || mobileDrawerOpen;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', minHeight: '100vh', position: 'relative' }}>
       {/* BANNER SUPERIOR DE MODO MAESTRO / IMPERSONACIÓN */}
@@ -915,7 +917,22 @@ export const AdminDashboard: React.FC = () => {
               <Menu size={22} />
             </button>
             <div className="mobile-brand">
-              <img src="/logo.png" alt="LTP Logo" className="mobile-brand-logo" />
+              <img
+                src="/logo.png"
+                alt="LTP Logo"
+                className="mobile-brand-logo"
+                style={{
+                  height: '32px',
+                  width: '32px',
+                  maxHeight: '32px',
+                  maxWidth: '32px',
+                  objectFit: 'contain',
+                  borderRadius: '6px',
+                  background: '#ffffff',
+                  padding: '2px',
+                  flexShrink: 0
+                }}
+              />
               <span className="mobile-brand-title">LICEO PRO</span>
             </div>
           </div>
@@ -1058,11 +1075,11 @@ export const AdminDashboard: React.FC = () => {
       )}
 
       {/* Sidebar Estilo Intranet Behance Adaptativo con Drawer Off-Canvas */}
-      <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileDrawerOpen ? 'mobile-open' : ''}`} style={{ transition: 'all 0.25s ease' }}>
-        <div className="sidebar-brand" style={{ gap: '0.5rem', padding: sidebarCollapsed ? '1rem 0.5rem' : '1rem 1.25rem', justifyContent: sidebarCollapsed ? 'center' : 'space-between', flexWrap: 'nowrap' }}>
+      <div className={`sidebar ${sidebarCollapsed && !mobileDrawerOpen ? 'collapsed' : ''} ${mobileDrawerOpen ? 'mobile-open' : ''}`} style={{ transition: 'all 0.25s ease' }}>
+        <div className="sidebar-brand" style={{ gap: '0.5rem', padding: !isDrawerExpanded ? '1rem 0.5rem' : '1rem 1.25rem', justifyContent: !isDrawerExpanded ? 'center' : 'space-between', flexWrap: 'nowrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <img src="/logo.png" alt="LTP Logo" style={{ height: '36px', width: 'auto', objectFit: 'contain', borderRadius: '4px', background: '#ffffff', padding: '2px' }} />
-            {(!sidebarCollapsed || (typeof window !== 'undefined' && window.innerWidth <= 1100)) && (
+            <img src="/logo.png" alt="LTP Logo" style={{ height: '36px', width: '36px', objectFit: 'contain', borderRadius: '4px', background: '#ffffff', padding: '2px', flexShrink: 0 }} />
+            {isDrawerExpanded && (
               <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 800, fontSize: '1.1rem', color: '#ffffff', whiteSpace: 'nowrap' }}>LICEO PRO</span>
             )}
           </div>
@@ -1090,7 +1107,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         {/* BUSCADOR RÁPIDO DE MÓDULOS EN EL SIDEBAR */}
-        {!sidebarCollapsed && (
+        {isDrawerExpanded && (
           <div style={{ padding: '0.5rem 0.75rem 0.35rem', flexShrink: 0 }}>
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <Search size={14} style={{ position: 'absolute', left: '10px', color: '#94a3b8', pointerEvents: 'none' }} />
@@ -1135,7 +1152,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
         )}
 
-        <nav className="nav-menu" style={{ padding: sidebarCollapsed ? '0.5rem 0.35rem' : '0.4rem 0.6rem' }}>
+        <nav className="nav-menu" style={{ padding: !isDrawerExpanded ? '0.5rem 0.35rem' : '0.4rem 0.6rem' }}>
           {[
             {
               category: 'General',
@@ -1204,8 +1221,8 @@ export const AdminDashboard: React.FC = () => {
             if (accessibleItems.length === 0) return null;
 
             return (
-              <div key={group.category || groupIdx} style={{ marginBottom: sidebarCollapsed ? '0.35rem' : '0.45rem' }}>
-                {!sidebarCollapsed && !sidebarSearch && group.category !== 'General' && (
+              <div key={group.category || groupIdx} style={{ marginBottom: !isDrawerExpanded ? '0.35rem' : '0.45rem' }}>
+                {isDrawerExpanded && !sidebarSearch && group.category !== 'General' && (
                   <div style={{
                     fontSize: '0.64rem',
                     fontWeight: 800,
@@ -1233,13 +1250,13 @@ export const AdminDashboard: React.FC = () => {
                         }}
                         title={`${item.label}${isViewOnly ? ' (Solo Vista)' : ''}`}
                         style={{
-                          justifyContent: sidebarCollapsed ? 'center' : 'space-between',
+                          justifyContent: isDrawerExpanded ? 'space-between' : 'center',
                           cursor: 'pointer'
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflow: 'hidden', flex: 1 }}>
                           <item.icon size={18} style={{ flexShrink: 0 }} />
-                          {!sidebarCollapsed && (
+                          {isDrawerExpanded && (
                             <span style={{
                               fontWeight: isActive ? 700 : 500,
                               overflow: 'hidden',
@@ -1251,7 +1268,7 @@ export const AdminDashboard: React.FC = () => {
                             </span>
                           )}
                         </div>
-                        {!sidebarCollapsed && isViewOnly && (
+                        {isDrawerExpanded && isViewOnly && (
                           <span
                             title="Modo Solo Vista configurado en la Matriz de Permisos"
                             style={{
@@ -1279,7 +1296,7 @@ export const AdminDashboard: React.FC = () => {
         </nav>
 
         {/* ACCESO RÁPIDO A MI PERFIL Y BOTÓN CERRAR SESIÓN EN LA PARTE INFERIOR DEL MENÚ SIDEBAR */}
-        <div className="sidebar-footer" style={{ padding: sidebarCollapsed ? '0.75rem 0.35rem' : '0.75rem 0.65rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+        <div className="sidebar-footer" style={{ padding: isDrawerExpanded ? '0.75rem 0.65rem' : '0.75rem 0.35rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
           <div
             className="nav-item"
             onClick={() => {
@@ -1287,19 +1304,19 @@ export const AdminDashboard: React.FC = () => {
               setProfileModalTab(canCustomizeProfile ? 'customize' : 'info');
               setShowProfileModal(true);
             }}
-            title={sidebarCollapsed ? (canCustomizeProfile ? 'Mi perfil / Personalizar mi perfil' : 'Mi perfil') : undefined}
+            title={!isDrawerExpanded ? (canCustomizeProfile ? 'Mi perfil / Personalizar mi perfil' : 'Mi perfil') : undefined}
             style={{
               color: '#e2e8f0',
               fontWeight: 600,
               cursor: 'pointer',
               background: 'rgba(255, 255, 255, 0.08)',
               borderRadius: '8px',
-              justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+              justifyContent: isDrawerExpanded ? 'flex-start' : 'center',
               padding: '0.6rem 0.85rem'
             }}
           >
             {canCustomizeProfile ? <Palette size={18} color="#a5b4fc" style={{ flexShrink: 0 }} /> : <User size={18} color="#a5b4fc" style={{ flexShrink: 0 }} />}
-            {!sidebarCollapsed && (
+            {isDrawerExpanded && (
               <span style={{ marginLeft: '0.2rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {canCustomizeProfile ? 'Personalizar mi perfil' : 'Mi perfil'}
               </span>
@@ -1312,19 +1329,19 @@ export const AdminDashboard: React.FC = () => {
               setMobileDrawerOpen(false);
               logout();
             }}
-            title={sidebarCollapsed ? 'Cerrar Sesión' : undefined}
+            title={!isDrawerExpanded ? 'Cerrar Sesión' : undefined}
             style={{
               color: '#f87171',
               fontWeight: 700,
               cursor: 'pointer',
               background: 'rgba(239, 68, 68, 0.12)',
               borderRadius: '8px',
-              justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+              justifyContent: isDrawerExpanded ? 'flex-start' : 'center',
               padding: '0.65rem 0.85rem'
             }}
           >
             <LogOut size={19} color="#f87171" style={{ flexShrink: 0 }} />
-            {!sidebarCollapsed && <span style={{ marginLeft: '0.2rem' }}>Cerrar Sesión</span>}
+            {isDrawerExpanded && <span style={{ marginLeft: '0.2rem' }}>Cerrar Sesión</span>}
           </div>
         </div>
       </div>
@@ -2417,15 +2434,17 @@ export const AdminDashboard: React.FC = () => {
         {/* VISTA 3: APARTADO ÚNICO DE CALIFICACIONES Y REPORTES POR ASIGNATURA */}
         {(activeTab === 'grades' || activeTab === 'overview') && (
           <div>
-            <div style={{
+            <div className="sub-nav-tabs" style={{
               display: 'flex',
-              gap: '0.75rem',
+              gap: '0.6rem',
               marginBottom: '1.25rem',
               background: '#f1f5f9',
               padding: '0.35rem',
               borderRadius: '12px',
-              width: 'fit-content',
-              flexWrap: 'wrap'
+              maxWidth: '100%',
+              overflowX: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              flexWrap: 'nowrap'
             }}>
               {canAccess('grades') && ['Docente', 'Profesor', 'Docente de Aula', 'Docente Jefatura'].includes(currentRole) && (
                 <button

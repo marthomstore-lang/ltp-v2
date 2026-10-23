@@ -280,7 +280,7 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ token }) => {
 
       {/* BARRA DE BÚSQUEDA Y PESTAÑAS */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div className="sub-nav-tabs" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', WebkitOverflowScrolling: 'touch', maxWidth: '100%' }}>
           <button
             onClick={() => setActiveTab('todos')}
             style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', background: activeTab === 'todos' ? '#4f46e5' : '#f1f5f9', color: activeTab === 'todos' ? '#ffffff' : '#64748b' }}

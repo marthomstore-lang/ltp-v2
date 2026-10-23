@@ -2130,13 +2130,14 @@ export const CurriculumPlansModule: React.FC<CurriculumPlansModuleProps> = ({ to
       {/* ===================================================================== */}
       {/* BARRA DE NAVEGACIÓN ENTRE SECCIONES                                   */}
       {/* ===================================================================== */}
-      <div style={{
+      <div className="sub-nav-tabs" style={{
         display: 'flex',
         gap: '0.5rem',
         borderBottom: '1px solid #e2e8f0',
         paddingBottom: '0.5rem',
         marginBottom: '1.25rem',
-        flexWrap: 'wrap'
+        overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch'
       }}>
         <button
           type="button"
