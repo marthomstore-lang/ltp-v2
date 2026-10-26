@@ -43,7 +43,7 @@ export const Card: React.FC<CardProps> = ({
         boxShadow: '0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03)',
         padding: paddingStyles[padding],
         boxSizing: 'border-box',
-        transition: hoverable ? 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
+        transition: hoverable ? 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease-out, border-color 0.2s ease-out' : 'none',
         ...style
       }}
     >

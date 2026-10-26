@@ -10,16 +10,46 @@ interface LinkItem {
   category?: string;
 }
 
+export interface WelcomeBannerProps {
+  userName?: string;
+  userRole?: string;
+  customSubtitle?: string;
+  style?: React.CSSProperties;
+}
+
+export const WelcomeBanner: React.FC<WelcomeBannerProps> = ({ userName, userRole, customSubtitle, style }) => {
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, #d97706 0%, #ca8a04 40%, #16a34a 100%)',
+      borderRadius: '16px',
+      padding: '1.5rem 1.85rem',
+      color: '#ffffff',
+      marginBottom: '1.5rem',
+      boxShadow: '0 10px 20px -5px rgba(217, 119, 6, 0.3)',
+      boxSizing: 'border-box',
+      ...style
+    }}>
+      <h1 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '1.9rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+        ¡Hola, {userName || 'Usuario'}!
+      </h1>
+      <p style={{ fontSize: '0.92rem', opacity: 0.95, margin: '0.35rem 0 0 0', fontWeight: 500 }}>
+        {customSubtitle || `Panel de ${userRole || 'Acceso'} • Liceo Pro / LTP v2.0`}
+      </p>
+    </div>
+  );
+};
+
 interface Props {
   token?: string;
   userName?: string;
   userRole?: string;
   customSubtitle?: string;
+  showBanner?: boolean;
 }
 
 const DEFAULT_LINKS: LinkItem[] = [];
 
-export const InstitutionalPlatformsSection: React.FC<Props> = ({ token, userName, userRole, customSubtitle }) => {
+export const InstitutionalPlatformsSection: React.FC<Props> = ({ token, userName, userRole, customSubtitle, showBanner = true }) => {
   // Las plataformas de interés y gestión interna (evaluaciones, uso de sala, lira, etc.) NO deben ser visibles para Apoderados
   if (userRole === 'Apoderado') {
     return null;
@@ -49,21 +79,13 @@ export const InstitutionalPlatformsSection: React.FC<Props> = ({ token, userName
   return (
     <div style={{ marginBottom: '2.5rem' }}>
       {/* BANNER MULTICOLOR EXACTO A LA IMAGEN DE REFERENCIA */}
-      <div style={{
-        background: 'linear-gradient(135deg, #d97706 0%, #ca8a04 40%, #16a34a 100%)',
-        borderRadius: '16px',
-        padding: '1.75rem 2rem',
-        color: '#ffffff',
-        marginBottom: '2rem',
-        boxShadow: '0 10px 20px -5px rgba(217, 119, 6, 0.3)'
-      }}>
-        <h1 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '2rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>
-          ¡Hola, {userName || 'Usuario'}!
-        </h1>
-        <p style={{ fontSize: '0.95rem', opacity: 0.95, margin: '0.4rem 0 0 0', fontWeight: 500 }}>
-          {customSubtitle || `Panel de ${userRole || 'Acceso'} • Liceo Pro / LTP v2.0`}
-        </p>
-      </div>
+      {showBanner && (
+        <WelcomeBanner
+          userName={userName}
+          userRole={userRole}
+          customSubtitle={customSubtitle}
+        />
+      )}
 
       {/* TÍTULO CON ÍCONO DE GLOBE DE LA IMAGEN DE REFERENCIA */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>

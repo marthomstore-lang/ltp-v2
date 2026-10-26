@@ -34,7 +34,7 @@ export const Button: React.FC<ButtonProps> = ({
     borderRadius: '10px',
     cursor: isDisabled ? 'not-allowed' : 'pointer',
     opacity: isDisabled ? 0.65 : 1,
-    transition: 'all 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
+    transition: 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, opacity 0.15s ease-out',
     textDecoration: 'none',
     border: '1px solid transparent',
     boxSizing: 'border-box',

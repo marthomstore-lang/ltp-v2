@@ -245,7 +245,7 @@ export const Login: React.FC = () => {
 
   return (
     <div style={{
-      minHeight: '100vh',
+      minHeight: '100dvh',
       background: 'radial-gradient(ellipse at 50% 0%, #1e293b 0%, #0f172a 100%)',
       display: 'flex',
       flexDirection: 'column',
@@ -299,9 +299,9 @@ export const Login: React.FC = () => {
               style={{
                 position: 'absolute', top: '1.25rem', right: '1.25rem',
                 background: '#f1f5f9', border: 'none', borderRadius: '9999px',
-                width: '32px', height: '32px', cursor: 'pointer',
+                width: '44px', height: '44px', minWidth: '44px', minHeight: '44px', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#64748b', transition: 'all 0.2s ease', zIndex: 10
+                color: '#64748b', transition: 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease-out, color 0.15s ease-out', zIndex: 10
               }}
               onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#0f172a'; }}
               onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#64748b'; }}
@@ -377,10 +377,13 @@ export const Login: React.FC = () => {
                       justifyContent: 'space-between',
                       gap: '0.85rem',
                       boxShadow: `0 4px 12px -2px ${cfg.shadowColor}`,
-                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                      transition: 'transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.16s ease-out, border-color 0.16s ease-out',
                       outline: 'none',
                       boxSizing: 'border-box',
                       flexShrink: 0
+                    }}
+                    onMouseDown={e => {
+                      e.currentTarget.style.transform = 'scale(0.98)';
                     }}
                     onMouseEnter={e => {
                       e.currentTarget.style.transform = 'translateY(-2px)';
@@ -490,9 +493,11 @@ export const Login: React.FC = () => {
                 style={{
                   width: '100%',
                   padding: '0.75rem 3.2rem 0.75rem 0.75rem',
-                  borderRadius: '8px',
+                  borderRadius: '10px',
                   border: '1px solid #cbd5e1',
                   outline: 'none',
+                  fontSize: '1rem',
+                  minHeight: '44px',
                   fontWeight: 700,
                   letterSpacing: '0.04em',
                   textAlign: 'center',
@@ -551,9 +556,11 @@ export const Login: React.FC = () => {
                 style={{
                   width: '100%',
                   padding: '0.75rem 2.5rem 0.75rem 0.75rem',
-                  borderRadius: '8px',
+                  borderRadius: '10px',
                   border: '1px solid #cbd5e1',
                   outline: 'none',
+                  fontSize: '1rem',
+                  minHeight: '44px',
                   textAlign: 'center',
                   boxSizing: 'border-box'
                 }}

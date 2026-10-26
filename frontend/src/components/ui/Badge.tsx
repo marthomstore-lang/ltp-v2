@@ -89,6 +89,7 @@ export const Badge: React.FC<BadgeProps> = ({
         letterSpacing: '0.015em',
         lineHeight: 1.25,
         whiteSpace: 'nowrap',
+        fontVariantNumeric: 'tabular-nums',
         boxSizing: 'border-box',
         ...sizeStyles[size],
         ...style

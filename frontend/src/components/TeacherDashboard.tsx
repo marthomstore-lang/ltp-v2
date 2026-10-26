@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Home, BookOpen, Award, Link, LogOut, CheckSquare, User, ArrowRight, ArrowLeft, Clock, PenTool, Bell, MessageSquare, Palette } from 'lucide-react';
 import Swal from 'sweetalert2';
-import { InstitutionalPlatformsSection } from './InstitutionalPlatformsSection';
+import { InstitutionalPlatformsSection, WelcomeBanner } from './InstitutionalPlatformsSection';
 import { SubmitStatementModal, PendingStatementItem } from './SubmitStatementModal';
 import { TeacherTabId, getTeacherTabFromUrl, syncTeacherUrl } from '../utils/urlRouter';
 
@@ -667,6 +667,17 @@ export const TeacherDashboard: React.FC = () => {
           </div>
         )}
 
+        {/* BANNER DE BIENVENIDA INSTITUCIONAL — SIEMPRE ARRIBA AL INICIO DE CADA SECCIÓN */}
+        <WelcomeBanner
+          userName={user?.name}
+          userRole={user?.role}
+          customSubtitle={
+            activeTab === 'home'
+              ? 'Panel Docente • Liceo Pro / LTP v2.0'
+              : `Panel Docente • ${activeTab === 'my_courses' ? 'Mis Cursos Asignados' : activeTab === 'homeroom' ? 'Jefatura de Curso' : activeTab === 'observations' ? 'Observaciones y Anotaciones' : 'Plataformas Institucionales'}`
+          }
+        />
+
         {/* PESTAÑA 1: INICIO (BIENVENIDA, PLATAFORMAS INSTITUCIONALES Y ACCESOS RÁPIDOS) */}
         {activeTab === 'home' && (
           <div>
@@ -674,7 +685,7 @@ export const TeacherDashboard: React.FC = () => {
               token={token || ''}
               userName={user?.name}
               userRole={user?.role}
-              customSubtitle="Panel Docente • Liceo Pro / LTP v2.0"
+              showBanner={false}
             />
 
             {/* ACCESOS DIRECTOS PRINCIPALES DE GESTIÓN ESCOLAR */}

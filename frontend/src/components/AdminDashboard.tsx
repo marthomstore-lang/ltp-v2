@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense, lazy, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home, Send, RefreshCw, X, PhoneCall, CalendarDays, Sparkles, Menu } from 'lucide-react';
 import Swal from 'sweetalert2';
-import { InstitutionalPlatformsSection } from './InstitutionalPlatformsSection';
+import { InstitutionalPlatformsSection, WelcomeBanner } from './InstitutionalPlatformsSection';
 import { ExecutiveOverviewSection } from './ExecutiveOverviewSection';
 import { SubmitStatementModal, PendingStatementItem } from './SubmitStatementModal';
 import { getStudentCourse, isStudentRetired, getStudentWithdrawalDate, sortCoursesList, sortStudentsList, getStudentYear } from '../utils/course';
@@ -1351,7 +1351,7 @@ export const AdminDashboard: React.FC = () => {
         className={`main-content ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
         style={{ 
           boxSizing: 'border-box',
-          transition: 'all 0.25s ease' 
+          transition: 'margin-left 0.22s cubic-bezier(0.16, 1, 0.3, 1), width 0.22s cubic-bezier(0.16, 1, 0.3, 1)' 
         }}
       >
         <div className="top-bar">
@@ -1374,7 +1374,7 @@ export const AdminDashboard: React.FC = () => {
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
                   boxShadow: '0 2px 5px rgba(79, 70, 229, 0.12)',
-                  transition: 'all 0.2s ease'
+                  transition: 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out'
                 }}
                 title="Volver a la ventana o pantalla anterior"
               >
@@ -1789,7 +1789,7 @@ export const AdminDashboard: React.FC = () => {
                   fontWeight: 800,
                   cursor: 'pointer',
                   boxShadow: '0 2px 6px rgba(124, 58, 237, 0.35)',
-                  transition: 'all 0.15s ease'
+                  transition: 'background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out, box-shadow 0.12s ease-out'
                 }}
               >
                 <span>🎭</span>
@@ -2215,6 +2215,22 @@ export const AdminDashboard: React.FC = () => {
               </div>
             )}
 
+        {/* BANNER DE BIENVENIDA INSTITUCIONAL — SIEMPRE ARRIBA AL INICIO DE CADA SECCIÓN */}
+        <WelcomeBanner
+          userName={user?.name}
+          userRole={user?.role}
+          customSubtitle={
+            activeTab === 'home'
+              ? (currentRole === 'Docente' ? 'Panel Docente • Liceo Pro / LTP v2.0' :
+                 currentRole === 'Director' ? 'Panel Directivo • Liceo Pro / LTP v2.0' :
+                 currentRole === 'Comunicaciones' ? 'Portal Oficial de Comunicaciones y Registro de Envíos • Liceo Pro / LTP v2.0' :
+                 currentRole === 'Asistente' ? 'Portal Asistentes de la Educación • Liceo Pro / LTP v2.0' :
+                 currentRole === 'Profesionales' ? 'Portal Profesionales PIE & Convivencia • Liceo Pro / LTP v2.0' :
+                 'Panel de Administración • Liceo Pro / LTP v2.0')
+              : `${currentRole === 'Admin' ? 'Panel de Administración' : 'Panel ' + currentRole} • ${getFunctionName(activeTab)}`
+          }
+        />
+
         {/* VISTA 1: DASHBOARD GENERAL CON BANNER Y PLATAFORMAS DE INTERÉS */}
         {activeTab === 'home' && (
           <div>
@@ -2234,7 +2250,7 @@ export const AdminDashboard: React.FC = () => {
                 <div
                   className="stat-card"
                   onClick={() => navigateToTab('students', 'Matrícula Completa')}
-                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  style={{ cursor: 'pointer', transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease-out, border-color 0.18s ease-out' }}
                   title="Ver Nómina de Matrícula Completa"
                 >
                   <div className="stat-card-header">
@@ -2254,7 +2270,7 @@ export const AdminDashboard: React.FC = () => {
                 <div
                   className="stat-card"
                   onClick={() => navigateToTab('communications', 'Centro de Comunicaciones y Registro de Envíos')}
-                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  style={{ cursor: 'pointer', transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease-out, border-color 0.18s ease-out' }}
                   title="Abrir Centro de Comunicaciones y Registro de a quién se envió cada mensaje"
                 >
                   <div className="stat-card-header">
@@ -2274,7 +2290,7 @@ export const AdminDashboard: React.FC = () => {
                 <div
                   className="stat-card"
                   onClick={() => navigateToTab('interviews', 'Actas de Entrevistas')}
-                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  style={{ cursor: 'pointer', transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease-out, border-color 0.18s ease-out' }}
                   title="Ver Actas de Entrevistas"
                 >
                   <div className="stat-card-header">
@@ -2294,7 +2310,7 @@ export const AdminDashboard: React.FC = () => {
                 <div
                   className="stat-card"
                   onClick={() => navigateToTab('observations', 'Hoja de Vida y Anotaciones')}
-                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  style={{ cursor: 'pointer', transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease-out, border-color 0.18s ease-out' }}
                   title="Ver Hoja de Vida y Anotaciones"
                 >
                   <div className="stat-card-header">
@@ -2314,7 +2330,7 @@ export const AdminDashboard: React.FC = () => {
                 <div
                   className="stat-card"
                   onClick={() => navigateToTab('curriculum_plans', 'Planificaciones Curriculares & Asistente IA')}
-                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  style={{ cursor: 'pointer', transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease-out, border-color 0.18s ease-out' }}
                   title="Abrir Planificaciones Curriculares, Clase a Clase y Horarios"
                 >
                   <div className="stat-card-header">
@@ -2334,7 +2350,7 @@ export const AdminDashboard: React.FC = () => {
                 <div
                   className="stat-card"
                   onClick={() => navigateToTab('audit', 'Auditoría Silent-Watch')}
-                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  style={{ cursor: 'pointer', transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease-out, border-color 0.18s ease-out' }}
                   title="Ver Auditoría Silent-Watch"
                 >
                   <div className="stat-card-header">
@@ -2352,7 +2368,7 @@ export const AdminDashboard: React.FC = () => {
                 <div
                   className="stat-card"
                   onClick={() => navigateToTab('evaluations_pie', 'Evaluaciones & PIE')}
-                  style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                  style={{ cursor: 'pointer', transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease-out, border-color 0.18s ease-out' }}
                   title="Abrir Portal de Evaluaciones & Integración PIE"
                 >
                   <div className="stat-card-header">
@@ -2401,14 +2417,7 @@ export const AdminDashboard: React.FC = () => {
                 token={token || ''}
                 userName={user?.name}
                 userRole={user?.role}
-                customSubtitle={
-                  currentRole === 'Docente' ? 'Panel Docente • Liceo Pro / LTP v2.0' :
-                  currentRole === 'Director' ? 'Panel Directivo • Liceo Pro / LTP v2.0' :
-                  currentRole === 'Comunicaciones' ? 'Portal Oficial de Comunicaciones y Registro de Envíos • Liceo Pro / LTP v2.0' :
-                  currentRole === 'Asistente' ? 'Portal Asistentes de la Educación • Liceo Pro / LTP v2.0' :
-                  currentRole === 'Profesionales' ? 'Portal Profesionales PIE & Convivencia • Liceo Pro / LTP v2.0' :
-                  'Panel de Administración • Liceo Pro / LTP v2.0'
-                }
+                showBanner={false}
               />
             </div>
           </div>
@@ -2466,7 +2475,7 @@ export const AdminDashboard: React.FC = () => {
                     background: gradesSubTab === 'courses' ? '#ffffff' : 'transparent',
                     color: gradesSubTab === 'courses' ? '#4338ca' : '#64748b',
                     boxShadow: gradesSubTab === 'courses' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
-                    transition: 'all 0.2s ease'
+                    transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease-out, border-color 0.18s ease-out'
                   }}
                 >
                   <BookOpen size={17} /> Mis Cursos Asignados
@@ -2491,7 +2500,7 @@ export const AdminDashboard: React.FC = () => {
                     background: gradesSubTab === 'sheet' ? '#ffffff' : 'transparent',
                     color: gradesSubTab === 'sheet' ? '#4338ca' : '#64748b',
                     boxShadow: gradesSubTab === 'sheet' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
-                    transition: 'all 0.2s ease'
+                    transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease-out, border-color 0.18s ease-out'
                   }}
                 >
                   <ClipboardList size={17} /> Planilla de Calificaciones
@@ -2516,7 +2525,7 @@ export const AdminDashboard: React.FC = () => {
                     background: gradesSubTab === 'overview' ? '#ffffff' : 'transparent',
                     color: gradesSubTab === 'overview' ? '#4338ca' : '#64748b',
                     boxShadow: gradesSubTab === 'overview' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
-                    transition: 'all 0.2s ease'
+                    transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease-out, border-color 0.18s ease-out'
                   }}
                 >
                   <TrendingUp size={17} /> Panorama y Reporte por Asignatura
@@ -2539,7 +2548,7 @@ export const AdminDashboard: React.FC = () => {
                     cursor: 'pointer',
                     background: '#f0fdf4',
                     color: '#15803d',
-                    transition: 'all 0.2s ease'
+                    transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease-out, border-color 0.18s ease-out'
                   }}
                 >
                   <Award size={17} /> 🌟 Informes al Hogar y Personalidad (PK a 4° Medio)
@@ -2739,7 +2748,7 @@ export const AdminDashboard: React.FC = () => {
                   alignItems: 'center',
                   gap: '0.4rem',
                   boxShadow: auditCategoryFilter === 'all' ? '0 1px 2px rgba(79, 70, 229, 0.15)' : 'none',
-                  transition: 'all 0.15s ease'
+                  transition: 'background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out, box-shadow 0.12s ease-out'
                 }}
               >
                 <Globe size={15} color={auditCategoryFilter === 'all' ? '#4f46e5' : '#64748b'} />
@@ -2761,7 +2770,7 @@ export const AdminDashboard: React.FC = () => {
                   alignItems: 'center',
                   gap: '0.4rem',
                   boxShadow: auditCategoryFilter === 'courses' ? '0 1px 2px rgba(37, 99, 235, 0.15)' : 'none',
-                  transition: 'all 0.15s ease'
+                  transition: 'background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out, box-shadow 0.12s ease-out'
                 }}
               >
                 <GraduationCap size={15} color={auditCategoryFilter === 'courses' ? '#2563eb' : '#64748b'} />
@@ -2783,7 +2792,7 @@ export const AdminDashboard: React.FC = () => {
                   alignItems: 'center',
                   gap: '0.4rem',
                   boxShadow: auditCategoryFilter === 'teachers' ? '0 1px 2px rgba(5, 150, 105, 0.15)' : 'none',
-                  transition: 'all 0.15s ease'
+                  transition: 'background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out, box-shadow 0.12s ease-out'
                 }}
               >
                 <UserCheck size={15} color={auditCategoryFilter === 'teachers' ? '#059669' : '#64748b'} />
@@ -2805,7 +2814,7 @@ export const AdminDashboard: React.FC = () => {
                   alignItems: 'center',
                   gap: '0.4rem',
                   boxShadow: auditCategoryFilter === 'admin' ? '0 1px 2px rgba(124, 58, 237, 0.15)' : 'none',
-                  transition: 'all 0.15s ease'
+                  transition: 'background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out, box-shadow 0.12s ease-out'
                 }}
               >
                 <Settings size={15} color={auditCategoryFilter === 'admin' ? '#7c3aed' : '#64748b'} />

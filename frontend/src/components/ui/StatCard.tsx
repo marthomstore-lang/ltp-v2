@@ -47,7 +47,7 @@ export const StatCard: React.FC<StatCardProps> = ({
         flexDirection: 'column',
         justifyContent: 'space-between',
         cursor: onClick ? 'pointer' : 'default',
-        transition: 'all 0.22s ease',
+        transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease-out, border-color 0.18s ease-out',
         boxSizing: 'border-box'
       }}
     >
@@ -82,6 +82,7 @@ export const StatCard: React.FC<StatCardProps> = ({
 
       <div>
         <div
+          className="tabular-nums"
           style={{
             fontFamily: 'Outfit, sans-serif',
             fontSize: '1.9rem',
@@ -89,6 +90,7 @@ export const StatCard: React.FC<StatCardProps> = ({
             color: '#0f172a',
             lineHeight: 1.1,
             letterSpacing: '-0.02em',
+            fontVariantNumeric: 'tabular-nums',
             margin: '0 0 0.35rem 0'
           }}
         >
