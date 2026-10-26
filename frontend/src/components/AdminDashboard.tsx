@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home, Send, RefreshCw, X, PhoneCall, CalendarDays, Sparkles, Menu } from 'lucide-react';
+import { Users, GraduationCap, FileText, ClipboardList, Shield, LogOut, MessageSquare, Award, FolderOpen, Briefcase, Settings, Monitor, TrendingUp, Printer, ArrowUpDown, Search, Bell, Activity, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Lock, Filter, KeyRound, BookOpen, UserCheck, UserX, Heart, User, Puzzle, Calendar, Clock, PenTool, ShieldAlert, FileCheck2, Compass, Eye, Palette, ArrowLeft, Home, Send, RefreshCw, X, PhoneCall, CalendarDays, Sparkles, Menu, CornerDownLeft, ArrowRight } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { InstitutionalPlatformsSection, WelcomeBanner } from './InstitutionalPlatformsSection';
 import { ExecutiveOverviewSection } from './ExecutiveOverviewSection';
@@ -183,7 +183,7 @@ export const AdminDashboard: React.FC = () => {
     communications: 'communications',
     grades: 'grades',
     overview: 'overview',
-    personality_reports: 'overview',
+    personality_reports: 'personality_reports',
     computer_lab: 'computer_lab',
     evaluations_pie: 'evaluations_pie',
     interviews: 'interviews',
@@ -198,21 +198,22 @@ export const AdminDashboard: React.FC = () => {
     mineduc_reports: 'mineduc_reports',
     pedagogical_trips: 'pedagogical_trips',
     course_messaging: 'course_messaging',
+    guardian_calls: 'guardian_calls',
     curriculum_plans: 'curriculum_plans'
   };
 
   const rolePermissions: Record<string, string[]> = {
-    Admin: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging'],
-    Director: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging'],
-    Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging'],
-    Comunicaciones: ['home', 'communications', 'students', 'apoderados', 'computer_lab', 'pedagogical_trips', 'admin_docs', 'course_messaging'],
-    EncargadoCRA: ['home', 'students', 'apoderados', 'communications', 'library', 'inspector_passes', 'admin_docs'],
+    Admin: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'guardian_calls'],
+    Director: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'guardian_calls'],
+    Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'guardian_calls'],
+    Comunicaciones: ['home', 'communications', 'students', 'apoderados', 'computer_lab', 'pedagogical_trips', 'admin_docs', 'course_messaging', 'guardian_calls'],
+    EncargadoCRA: ['home', 'students', 'apoderados', 'communications', 'library', 'inspector_passes', 'admin_docs', 'guardian_calls'],
     Bibliotecario: ['home', 'computer_lab', 'evaluations_pie', 'library', 'admin_docs'],
-    Entrevistador: ['home', 'students', 'communications', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging'],
-    Administrativo: ['home', 'students', 'apoderados', 'communications', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
-    Profesionales: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging'],
-    Asistente: ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
-    'Asistente de la Educación': ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips'],
+    Entrevistador: ['home', 'students', 'communications', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging', 'guardian_calls'],
+    Administrativo: ['home', 'students', 'apoderados', 'communications', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'guardian_calls'],
+    Profesionales: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'guardian_calls'],
+    Asistente: ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'guardian_calls'],
+    'Asistente de la Educación': ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'guardian_calls'],
     Apoderado: ['home', 'admin_docs'],
     Estudiante: ['home', 'admin_docs'],
     Visita: ['home', 'computer_lab', 'evaluations_pie', 'overview', 'admin_docs']
@@ -292,7 +293,9 @@ export const AdminDashboard: React.FC = () => {
       permissions: 'Matriz de Permisos RBAC',
       config: 'Ajustes y Configuración del Sistema',
       audit: 'Auditoría Silent-Watch',
-      pedagogical_trips: 'Salidas Pedagógicas & Autorizaciones'
+      pedagogical_trips: 'Salidas Pedagógicas & Autorizaciones',
+      guardian_calls: 'Registro y Marcador de Llamadas a Apoderados',
+      course_messaging: 'Comunicar a Curso'
     };
     return defaultNames[tab] || tab;
   };
@@ -453,6 +456,13 @@ export const AdminDashboard: React.FC = () => {
   const [selectedStatementItem, setSelectedStatementItem] = useState<PendingStatementItem | null>(null);
   const headerDropdownRef = React.useRef<HTMLDivElement>(null);
 
+  // ESTADO Y REFS PARA EL BUSCADOR MAESTRO (OMNISEARCH SPOTLIGHT)
+  const [masterSearchOpen, setMasterSearchOpen] = useState(false);
+  const [masterSelectedIndex, setMasterSelectedIndex] = useState(0);
+  const [staffMembers, setStaffMembers] = useState<any[]>([]);
+  const masterSearchRef = React.useRef<HTMLDivElement>(null);
+  const masterSearchInputRef = React.useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth <= 1100) {
@@ -460,17 +470,40 @@ export const AdminDashboard: React.FC = () => {
       }
     };
     handleResize();
+
     const handleClickOutside = (event: MouseEvent) => {
       if (headerDropdownRef.current && !headerDropdownRef.current.contains(event.target as Node)) {
         setShowNotificationDropdown(false);
         setJustOpenedUnreadIds([]);
         setShowUserDropdown(false);
       }
+      if (masterSearchRef.current && !masterSearchRef.current.contains(event.target as Node)) {
+        setMasterSearchOpen(false);
+      }
     };
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setMasterSearchOpen(prev => {
+          const next = !prev;
+          if (next) {
+            setTimeout(() => masterSearchInputRef.current?.focus(), 60);
+          }
+          return next;
+        });
+      }
+      if (e.key === 'Escape') {
+        setMasterSearchOpen(false);
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleGlobalKeyDown);
     window.addEventListener('resize', handleResize);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleGlobalKeyDown);
       window.removeEventListener('resize', handleResize);
     };
   }, []);
@@ -583,6 +616,11 @@ export const AdminDashboard: React.FC = () => {
     fetch('/api/observations', { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => setObservations(Array.isArray(data) ? data : []))
+      .catch(err => console.error(err));
+
+    fetch('/api/staff', { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(data => setStaffMembers(Array.isArray(data) ? data : []))
       .catch(err => console.error(err));
 
     if (activeTab === 'audit') {
@@ -847,6 +885,218 @@ export const AdminDashboard: React.FC = () => {
       return { bg: '#f3e8ff', color: '#6b21a8', border: '#e9d5ff' };
     }
     return { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
+  };
+
+  // CATÁLOGO DE MÓDULOS DEL BUSCADOR MAESTRO
+  const masterModules = useMemo(() => [
+    { id: 'home', title: 'Dashboard General & Inicio', subtitle: 'Vista ejecutiva, KPIs y plataformas institucionales', category: 'General', keywords: ['inicio', 'home', 'kpi', 'resumen', 'principal', 'metricas', 'estadisticas', 'dashboard'], icon: Home },
+    { id: 'students', title: 'Matrícula Completa y Expedientes', subtitle: 'Nómina oficial de alumnos, fichas MINEDUC/FIDE y certificados', category: 'Estudiantes & Familias', keywords: ['matricula', 'estudiantes', 'alumnos', 'rut', 'run', 'inscripcion', 'fide', 'mineduc', 'nomina', 'curso', 'ficha'], icon: Users },
+    { id: 'apoderados', title: 'Nómina & Registro de Apoderados', subtitle: 'Directorio institucional de padres, madres y tutores', category: 'Estudiantes & Familias', keywords: ['apoderados', 'padres', 'madres', 'tutores', 'telefono', 'contacto', 'familias'], icon: UserCheck },
+    { id: 'guardian_calls', title: 'Registro y Marcador de Llamadas a Apoderados', subtitle: 'Bitácora telefónica oficial con registro de compromisos', category: 'Estudiantes & Familias', keywords: ['llamadas', 'telefono', 'marcador', 'bitacora', 'apoderados', 'contacto', 'apoderado'], icon: PhoneCall },
+    { id: 'personality_reports', title: 'Informes al Hogar & Personalidad', subtitle: 'Evaluaciones formativas y socioemocionales de PK a 4°M', category: 'Estudiantes & Familias', keywords: ['personalidad', 'informe al hogar', 'afectivo', 'desarrollo', 'informe familiar', 'conducta'], icon: Award },
+    { id: 'communications', title: 'Centro de Comunicaciones & Registro de Envíos', subtitle: 'Mensajería institucional, circulares y bitácora de entrega', category: 'Comunicaciones', keywords: ['comunicaciones', 'mensajes', 'correos', 'envios', 'notificaciones', 'quien se envio', 'circulares'], icon: Send },
+    { id: 'grades', title: 'Libro Digital de Calificaciones Ponderadas', subtitle: 'Calificaciones, promedios, ponderaciones y registro docente', category: 'Gestión Académica & Aula', keywords: ['notas', 'calificaciones', 'ponderaciones', 'promedios', 'libro de clases', 'evaluaciones', 'examenes', 'libro digital'], icon: ClipboardList },
+    { id: 'overview', title: 'Panorama General de Notas & Jefatura', subtitle: 'Alertas tempranas, promedios por curso y reportes ejecutivos', category: 'Gestión Académica & Aula', keywords: ['panorama', 'jefatura', 'resumen de notas', 'alertas academicas', 'promedio curso', 'desempeño'], icon: TrendingUp },
+    { id: 'curriculum_plans', title: 'Planificaciones Curriculares & Asistente IA', subtitle: 'Planificación anual, unidades, clases y asistente pedagógico IA', category: 'Gestión Académica & Aula', keywords: ['planificaciones', 'ia', 'inteligencia artificial', 'curriculo', 'oas', 'clase a clase', 'unidades', 'anual'], icon: CalendarDays },
+    { id: 'curriculum_plans_schedules', title: 'Horarios Escolares & Distribución de Aulas', subtitle: 'Distribución horaria por curso, profesor y bloque pedagógico', category: 'Gestión Académica & Aula', keywords: ['horarios', 'bloques', 'salas', 'aulas', 'profesores', 'distribucion', 'asignaturas', 'horas'], icon: Clock },
+    { id: 'evaluations_pie', title: 'Portal de Evaluaciones & Integración PIE', subtitle: 'Gestión del Programa de Integración Escolar y NEE', category: 'Gestión Académica & Aula', keywords: ['pie', 'evaluaciones', 'integracion', 'fep', 'fude', 'diagnostico', 'nee'], icon: Puzzle },
+    { id: 'mineduc_reports', title: 'Informes Oficiales PIE (Dec. 170 / MINEDUC)', subtitle: 'Formularios Únicos de reevaluación e ingreso para subvención', category: 'Gestión Académica & Aula', keywords: ['mineduc', 'decreto 170', 'formulario unico', 'subvencion', 'informe oficial'], icon: FileCheck2 },
+    { id: 'observations', title: 'Hoja de Vida & Anotaciones RICE', subtitle: 'Registro disciplinario, anotaciones positivas, negativas y medidas', category: 'Convivencia & Inspectoría', keywords: ['hoja de vida', 'anotaciones', 'rice', 'disciplina', 'positivas', 'negativas', 'conducta'], icon: Award },
+    { id: 'interviews', title: 'Actas de Entrevistas & Compromisos', subtitle: 'Registro formal de reuniones con apoderados y acuerdos firmados', category: 'Convivencia & Inspectoría', keywords: ['entrevistas', 'actas', 'compromisos', 'reunion', 'apoderado', 'acuerdos'], icon: MessageSquare },
+    { id: 'inspector_passes', title: 'Control de Atrasos & Pases de Inspectoría', subtitle: 'Emisión de pases de entrada, salida y registro de puntualidad', category: 'Convivencia & Inspectoría', keywords: ['atrasos', 'pases', 'inspectoria', 'salidas', 'entradas', 'justificativos'], icon: Clock },
+    { id: 'pedagogical_trips', title: 'Salidas Pedagógicas & Autorizaciones', subtitle: 'Gestión de salidas a terreno, nóminas de alumnos y autorizaciones', category: 'Convivencia & Inspectoría', keywords: ['salidas pedagogicas', 'giras', 'visitas', 'autorizaciones', 'viajes', 'terreno'], icon: Compass },
+    { id: 'library', title: 'Biblioteca CRA & Préstamos Literarios', subtitle: 'Catálogo bibliográfico, préstamos a sala y a domicilio', category: 'Recursos & Soporte', keywords: ['biblioteca', 'cra', 'libros', 'prestamos', 'catalogo', 'lectura'], icon: BookOpen },
+    { id: 'computer_lab', title: 'Sala de Computación & Reserva de Laboratorio', subtitle: 'Calendario de reservas de computadores y recursos digitales', category: 'Recursos & Soporte', keywords: ['sala de computacion', 'laboratorio', 'computadores', 'reserva', 'enlaces', 'pcs'], icon: Monitor },
+    { id: 'staff', title: 'Personal Institucional, Docentes & RRHH', subtitle: 'Nómina de profesores, asistentes de la educación e idoneidad docente', category: 'Recursos & Soporte', keywords: ['personal', 'profesores', 'docentes', 'asistentes', 'recursos humanos', 'idoneidad', 'funcionarios', 'contrato', 'staff'], icon: Briefcase },
+    { id: 'admin_docs', title: 'Documentos Oficiales & Protocolos RICE', subtitle: 'Reglamentos institucionales, protocolos de actuación y circulares', category: 'Recursos & Soporte', keywords: ['documentos', 'protocolos', 'rice', 'reglamentos', 'manuales', 'archivos', 'circulares'], icon: FolderOpen },
+    { id: 'permissions', title: 'Matriz de Permisos & Perfiles (RBAC)', subtitle: 'Configuración de accesos y facultades de edición por cada rol', category: 'Administración & Control', keywords: ['permisos', 'matriz', 'rbac', 'roles', 'accesos', 'seguridad', 'director', 'docente', 'asistente'], icon: Shield },
+    { id: 'config', title: 'Ajustes y Configuración del Sistema (13 Módulos)', subtitle: 'Parámetros generales, periodos, ponderaciones, asignaturas y cursos', category: 'Administración & Control', keywords: ['configuracion', 'ajustes', 'parametros', 'periodos', 'cursos', 'semestres', 'ponderaciones', 'asignaturas'], icon: Settings },
+    { id: 'audit', title: 'Auditoría Silent-Watch & Trazabilidad', subtitle: 'Registro forense de accesos, modificaciones e IPs de usuarios', category: 'Administración & Control', keywords: ['auditoria', 'silent-watch', 'logs', 'seguridad', 'ip', 'historial', 'quien modifico', 'registros', 'trazabilidad'], icon: Lock }
+  ], []);
+
+  // RESULTADOS REACTIVOS DEL BUSCADOR MAESTRO
+  const masterSearchResults = useMemo(() => {
+    const raw = searchTerm.toLowerCase().trim();
+
+    // 1. Módulos
+    const accessibleModules = masterModules.filter(m => {
+      const targetId = m.id === 'curriculum_plans_schedules' ? 'curriculum_plans' : m.id;
+      return canAccess(targetId);
+    });
+
+    const matchedModules = raw
+      ? accessibleModules.filter(m =>
+          m.title.toLowerCase().includes(raw) ||
+          m.subtitle.toLowerCase().includes(raw) ||
+          m.category.toLowerCase().includes(raw) ||
+          m.keywords.some(k => k.includes(raw))
+        )
+      : accessibleModules.slice(0, 6);
+
+    // 2. Estudiantes
+    const matchedStudents = raw && canAccess('students')
+      ? students.filter(s => {
+          const fn = (s.first_name || '').toLowerCase();
+          const ln = (s.last_name || '').toLowerCase();
+          const fullName = `${fn} ${ln}`;
+          const rut = (s.rut || s.run || '').toLowerCase().replace(/[.\-\s]/g, '');
+          const cleanRaw = raw.replace(/[.\-\s]/g, '');
+          const course = (s.course_name || getStudentCourse(s) || '').toLowerCase();
+          return (
+            fullName.includes(raw) ||
+            (cleanRaw.length >= 2 && rut.includes(cleanRaw)) ||
+            course.includes(raw)
+          );
+        }).slice(0, 5)
+      : [];
+
+    // 3. Docentes y Funcionarios
+    const matchedStaff = raw && canAccess('staff')
+      ? staffMembers.filter(st => {
+          const name = (st.name || '').toLowerCase();
+          const role = (st.role || st.staff_type || '').toLowerCase();
+          const run = (st.run || '').toLowerCase().replace(/[.\-\s]/g, '');
+          const cleanRaw = raw.replace(/[.\-\s]/g, '');
+          const email = (st.email || '').toLowerCase();
+          return (
+            name.includes(raw) ||
+            role.includes(raw) ||
+            email.includes(raw) ||
+            (cleanRaw.length >= 2 && run.includes(cleanRaw))
+          );
+        }).slice(0, 4)
+      : [];
+
+    // 4. Acciones Rápidas
+    const matchedActions: Array<{
+      id: string;
+      title: string;
+      description: string;
+      icon: any;
+      action: () => void;
+    }> = [];
+
+    if (canAccess('course_messaging') && (!raw || 'comunicar mensaje correo email circular curso'.includes(raw))) {
+      matchedActions.push({
+        id: 'action_course_message',
+        title: 'Comunicar a Curso',
+        description: 'Enviar mensaje o correo a los profesores de un curso',
+        icon: MessageSquare,
+        action: () => {
+          setShowCourseMessageModal(true);
+          setMasterSearchOpen(false);
+          setSearchTerm('');
+        }
+      });
+    }
+
+    if (canAccess('guardian_calls') && (!raw || 'llamada telefono bitacora apoderado marcar'.includes(raw))) {
+      matchedActions.push({
+        id: 'action_guardian_call',
+        title: 'Registrar Llamada a Apoderado',
+        description: 'Abrir bitácora telefónica para asentar un contacto',
+        icon: PhoneCall,
+        action: () => {
+          navigateToTab('guardian_calls', 'Llamadas a Apoderados');
+          setMasterSearchOpen(false);
+          setSearchTerm('');
+        }
+      });
+    }
+
+    // Lista plana para navegación por teclado
+    const flat: Array<{
+      type: 'module' | 'student' | 'staff' | 'action';
+      key: string;
+      onSelect: () => void;
+    }> = [];
+
+    matchedModules.forEach(m => {
+      flat.push({
+        type: 'module',
+        key: `mod_${m.id}`,
+        onSelect: () => {
+          if (m.id === 'curriculum_plans_schedules') {
+            navigateToTab('curriculum_plans', 'Planificaciones & Horarios');
+          } else {
+            navigateToTab(m.id, m.title);
+          }
+          setMasterSearchOpen(false);
+          setSearchTerm('');
+        }
+      });
+    });
+
+    matchedStudents.forEach(s => {
+      flat.push({
+        type: 'student',
+        key: `stu_${s.id || s.rut}`,
+        onSelect: () => {
+          navigateToTab('students', 'Matrícula Completa');
+          setSelectedStudent(s);
+          setMasterSearchOpen(false);
+          setSearchTerm('');
+        }
+      });
+    });
+
+    matchedStaff.forEach(st => {
+      flat.push({
+        type: 'staff',
+        key: `staff_${st.id || st.run}`,
+        onSelect: () => {
+          navigateToTab('staff', 'Recursos Humanos & Idoneidad');
+          setMasterSearchOpen(false);
+          setSearchTerm('');
+        }
+      });
+    });
+
+    matchedActions.forEach(a => {
+      flat.push({
+        type: 'action',
+        key: `act_${a.id}`,
+        onSelect: a.action
+      });
+    });
+
+    return {
+      modules: matchedModules,
+      students: matchedStudents,
+      staff: matchedStaff,
+      actions: matchedActions,
+      flat,
+      hasResults: matchedModules.length > 0 || matchedStudents.length > 0 || matchedStaff.length > 0 || matchedActions.length > 0
+    };
+  }, [searchTerm, masterModules, students, staffMembers, dynamicMatrix]);
+
+  const handleMasterSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!masterSearchOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter') {
+        setMasterSearchOpen(true);
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (masterSearchResults.flat.length > 0) {
+        setMasterSelectedIndex(prev => (prev + 1) % masterSearchResults.flat.length);
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (masterSearchResults.flat.length > 0) {
+        setMasterSelectedIndex(prev => (prev - 1 + masterSearchResults.flat.length) % masterSearchResults.flat.length);
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const current = masterSearchResults.flat[masterSelectedIndex];
+      if (current) {
+        current.onSelect();
+      }
+    } else if (e.key === 'Escape') {
+      setMasterSearchOpen(false);
+    }
   };
 
   const isDrawerExpanded = !sidebarCollapsed || mobileDrawerOpen;
@@ -1381,15 +1631,407 @@ export const AdminDashboard: React.FC = () => {
                 <ArrowLeft size={16} /> Volver Atrás
               </button>
             )}
-            <div className="search-bar" style={{ flex: 1 }}>
-              <Search size={18} color="#94a3b8" />
+            {/* BUSCADOR MAESTRO UNIVERSAL CON SPOTLIGHT COMMAND PALETTE */}
+            <div
+              ref={masterSearchRef}
+              className="search-bar"
+              style={{
+                flex: 1,
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                border: masterSearchOpen ? '1.5px solid #6366f1' : '1px solid #cbd5e1',
+                boxShadow: masterSearchOpen ? '0 0 0 3px rgba(99, 102, 241, 0.15)' : 'var(--shadow-sm)',
+                transition: 'border-color 0.15s ease-out, box-shadow 0.15s ease-out',
+                background: '#ffffff',
+                borderRadius: '9999px',
+                padding: '0.45rem 0.95rem'
+              }}
+            >
+              <Search size={18} color={masterSearchOpen ? '#6366f1' : '#94a3b8'} style={{ flexShrink: 0 }} />
               <input
+                ref={masterSearchInputRef}
                 type="text"
-                placeholder="Buscar por RUT, Alumno o Funcionario..."
+                placeholder="Buscador Maestro: escribe un módulo, estudiante, RUT o profesor..."
                 className="search-input"
                 value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
+                onFocus={() => setMasterSearchOpen(true)}
+                onChange={e => {
+                  setSearchTerm(e.target.value);
+                  setMasterSelectedIndex(0);
+                  if (!masterSearchOpen) setMasterSearchOpen(true);
+                }}
+                onKeyDown={handleMasterSearchKeyDown}
+                style={{
+                  border: 'none',
+                  outline: 'none',
+                  width: '100%',
+                  fontSize: '0.86rem',
+                  color: '#1e293b'
+                }}
               />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm('');
+                    masterSearchInputRef.current?.focus();
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '2px',
+                    cursor: 'pointer',
+                    color: '#94a3b8',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                  title="Limpiar búsqueda"
+                >
+                  <X size={14} />
+                </button>
+              )}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '2px',
+                  background: '#f1f5f9',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  padding: '2px 6px',
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  color: '#64748b',
+                  userSelect: 'none',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0
+                }}
+              >
+                <span>Ctrl</span>
+                <span>K</span>
+              </div>
+
+              {/* SPOTLIGHT DROPDOWN DESPLEGABLE */}
+              {masterSearchOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 8px)',
+                    left: 0,
+                    width: '100%',
+                    minWidth: '540px',
+                    maxWidth: '720px',
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 20px 45px -10px rgba(15, 23, 42, 0.22), 0 0 0 1px rgba(15, 23, 42, 0.05)',
+                    zIndex: 9999,
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div style={{
+                    padding: '0.65rem 1rem',
+                    background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                    borderBottom: '1px solid #e2e8f0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#475569', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Sparkles size={13} color="#6366f1" /> Buscador Maestro Inteligente • Liceo Pro
+                    </span>
+                    <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                      {searchTerm ? `Coincidencias para "${searchTerm}"` : 'Sugerencias directas'}
+                    </span>
+                  </div>
+
+                  <div style={{ maxHeight: '420px', overflowY: 'auto', padding: '0.5rem' }}>
+                    {!masterSearchResults.hasResults ? (
+                      <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#64748b' }}>
+                        <p style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.35rem' }}>No se encontraron coincidencias para "{searchTerm}"</p>
+                        <p style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Prueba buscando por nombre de módulo (ej. "configuración"), alumno, RUT o profesor.</p>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Categoría: Módulos y Pantallas */}
+                        {masterSearchResults.modules.length > 0 && (
+                          <div style={{ marginBottom: '0.6rem' }}>
+                            <div style={{ padding: '0.35rem 0.65rem', fontSize: '0.68rem', fontWeight: 800, color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                              Módulos y Pantallas ({masterSearchResults.modules.length})
+                            </div>
+                            {masterSearchResults.modules.map(mod => {
+                              const flatIdx = masterSearchResults.flat.findIndex(f => f.key === `mod_${mod.id}`);
+                              const isSelected = flatIdx === masterSelectedIndex;
+                              const ModIcon = mod.icon;
+                              return (
+                                <div
+                                  key={`mod_${mod.id}`}
+                                  onClick={() => masterSearchResults.flat[flatIdx]?.onSelect()}
+                                  onMouseEnter={() => setMasterSelectedIndex(flatIdx)}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '0.55rem 0.75rem',
+                                    borderRadius: '10px',
+                                    background: isSelected ? '#eef2ff' : 'transparent',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.12s ease-out',
+                                    marginBottom: '2px'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', overflow: 'hidden', flex: 1 }}>
+                                    <div style={{
+                                      width: '32px',
+                                      height: '32px',
+                                      borderRadius: '8px',
+                                      background: isSelected ? '#6366f1' : '#e0e7ff',
+                                      color: isSelected ? '#ffffff' : '#4338ca',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      flexShrink: 0
+                                    }}>
+                                      <ModIcon size={16} />
+                                    </div>
+                                    <div style={{ overflow: 'hidden' }}>
+                                      <div style={{ fontWeight: 700, fontSize: '0.84rem', color: isSelected ? '#312e81' : '#1e293b' }}>
+                                        {mod.title}
+                                      </div>
+                                      <div style={{ fontSize: '0.73rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {mod.subtitle}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#94a3b8', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '1px 6px' }}>
+                                      {mod.category}
+                                    </span>
+                                    {isSelected && (
+                                      <span style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '0.72rem', fontWeight: 700, color: '#6366f1', background: '#ffffff', borderRadius: '4px', padding: '2px 6px', border: '1px solid #c7d2fe' }}>
+                                        <CornerDownLeft size={11} /> Ir
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Categoría: Estudiantes */}
+                        {masterSearchResults.students.length > 0 && (
+                          <div style={{ marginBottom: '0.6rem' }}>
+                            <div style={{ padding: '0.35rem 0.65rem', fontSize: '0.68rem', fontWeight: 800, color: '#0d9488', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                              Estudiantes ({masterSearchResults.students.length})
+                            </div>
+                            {masterSearchResults.students.map(s => {
+                              const flatIdx = masterSearchResults.flat.findIndex(f => f.key === `stu_${s.id || s.rut}`);
+                              const isSelected = flatIdx === masterSelectedIndex;
+                              const fullName = `${s.first_name || ''} ${s.last_name || ''}`.trim() || 'Alumno sin nombre';
+                              const rut = s.rut || s.run || 'Sin RUT';
+                              const course = s.course_name || getStudentCourse(s) || 'Sin curso asignado';
+                              return (
+                                <div
+                                  key={`stu_${s.id || s.rut}`}
+                                  onClick={() => masterSearchResults.flat[flatIdx]?.onSelect()}
+                                  onMouseEnter={() => setMasterSelectedIndex(flatIdx)}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '0.55rem 0.75rem',
+                                    borderRadius: '10px',
+                                    background: isSelected ? '#f0fdfa' : 'transparent',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.12s ease-out',
+                                    marginBottom: '2px'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', overflow: 'hidden', flex: 1 }}>
+                                    <div style={{
+                                      width: '32px',
+                                      height: '32px',
+                                      borderRadius: '8px',
+                                      background: isSelected ? '#0d9488' : '#ccfbf1',
+                                      color: isSelected ? '#ffffff' : '#0f766e',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      flexShrink: 0
+                                    }}>
+                                      <GraduationCap size={16} />
+                                    </div>
+                                    <div style={{ overflow: 'hidden' }}>
+                                      <div style={{ fontWeight: 700, fontSize: '0.84rem', color: isSelected ? '#134e4a' : '#1e293b' }}>
+                                        {fullName}
+                                      </div>
+                                      <div style={{ fontSize: '0.73rem', color: '#64748b' }}>
+                                        RUT: <strong style={{ color: '#0f766e' }}>{rut}</strong> • Curso: <strong>{course}</strong>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: s.is_retired ? '#ef4444' : '#059669', background: s.is_retired ? '#fef2f2' : '#ecfdf5', borderRadius: '4px', padding: '1px 6px' }}>
+                                      {s.is_retired ? 'Retirado' : 'Vigente'}
+                                    </span>
+                                    {isSelected && (
+                                      <span style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '0.72rem', fontWeight: 700, color: '#0d9488', background: '#ffffff', borderRadius: '4px', padding: '2px 6px', border: '1px solid #99f6e4' }}>
+                                        <CornerDownLeft size={11} /> Abrir Ficha
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Categoría: Docentes y Funcionarios */}
+                        {masterSearchResults.staff.length > 0 && (
+                          <div style={{ marginBottom: '0.6rem' }}>
+                            <div style={{ padding: '0.35rem 0.65rem', fontSize: '0.68rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                              Docentes y Funcionarios ({masterSearchResults.staff.length})
+                            </div>
+                            {masterSearchResults.staff.map(st => {
+                              const flatIdx = masterSearchResults.flat.findIndex(f => f.key === `staff_${st.id || st.run}`);
+                              const isSelected = flatIdx === masterSelectedIndex;
+                              return (
+                                <div
+                                  key={`staff_${st.id || st.run}`}
+                                  onClick={() => masterSearchResults.flat[flatIdx]?.onSelect()}
+                                  onMouseEnter={() => setMasterSelectedIndex(flatIdx)}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '0.55rem 0.75rem',
+                                    borderRadius: '10px',
+                                    background: isSelected ? '#fffbeb' : 'transparent',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.12s ease-out',
+                                    marginBottom: '2px'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', overflow: 'hidden', flex: 1 }}>
+                                    <div style={{
+                                      width: '32px',
+                                      height: '32px',
+                                      borderRadius: '8px',
+                                      background: isSelected ? '#d97706' : '#fef3c7',
+                                      color: isSelected ? '#ffffff' : '#92400e',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      flexShrink: 0
+                                    }}>
+                                      <Briefcase size={16} />
+                                    </div>
+                                    <div style={{ overflow: 'hidden' }}>
+                                      <div style={{ fontWeight: 700, fontSize: '0.84rem', color: isSelected ? '#78350f' : '#1e293b' }}>
+                                        {st.name}
+                                      </div>
+                                      <div style={{ fontSize: '0.73rem', color: '#64748b' }}>
+                                        Rol: <strong>{st.role || st.staff_type}</strong> {st.email ? `• ${st.email}` : ''}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+                                    {isSelected && (
+                                      <span style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '0.72rem', fontWeight: 700, color: '#d97706', background: '#ffffff', borderRadius: '4px', padding: '2px 6px', border: '1px solid #fde68a' }}>
+                                        <CornerDownLeft size={11} /> Ver Perfil
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Categoría: Acciones Rápidas */}
+                        {masterSearchResults.actions.length > 0 && (
+                          <div style={{ marginBottom: '0.2rem' }}>
+                            <div style={{ padding: '0.35rem 0.65rem', fontSize: '0.68rem', fontWeight: 800, color: '#db2777', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                              Acciones Rápidas ({masterSearchResults.actions.length})
+                            </div>
+                            {masterSearchResults.actions.map(act => {
+                              const flatIdx = masterSearchResults.flat.findIndex(f => f.key === `act_${act.id}`);
+                              const isSelected = flatIdx === masterSelectedIndex;
+                              const ActIcon = act.icon;
+                              return (
+                                <div
+                                  key={`act_${act.id}`}
+                                  onClick={() => masterSearchResults.flat[flatIdx]?.onSelect()}
+                                  onMouseEnter={() => setMasterSelectedIndex(flatIdx)}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '0.55rem 0.75rem',
+                                    borderRadius: '10px',
+                                    background: isSelected ? '#fdf2f8' : 'transparent',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.12s ease-out',
+                                    marginBottom: '2px'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', overflow: 'hidden', flex: 1 }}>
+                                    <div style={{
+                                      width: '32px',
+                                      height: '32px',
+                                      borderRadius: '8px',
+                                      background: isSelected ? '#db2777' : '#fce7f3',
+                                      color: isSelected ? '#ffffff' : '#be185d',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      flexShrink: 0
+                                    }}>
+                                      <ActIcon size={16} />
+                                    </div>
+                                    <div style={{ overflow: 'hidden' }}>
+                                      <div style={{ fontWeight: 700, fontSize: '0.84rem', color: isSelected ? '#831843' : '#1e293b' }}>
+                                        {act.title}
+                                      </div>
+                                      <div style={{ fontSize: '0.73rem', color: '#64748b' }}>
+                                        {act.description}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+                                    {isSelected && (
+                                      <span style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '0.72rem', fontWeight: 700, color: '#db2777', background: '#ffffff', borderRadius: '4px', padding: '2px 6px', border: '1px solid #fbcfe8' }}>
+                                        <CornerDownLeft size={11} /> Ejecutar
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  <div style={{
+                    padding: '0.55rem 1rem',
+                    background: '#f8fafc',
+                    borderTop: '1px solid #e2e8f0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '0.72rem',
+                    color: '#64748b'
+                  }}>
+                    <span>Presiona <kbd style={{ padding: '1px 5px', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px', fontWeight: 700 }}>↑</kbd> <kbd style={{ padding: '1px 5px', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px', fontWeight: 700 }}>↓</kbd> para navegar • <kbd style={{ padding: '1px 5px', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px', fontWeight: 700 }}>Enter</kbd> para ir</span>
+                    <span><kbd style={{ padding: '1px 5px', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px', fontWeight: 700 }}>Esc</kbd> para cerrar</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -2215,37 +2857,25 @@ export const AdminDashboard: React.FC = () => {
               </div>
             )}
 
-        {/* BANNER DE BIENVENIDA INSTITUCIONAL — SIEMPRE ARRIBA AL INICIO DE CADA SECCIÓN */}
-        <WelcomeBanner
-          userName={user?.name}
-          userRole={user?.role}
-          customSubtitle={
-            activeTab === 'home'
-              ? (currentRole === 'Docente' ? 'Panel Docente • Liceo Pro / LTP v2.0' :
-                 currentRole === 'Director' ? 'Panel Directivo • Liceo Pro / LTP v2.0' :
-                 currentRole === 'Comunicaciones' ? 'Portal Oficial de Comunicaciones y Registro de Envíos • Liceo Pro / LTP v2.0' :
-                 currentRole === 'Asistente' ? 'Portal Asistentes de la Educación • Liceo Pro / LTP v2.0' :
-                 currentRole === 'Profesionales' ? 'Portal Profesionales PIE & Convivencia • Liceo Pro / LTP v2.0' :
-                 'Panel de Administración • Liceo Pro / LTP v2.0')
-              : `${currentRole === 'Admin' ? 'Panel de Administración' : 'Panel ' + currentRole} • ${getFunctionName(activeTab)}`
-          }
-        />
-
         {/* VISTA 1: DASHBOARD GENERAL CON BANNER Y PLATAFORMAS DE INTERÉS */}
         {activeTab === 'home' && (
           <div>
-            {/* PANORAMA INSTITUCIONAL EJECUTIVO & REGISTRO DE LLAMADAS (ADMIN / DIRECTOR) */}
-            {(currentRole === 'Admin' || currentRole === 'Director') && (
-              <ExecutiveOverviewSection
-                token={token || ''}
-                user={user}
-                students={students}
-                onNavigateTab={navigateToTab}
-              />
-            )}
+            {/* BANNER DE BIENVENIDA INSTITUCIONAL — EXCLUSIVAMENTE AL INICIO DE LA PLATAFORMA */}
+            <WelcomeBanner
+              userName={user?.name}
+              userRole={user?.role}
+              customSubtitle={
+                currentRole === 'Docente' ? 'Panel Docente • Liceo Pro / LTP v2.0' :
+                currentRole === 'Director' ? 'Panel Directivo • Liceo Pro / LTP v2.0' :
+                currentRole === 'Comunicaciones' ? 'Portal Oficial de Comunicaciones y Registro de Envíos • Liceo Pro / LTP v2.0' :
+                currentRole === 'Asistente' ? 'Portal Asistentes de la Educación • Liceo Pro / LTP v2.0' :
+                currentRole === 'Profesionales' ? 'Portal Profesionales PIE & Convivencia • Liceo Pro / LTP v2.0' :
+                'Panel de Administración • Liceo Pro / LTP v2.0'
+              }
+            />
 
-            {/* TARJETAS ESTADÍSTICAS KPI CON NAVEGACIÓN DIRECTA SEGÚN PERMISOS DEL PERFIL */}
-            <div className="card-grid">
+            {/* TARJETAS ESTADÍSTICAS KPI CON NAVEGACIÓN DIRECTA — INMEDIATAMENTE DEBAJO DEL BANNER DE BIENVENIDA */}
+            <div className="card-grid" style={{ marginTop: '1.25rem', marginBottom: '1.5rem' }}>
               {canAccess('students') && (
                 <div
                   className="stat-card"
@@ -2384,6 +3014,16 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               ) : null}
             </div>
+
+            {/* PANORAMA INSTITUCIONAL EJECUTIVO & REGISTRO DE LLAMADAS (ADMIN / DIRECTOR) */}
+            {(currentRole === 'Admin' || currentRole === 'Director') && (
+              <ExecutiveOverviewSection
+                token={token || ''}
+                user={user}
+                students={students}
+                onNavigateTab={navigateToTab}
+              />
+            )}
 
             {/* PANEL DIRECTO DE COMUNICACIONES Y REGISTRO PARA EL PERFIL DE COMUNICACIONES */}
             {currentRole === 'Comunicaciones' && (

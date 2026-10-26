@@ -667,20 +667,16 @@ export const TeacherDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* BANNER DE BIENVENIDA INSTITUCIONAL — SIEMPRE ARRIBA AL INICIO DE CADA SECCIÓN */}
-        <WelcomeBanner
-          userName={user?.name}
-          userRole={user?.role}
-          customSubtitle={
-            activeTab === 'home'
-              ? 'Panel Docente • Liceo Pro / LTP v2.0'
-              : `Panel Docente • ${activeTab === 'my_courses' ? 'Mis Cursos Asignados' : activeTab === 'homeroom' ? 'Jefatura de Curso' : activeTab === 'observations' ? 'Observaciones y Anotaciones' : 'Plataformas Institucionales'}`
-          }
-        />
-
         {/* PESTAÑA 1: INICIO (BIENVENIDA, PLATAFORMAS INSTITUCIONALES Y ACCESOS RÁPIDOS) */}
         {activeTab === 'home' && (
           <div>
+            {/* BANNER DE BIENVENIDA INSTITUCIONAL — SOLO EN EL INICIO */}
+            <WelcomeBanner
+              userName={user?.name}
+              userRole={user?.role}
+              customSubtitle="Panel Docente • Liceo Pro / LTP v2.0"
+            />
+
             <InstitutionalPlatformsSection
               token={token || ''}
               userName={user?.name}
