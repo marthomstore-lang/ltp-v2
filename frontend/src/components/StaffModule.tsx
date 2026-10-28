@@ -244,6 +244,26 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ token }) => {
     });
   };
 
+  const isDirectivoFunc = (s: StaffMember) => {
+    const jf = (s.job_function || '').toUpperCase();
+    return (
+      s.staff_type === 'Admin' ||
+      s.staff_type === 'Director' ||
+      s.role === 'Director' ||
+      (Array.isArray(s.roles) && s.roles.includes('Director')) ||
+      jf.includes('DIRECTOR') ||
+      jf.includes('INSPECTOR GENERAL') ||
+      jf.includes('UTP') ||
+      jf.includes('TÉCNICO-PEDAGÓGICA') ||
+      jf.includes('PEDAGÓGIC') ||
+      jf.includes('ORIENTADOR') ||
+      jf.includes('INTEGRACIÓN') ||
+      jf.includes('PIE') ||
+      jf.includes('CONVIVENCIA') ||
+      jf.includes('PLANTA DIRECTIVA')
+    );
+  };
+
   // FILTRADO DE PERSONAL
   const filteredStaff = staffList.filter(s => {
     const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.run.toLowerCase().includes(searchTerm.toLowerCase()) || (s.job_function || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -251,13 +271,13 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ token }) => {
 
     if (activeTab === 'docentes') return s.staff_type === 'Docente';
     if (activeTab === 'asistentes') return s.staff_type === 'Asistente de la Educación' || s.staff_type === 'Asistente' || s.staff_type === 'Administrativo';
-    if (activeTab === 'directivos') return s.staff_type === 'Admin' || s.staff_type === 'Director' || (s.job_function || '').toUpperCase().includes('DIRECTOR') || (s.job_function || '').toUpperCase().includes('JEFE');
+    if (activeTab === 'directivos') return isDirectivoFunc(s);
     return true;
   });
 
   const docentesCount = staffList.filter(s => s.staff_type === 'Docente').length;
   const asistentesCount = staffList.filter(s => s.staff_type === 'Asistente de la Educación' || s.staff_type === 'Asistente' || s.staff_type === 'Administrativo').length;
-  const directivosCount = staffList.filter(s => s.staff_type === 'Admin' || s.staff_type === 'Director' || (s.job_function || '').toUpperCase().includes('DIRECTOR') || (s.job_function || '').toUpperCase().includes('JEFE')).length;
+  const directivosCount = staffList.filter(isDirectivoFunc).length;
 
   return (
     <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0', fontFamily: 'Inter, sans-serif' }}>
@@ -532,6 +552,49 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ token }) => {
                 <div>
                   <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '0.3rem' }}>5. Cargo / Función Específica</label>
                   <input type="text" required value={jobFunction} onChange={e => setJobFunction(e.target.value)} placeholder="Ej: Docente de Matemática / Directora" style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                </div>
+              </div>
+
+              {/* SELECTOR DE CARGO EN EQUIPO DIRECTIVO */}
+              <div style={{ marginBottom: '0.9rem', background: '#f0fdf4', padding: '0.75rem 0.9rem', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 800, color: '#166534', marginBottom: '0.35rem' }}>
+                  🏛️ Cargo Directivo Oficial (Para firmas y reconocimiento en informes):
+                </label>
+                <select
+                  value={(() => {
+                    const jf = (jobFunction || '').toUpperCase();
+                    if (jf.includes('DIRECTOR') && !jf.includes('SUB') && !jf.includes('ASIST')) return 'DIRECTOR(A)';
+                    if (jf.includes('INSPECTOR GENERAL')) return 'INSPECTOR GENERAL';
+                    if (jf.includes('JEFE') && (jf.includes('UTP') || jf.includes('TÉCNIC') || jf.includes('PEDAGÓGIC'))) return 'JEFE UNIDAD TÉCNICO-PEDAGÓGICA';
+                    if (jf.includes('COORDINADOR') && jf.includes('PIE')) return 'COORDINADOR(A) PIE';
+                    if (jf.includes('ORIENTADOR')) return 'ORIENTADOR';
+                    if (jf.includes('CONVIVENCIA')) return 'ENCARGADO(A) CONVIVENCIA ESCOLAR';
+                    return 'NINGUNO';
+                  })()}
+                  onChange={e => {
+                    const sel = e.target.value;
+                    if (sel === 'NINGUNO') {
+                      if (jobFunction === 'DIRECTOR(A)' || jobFunction === 'INSPECTOR GENERAL' || jobFunction === 'JEFE UNIDAD TÉCNICO-PEDAGÓGICA' || jobFunction === 'COORDINADOR(A) PIE' || jobFunction === 'ORIENTADOR' || jobFunction === 'ENCARGADO(A) CONVIVENCIA ESCOLAR') {
+                        setJobFunction('Docente de Aula');
+                      }
+                    } else {
+                      setJobFunction(sel);
+                      setStaffType('Directivo');
+                      setAssignedRoles(prev => prev.includes('Director') ? prev : ['Director', ...prev]);
+                    }
+                  }}
+                  style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid #86efac', fontWeight: 700, fontSize: '0.82rem', color: '#14532d', background: '#ffffff' }}
+                >
+                  <option value="NINGUNO">-- Ninguno (Docente / Asistente / Funcionario Regular) --</option>
+                  <option value="DIRECTOR(A)">🎓 Director(a) del Establecimiento</option>
+                  <option value="INSPECTOR GENERAL">🛡️ Inspector(a) General</option>
+                  <option value="JEFE UNIDAD TÉCNICO-PEDAGÓGICA">📚 Jefe(a) Unidad Técnica Pedagógica (UTP)</option>
+                  <option value="COORDINADOR(A) PIE">🧩 Coordinador(a) Proyecto de Integración Escolar (PIE)</option>
+                  <option value="ORIENTADOR">🧭 Orientador(a) Educacional</option>
+                  <option value="ENCARGADO(A) CONVIVENCIA ESCOLAR">🤝 Encargado(a) de Convivencia Escolar</option>
+                </select>
+                <div style={{ fontSize: '0.72rem', color: '#15803d', marginTop: '0.3rem' }}>
+                  Define formalmente si este funcionario pertenece al equipo de gestión directiva para firmar documentos legales y técnicos.
                 </div>
               </div>
 

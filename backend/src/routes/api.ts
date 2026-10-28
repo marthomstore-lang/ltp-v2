@@ -2494,6 +2494,34 @@ router.put('/users/:id', authMiddleware, checkRoles(['Admin', 'Director']), asyn
       spParams
     ).catch(() => {});
 
+    // 3. Sincronizar automáticamente con institution_settings si se asignó un cargo del Equipo Directivo
+    try {
+      const normJob = String(job_function || '').toUpperCase().trim();
+      let leadershipKey = '';
+      if (normJob.includes('DIRECTOR') && !normJob.includes('SUB') && !normJob.includes('ASIST')) leadershipKey = 'director';
+      else if (normJob.includes('INSPECTOR GENERAL')) leadershipKey = 'inspectorGeneral';
+      else if (normJob.includes('JEFE') && (normJob.includes('UTP') || normJob.includes('TÉCNIC') || normJob.includes('PEDAGÓGIC'))) leadershipKey = 'utp';
+      else if (normJob.includes('COORDINADOR') && normJob.includes('PIE')) leadershipKey = 'pieCoordinator';
+      else if (normJob.includes('ORIENTADOR')) leadershipKey = 'orientador';
+      else if (normJob.includes('CONVIVENCIA')) leadershipKey = 'convivencia';
+
+      if (leadershipKey) {
+        const instSettings = await getInstitutionalSettingsHelper();
+        instSettings[`${leadershipKey}Id`] = existingUserRes.rows[0]?.id || usrIdFromRun;
+        instSettings[`${leadershipKey}Name`] = name.trim();
+        if (rawRun) instSettings[`${leadershipKey}Run`] = rawRun;
+        if (cleanEmail) instSettings[`${leadershipKey}Email`] = cleanEmail;
+
+        const serialized = JSON.stringify(instSettings);
+        await query(
+          "INSERT INTO system_settings (id, config_key, config_value, updated_at) VALUES ('SET-INSTITUTION', 'institution_settings', $1, NOW()) ON CONFLICT (id) DO UPDATE SET config_value = $1, updated_at = NOW()",
+          [serialized]
+        );
+      }
+    } catch (syncErr) {
+      console.warn('Error al sincronizar cargo directivo en institution_settings:', syncErr);
+    }
+
     await logAudit(req, 'UPDATE_USER', `Usuario ${name} (${id}) modificado con roles [${roleArray.join(', ')}]`);
     res.json({
       success: true,
@@ -3368,37 +3396,82 @@ export async function getInstitutionalSettingsHelper() {
     }
   } catch (_) {}
 
-  // Configuración base por defecto (los valores reales se cargan desde la base de datos o local_store)
-  const base = {
-    schoolName: 'Liceo Técnico Profesional',
-    shortName: 'LTP',
-    rbd: '',
-    commune: '',
-    locality: '',
-    region: '',
-    dependence: 'Municipal / SLEP',
-    directorId: '',
-    directorName: 'Director(a) Establecimiento',
-    directorRun: '',
-    directorEmail: '',
-    address: '',
-    phone: '',
-    email: '',
+  // Configuración base por defecto (valores oficiales de Liceo Campanario y equipo directivo)
+  const base: any = {
+    schoolName: 'Liceo Campanario',
+    shortName: 'LC',
+    rbd: '3941-1',
+    commune: 'Yungay',
+    locality: 'Campanario',
+    province: 'Diguillín',
+    region: 'XVI Región de Ñuble',
+    dependence: 'SLEP Valle Diguillín',
+    address: 'Campanario, Comuna de Yungay',
+    phone: '+56 42 220 5400',
+    email: 'contacto@liceocampanario.cl',
+    calendarEmail: 'contacto@liceocampanario.cl',
+
+    // Equipo Directivo Oficial del Establecimiento
+    directorId: 'USR-14230851',
+    directorName: 'Víctor Robinson Ojeda Ojeda',
+    directorRun: '14.230.851-7',
+    directorEmail: '14230851@liceocampanario.cl',
+
+    inspectorGeneralId: 'USR-8095478',
+    inspectorGeneralName: 'Ernesto Alfonso Bórquez Cárdenas',
+    inspectorGeneralRun: '8.095.478-6',
+    inspectorGeneralEmail: '8095478@liceocampanario.cl',
+
+    utpId: 'USR-19251099',
+    utpName: 'Scarlette Catalina Burgos Sandoval',
+    utpRun: '19.251.099-6',
+    utpEmail: 'scarlette.burgos@eduvallediguillin.gob.cl',
+
+    pieCoordinatorId: 'USR-17246556',
+    pieCoordinatorName: 'José Julio Ignacio Lizama Alarcón',
+    pieCoordinatorRun: '17246556-0',
+    pieCoordinatorEmail: 'julio.lizama@eduvallediguillin.gob.cl',
+
+    orientadorId: 'USR-7253290',
+    orientadorName: 'Carlos Fernando Aranda Pino',
+    orientadorRun: '7.253.290-2',
+    orientadorEmail: '7253290@liceocampanario.cl',
+
+    convivenciaId: 'USR-17756494',
+    convivenciaName: 'Angela Soledad Avilés Avilés',
+    convivenciaRun: '17.756.494-K',
+    convivenciaEmail: '17756494@liceocampanario.cl',
+
     ...fileSettings,
     ...(dbSettings || {})
   };
 
-  // Si hay un directorId configurado, sincronizar con la tabla users
-  if (base.directorId) {
-    try {
-      const uRes = await query("SELECT id, name, run, email, role FROM users WHERE id = $1 OR run = $2 LIMIT 1", [base.directorId, base.directorRun || base.directorId]);
-      if (uRes.rows && uRes.rows.length > 0) {
-        const u = uRes.rows[0];
-        base.directorName = u.name || base.directorName;
-        base.directorRun = u.run || base.directorRun;
-        base.directorEmail = u.email || base.directorEmail;
-      }
-    } catch (_) {}
+  // Sincronizar dinámicamente datos maestros frescos desde la tabla users para todo el equipo directivo
+  const leadershipSyncList = [
+    { prefix: 'director', id: base.directorId, run: base.directorRun },
+    { prefix: 'inspectorGeneral', id: base.inspectorGeneralId, run: base.inspectorGeneralRun },
+    { prefix: 'utp', id: base.utpId, run: base.utpRun },
+    { prefix: 'pieCoordinator', id: base.pieCoordinatorId, run: base.pieCoordinatorRun },
+    { prefix: 'orientador', id: base.orientadorId, run: base.orientadorRun },
+    { prefix: 'convivencia', id: base.convivenciaId, run: base.convivenciaRun }
+  ];
+
+  for (const item of leadershipSyncList) {
+    if (item.id || item.run) {
+      try {
+        const uRes = await query(
+          "SELECT id, name, run, email, role, roles, job_function FROM users WHERE id = $1 OR run = $2 LIMIT 1",
+          [item.id || 'none', item.run || 'none']
+        );
+        if (uRes.rows && uRes.rows.length > 0) {
+          const u = uRes.rows[0];
+          base[`${item.prefix}Id`] = u.id;
+          base[`${item.prefix}Name`] = u.name;
+          base[`${item.prefix}Run`] = u.run;
+          base[`${item.prefix}Email`] = u.email || base[`${item.prefix}Email`];
+        }
+      } catch (_) {}
+    }
   }
 
   return base;
@@ -3422,33 +3495,49 @@ router.post('/config/institutional-settings', authMiddleware, checkRoles(['Admin
       ...req.body
     };
 
-    // Si se especificó directorId, sincronizar y asegurar datos maestros del usuario
-    if (req.body.directorId) {
-      try {
-        const uRes = await query("SELECT id, name, run, email, role, roles FROM users WHERE id = $1 LIMIT 1", [req.body.directorId]);
-        if (uRes.rows && uRes.rows.length > 0) {
-          const u = uRes.rows[0];
-          updated.directorId = u.id;
-          updated.directorName = u.name;
-          updated.directorRun = u.run;
-          updated.directorEmail = u.email;
+    // Sincronizar y asegurar datos maestros del Equipo Directivo
+    const leadershipRolesDef = [
+      { key: 'director', defaultJob: 'DIRECTOR(A)', targetRole: 'Director' },
+      { key: 'inspectorGeneral', defaultJob: 'INSPECTOR GENERAL', targetRole: 'Director' },
+      { key: 'utp', defaultJob: 'JEFE UNIDAD TÉCNICO-PEDAGÓGICA', targetRole: 'Director' },
+      { key: 'pieCoordinator', defaultJob: 'COORDINADOR(A) PIE', targetRole: 'Director' },
+      { key: 'orientador', defaultJob: 'ORIENTADOR', targetRole: 'Docente' },
+      { key: 'convivencia', defaultJob: 'ENCARGADO(A) CONVIVENCIA ESCOLAR', targetRole: 'Docente' }
+    ];
 
-          // Asignar rol Director al usuario si no lo tiene
-          let rolesList: string[] = [];
-          if (Array.isArray(u.roles)) rolesList = u.roles;
-          else if (typeof u.roles === 'string') {
-            try { rolesList = JSON.parse(u.roles); } catch (_) { rolesList = [u.role]; }
-          } else {
-            rolesList = [u.role];
-          }
+    for (const lr of leadershipRolesDef) {
+      const idKey = `${lr.key}Id`;
+      const nameKey = `${lr.key}Name`;
+      const runKey = `${lr.key}Run`;
+      const emailKey = `${lr.key}Email`;
 
-          if (!rolesList.includes('Director')) {
-            rolesList.push('Director');
-            await query("UPDATE users SET role = 'Director', roles = $1 WHERE id = $2", [JSON.stringify(rolesList), u.id]);
+      if (req.body[idKey]) {
+        try {
+          const uRes = await query("SELECT id, name, run, email, role, roles, job_function FROM users WHERE id = $1 LIMIT 1", [req.body[idKey]]);
+          if (uRes.rows && uRes.rows.length > 0) {
+            const u = uRes.rows[0];
+            updated[idKey] = u.id;
+            updated[nameKey] = u.name;
+            updated[runKey] = u.run;
+            updated[emailKey] = u.email || updated[emailKey];
+
+            // Asegurar rol Directivo y función en users
+            let rolesList: string[] = [];
+            if (Array.isArray(u.roles)) rolesList = u.roles;
+            else if (typeof u.roles === 'string') {
+              try { rolesList = JSON.parse(u.roles); } catch (_) { rolesList = [u.role]; }
+            } else {
+              rolesList = [u.role];
+            }
+
+            if (!rolesList.includes(lr.targetRole)) {
+              rolesList.push(lr.targetRole);
+            }
+            await query("UPDATE users SET roles = $1, job_function = $2 WHERE id = $3", [JSON.stringify(rolesList), lr.defaultJob, u.id]);
           }
+        } catch (uErr) {
+          console.warn(`Advertencia al vincular usuario ${lr.key}:`, uErr);
         }
-      } catch (uErr) {
-        console.warn('Advertencia al vincular usuario director:', uErr);
       }
     }
 
@@ -3471,7 +3560,7 @@ router.post('/config/institutional-settings', authMiddleware, checkRoles(['Admin
         );
       } else {
         await query(
-          "INSERT INTO system_settings (id, config_key, config_value, updated_at) VALUES ('SET-INSTITUTION', 'institution_settings', $1, NOW()) ON CONFLICT (config_key) DO UPDATE SET config_value = $1, updated_at = NOW()",
+          "INSERT INTO system_settings (id, config_key, config_value, updated_at) VALUES ('SET-INSTITUTION', 'institution_settings', $1, NOW()) ON CONFLICT (id) DO UPDATE SET config_value = $1, updated_at = NOW()",
           [serialized]
         );
       }
@@ -4021,44 +4110,21 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
   }
 
   try {
-    // 1. Institución Oficial
+    // 1. Institución Oficial y Equipo Directivo
+    const instHelper = await getInstitutionalSettingsHelper();
     let inst = {
-      schoolName: 'LICEO CAMPANARIO',
-      rbd: '3941-1',
-      commune: 'YUNGAY',
-      province: 'DIGUILLÍN',
-      region: 'XVI REGIÓN DE ÑUBLE',
-      directorName: 'VÍCTOR ROBINSON OJEDA OJEDA',
-      directorRun: '14.230.851-7'
+      schoolName: (instHelper.schoolName || 'LICEO CAMPANARIO').toUpperCase(),
+      rbd: instHelper.rbd || '3941-1',
+      commune: (instHelper.commune || 'YUNGAY').toUpperCase(),
+      province: (instHelper.province || 'DIGUILLÍN').toUpperCase(),
+      region: (instHelper.region || 'XVI REGIÓN DE ÑUBLE').toUpperCase(),
+      directorName: (instHelper.directorName || 'VÍCTOR ROBINSON OJEDA OJEDA').toUpperCase(),
+      directorRun: formatRunBackend(instHelper.directorRun || '14.230.851-7'),
+      utpName: (instHelper.utpName || 'SCARLETTE CATALINA BURGOS SANDOVAL').toUpperCase(),
+      utpRun: formatRunBackend(instHelper.utpRun || '19.251.099-6'),
+      inspectorGeneralName: (instHelper.inspectorGeneralName || 'ERNESTO ALFONSO BÓRQUEZ CÁRDENAS').toUpperCase(),
+      inspectorGeneralRun: formatRunBackend(instHelper.inspectorGeneralRun || '8.095.478-6')
     };
-
-    const instRes = await query(
-      "SELECT config_value FROM system_settings WHERE id = 'SET-INSTITUTION' OR config_key = 'institution_settings' ORDER BY updated_at DESC LIMIT 1"
-    );
-    if (instRes.rows.length > 0 && instRes.rows[0].config_value) {
-      try {
-        const p = typeof instRes.rows[0].config_value === 'string'
-          ? JSON.parse(instRes.rows[0].config_value)
-          : instRes.rows[0].config_value;
-        if (p.schoolName && !p.schoolName.toLowerCase().includes('liceo tecnico profesional')) {
-          inst.schoolName = p.schoolName.toUpperCase();
-        }
-        if (p.rbd && p.rbd !== '1234-5') {
-          inst.rbd = p.rbd;
-        }
-        if (p.commune && !p.commune.toLowerCase().includes('comuna escolar')) {
-          inst.commune = p.commune.toUpperCase();
-        }
-        if (p.province) inst.province = p.province.toUpperCase();
-        if (p.region && p.region.toLowerCase() !== 'region') inst.region = p.region.toUpperCase();
-        if (p.directorName && !p.directorName.toLowerCase().includes('director(a) establecimiento')) {
-          inst.directorName = p.directorName.toUpperCase();
-        }
-        if (p.directorRun && p.directorRun !== '11.111.111-1') {
-          inst.directorRun = formatRunBackend(p.directorRun);
-        }
-      } catch (_) {}
-    }
 
     // 2. Alumnos del curso
     const stuRes = await query(

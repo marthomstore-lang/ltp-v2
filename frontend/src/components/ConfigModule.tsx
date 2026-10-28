@@ -43,6 +43,26 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
     directorName: '',
     directorRun: '',
     directorEmail: '',
+    inspectorGeneralId: '',
+    inspectorGeneralName: '',
+    inspectorGeneralRun: '',
+    inspectorGeneralEmail: '',
+    utpId: '',
+    utpName: '',
+    utpRun: '',
+    utpEmail: '',
+    pieCoordinatorId: '',
+    pieCoordinatorName: '',
+    pieCoordinatorRun: '',
+    pieCoordinatorEmail: '',
+    orientadorId: '',
+    orientadorName: '',
+    orientadorRun: '',
+    orientadorEmail: '',
+    convivenciaId: '',
+    convivenciaName: '',
+    convivenciaRun: '',
+    convivenciaEmail: '',
     address: '',
     phone: '',
     email: '',
@@ -2109,86 +2129,240 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
           </div>
 
           <form onSubmit={handleSaveInstitutionConfig}>
-            {/* SECCIÓN 1: SELECCIÓN DEL DIRECTOR(A) DESDE LA LISTA DE USUARIOS */}
+            {/* SECCIÓN 1: EQUIPO DIRECTIVO Y AUTORIDADES OFICIALES DEL ESTABLECIMIENTO */}
             <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #cbd5e1', marginBottom: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                <UserCheck size={18} style={{ color: '#0284c7' }} />
-                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1e293b' }}>
-                  1. Director(a) Oficial del Establecimiento (Seleccionado desde los Usuarios del Sistema)
-                </h4>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <UserCheck size={20} style={{ color: '#0284c7' }} />
+                  <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#1e293b' }}>
+                    1. Equipo Directivo y Autoridades Oficiales (Para Firmas, Actas e Informes)
+                  </h4>
+                </div>
+                <span style={{ fontSize: '0.75rem', background: '#e0f2fe', color: '#0369a1', padding: '3px 9px', borderRadius: '6px', fontWeight: 700 }}>
+                  Reconocimiento Oficial de Cargos
+                </span>
               </div>
-              <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 1rem 0' }}>
-                Selecciona al funcionario que ejerce la Dirección del Liceo de la lista de usuarios. Sus datos oficiales (Nombre, RUN, Correo) se asociarán de forma inmediata a todas las firmas institucionales y encabezados legales.
+              <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 1.25rem 0' }}>
+                Selecciona al funcionario responsable de cada cargo directivo clave. Los nombres, RUNs y correos configurados aquí son reconocidos en forma centralizada por toda la plataforma para generar automáticamente las firmas oficiales en Actas MINEDUC, Informes de Notas, Formularios PIE (Dec. 170), Pases de Inspectoría y Citaciones.
               </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', alignItems: 'start' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
-                    Seleccionar Usuario / Funcionario Registrado:
-                  </label>
-                  <select
-                    value={institutionConfig.directorId || ''}
-                    onChange={e => {
-                      const selUser = usersList.find(u => u.id === e.target.value || u.run === e.target.value);
-                      if (selUser) {
-                        setInstitutionConfig((prev: any) => ({
-                          ...prev,
-                          directorId: selUser.id,
-                          directorName: selUser.name,
-                          directorRun: selUser.run,
-                          directorEmail: selUser.email || prev.directorEmail
-                        }));
-                        setDirectorNameConfig(selUser.name);
-                      }
-                    }}
-                    style={{ width: '100%', padding: '0.6rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 700, background: '#ffffff', color: '#0f172a' }}
-                  >
-                    <option value="">👤 Seleccionar funcionario de la lista...</option>
-                    {usersList.map(u => (
-                      <option key={u.id || u.run} value={u.id}>
-                        {u.name} — RUN: {u.run} ({u.role || u.job_function || 'Funcionario'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.25rem' }}>
+                {[
+                  {
+                    key: 'director',
+                    title: 'Director(a) del Establecimiento',
+                    icon: '🎓',
+                    accentColor: '#0284c7',
+                    bgColor: '#f0f9ff',
+                    borderColor: '#bae6fd',
+                    badge: 'Dirección Oficial',
+                    desc: 'Firma principal en Certificados de Matrícula, Actas Oficiales MINEDUC, Licencias y Títulos.'
+                  },
+                  {
+                    key: 'utp',
+                    title: 'Jefe(a) Unidad Técnica Pedagógica (UTP)',
+                    icon: '📚',
+                    accentColor: '#4f46e5',
+                    bgColor: '#eef2ff',
+                    borderColor: '#c7d2fe',
+                    badge: 'Jefatura UTP',
+                    desc: 'Firma en Panoramas de Notas del Curso, Concentraciones de Notas y Consejos de Evaluación.'
+                  },
+                  {
+                    key: 'inspectorGeneral',
+                    title: 'Inspector(a) General',
+                    icon: '🛡️',
+                    accentColor: '#b45309',
+                    bgColor: '#fffbeb',
+                    borderColor: '#fde68a',
+                    badge: 'Inspectoría General',
+                    desc: 'Firma en Citaciones a Apoderados, Pases y Permisos de Salida, Justificaciones y Asistencia.'
+                  },
+                  {
+                    key: 'pieCoordinator',
+                    title: 'Coordinador(a) Proyecto de Integración (PIE)',
+                    icon: '🧩',
+                    accentColor: '#7c3aed',
+                    bgColor: '#f5f3ff',
+                    borderColor: '#ddd6fe',
+                    badge: 'Coordinación PIE',
+                    desc: 'Firma en Informes de Avance NEE, Formularios Únicos de Evaluación Decreto 170 y Reevaluaciones.'
+                  },
+                  {
+                    key: 'orientador',
+                    title: 'Orientador(a) Educacional',
+                    icon: '🧭',
+                    accentColor: '#059669',
+                    bgColor: '#ecfdf5',
+                    borderColor: '#a7f3d0',
+                    badge: 'Orientación',
+                    desc: 'Firma en Informes al Hogar y Personalidad, Informes Vocacionales y Derivaciones Psicosociales.'
+                  },
+                  {
+                    key: 'convivencia',
+                    title: 'Encargado(a) de Convivencia Escolar',
+                    icon: '🤝',
+                    accentColor: '#dc2626',
+                    bgColor: '#fef2f2',
+                    borderColor: '#fecaca',
+                    badge: 'Convivencia Escolar',
+                    desc: 'Firma en Entrevistas de Mediación, Acuerdos de Convivencia Escolar y Protocolos de Actuación.'
+                  }
+                ].map(item => {
+                  const idField = `${item.key}Id`;
+                  const nameField = `${item.key}Name`;
+                  const runField = `${item.key}Run`;
+                  const emailField = `${item.key}Email`;
 
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
-                    Nombre Oficial para Firmas y Certificados:
-                  </label>
-                  <input
-                    type="text"
-                    value={institutionConfig.directorName || ''}
-                    onChange={e => setInstitutionConfig((prev: any) => ({ ...prev, directorName: e.target.value }))}
-                    placeholder="Ej: Juan Pérez González"
-                    style={{ width: '100%', padding: '0.6rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 700, color: '#0f172a', boxSizing: 'border-box' }}
-                  />
-                </div>
-              </div>
+                  const currentId = institutionConfig[idField] || '';
+                  const currentName = institutionConfig[nameField] || '';
+                  const currentRun = institutionConfig[runField] || '';
+                  const currentEmail = institutionConfig[emailField] || '';
 
-              {/* Ficha Visual de Previsualización del Director */}
-              <div style={{ marginTop: '1rem', background: '#f0f9ff', borderRadius: '10px', padding: '0.85rem', border: '1px solid #bae6fd', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                  <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: '#0284c7', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.95rem' }}>
-                    {(institutionConfig.directorName || 'D')[0]}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0369a1' }}>
-                      {institutionConfig.directorName || 'Sin Asignar'}
+                  return (
+                    <div
+                      key={item.key}
+                      style={{
+                        background: '#ffffff',
+                        border: `1.5px solid ${currentId ? item.borderColor : '#e2e8f0'}`,
+                        borderRadius: '10px',
+                        padding: '1rem',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                          <span style={{ fontSize: '1.25rem' }}>{item.icon}</span>
+                          <strong style={{ fontSize: '0.9rem', color: '#1e293b' }}>{item.title}</strong>
+                        </div>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 800, background: item.bgColor, color: item.accentColor, border: `1px solid ${item.borderColor}`, padding: '2px 7px', borderRadius: '6px' }}>
+                          {item.badge}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '0.73rem', color: '#64748b', margin: '0 0 0.75rem 0', lineHeight: '1.3' }}>
+                        {item.desc}
+                      </p>
+
+                      <div style={{ marginBottom: '0.65rem' }}>
+                        <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '0.2rem' }}>
+                          Vincular Usuario del Personal:
+                        </label>
+                        <select
+                          value={currentId}
+                          onChange={e => {
+                            const selId = e.target.value;
+                            const selUser = usersList.find(u => u.id === selId || u.run === selId);
+                            if (selUser) {
+                              setInstitutionConfig((prev: any) => ({
+                                ...prev,
+                                [idField]: selUser.id,
+                                [nameField]: selUser.name,
+                                [runField]: selUser.run,
+                                [emailField]: selUser.email || prev[emailField]
+                              }));
+                              if (item.key === 'director') {
+                                setDirectorNameConfig(selUser.name);
+                              }
+                            } else {
+                              setInstitutionConfig((prev: any) => ({
+                                ...prev,
+                                [idField]: '',
+                                [nameField]: '',
+                                [runField]: '',
+                                [emailField]: ''
+                              }));
+                            }
+                          }}
+                          style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.78rem', fontWeight: 600, background: '#ffffff', color: '#0f172a' }}
+                        >
+                          <option value="">-- Sin Asignar / Seleccionar funcionario --</option>
+                          {usersList.map(u => (
+                            <option key={u.id || u.run} value={u.id}>
+                              {u.name} — {u.run} ({u.job_function || u.role})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginBottom: '0.15rem' }}>
+                            Nombre Oficial para Firmas:
+                          </label>
+                          <input
+                            type="text"
+                            value={currentName}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setInstitutionConfig((prev: any) => ({ ...prev, [nameField]: val }));
+                              if (item.key === 'director') setDirectorNameConfig(val);
+                            }}
+                            placeholder="Nombre y dos apellidos"
+                            style={{ width: '100%', padding: '0.4rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.78rem', fontWeight: 700, color: '#0f172a' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginBottom: '0.15rem' }}>
+                            R.U.N. Oficial:
+                          </label>
+                          <input
+                            type="text"
+                            value={currentRun}
+                            onChange={e => setInstitutionConfig((prev: any) => ({ ...prev, [runField]: e.target.value }))}
+                            placeholder="12.345.678-9"
+                            style={{ width: '100%', padding: '0.4rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.78rem', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Tarjeta de Resumen Visual Activa */}
+                      <div
+                        style={{
+                          background: item.bgColor,
+                          borderRadius: '8px',
+                          padding: '0.55rem 0.75rem',
+                          border: `1px solid ${item.borderColor}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '0.5rem',
+                          marginTop: '0.5rem'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                          <div
+                            style={{
+                              width: '28px',
+                              height: '28px',
+                              borderRadius: '50%',
+                              background: item.accentColor,
+                              color: '#ffffff',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 800,
+                              fontSize: '0.75rem',
+                              flexShrink: 0
+                            }}
+                          >
+                            {(currentName || item.title)[0]}
+                          </div>
+                          <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {currentName || 'Sin designar'}
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: '#475569' }}>
+                              RUN: <strong>{currentRun || '—'}</strong>
+                            </div>
+                          </div>
+                        </div>
+                        <span style={{ fontSize: '0.65rem', fontWeight: 800, color: currentName ? '#047857' : '#94a3b8', background: currentName ? '#ecfdf5' : '#f1f5f9', padding: '2px 6px', borderRadius: '4px', border: currentName ? '1px solid #a7f3d0' : '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                          {currentName ? '✓ Activo' : 'Pendiente'}
+                        </span>
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.78rem', color: '#475569', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                      <span>RUN: <strong>{institutionConfig.directorRun || '—'}</strong></span>
-                      <span>•</span>
-                      <span>Correo: <strong>{institutionConfig.directorEmail || '—'}</strong></span>
-                      <span>•</span>
-                      <span>Cargo Oficial: <strong>Director(a) Establecimiento</strong></span>
-                    </div>
-                  </div>
-                </div>
-
-                <span style={{ background: '#0284c7', color: '#ffffff', padding: '3px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800 }}>
-                  Director Oficial Activo
-                </span>
+                  );
+                })}
               </div>
             </div>
 
@@ -5191,6 +5365,65 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                     placeholder="Ej: Inspector/a, Psicólogo/a, Docente..."
                     style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
                   />
+                </div>
+              </div>
+
+              {/* SELECTOR DE CARGO EN EQUIPO DIRECTIVO OFICIAL */}
+              <div style={{ marginBottom: '0.85rem', background: '#f0fdf4', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem', fontWeight: 800, color: '#166534', marginBottom: '0.3rem' }}>
+                  🏛️ Cargo Directivo Oficial (Para firmas en informes y actas):
+                </label>
+                <select
+                  value={(() => {
+                    const jf = (editingUser.job_function || '').toUpperCase();
+                    if (jf.includes('DIRECTOR') && !jf.includes('SUB') && !jf.includes('ASIST')) return 'DIRECTOR(A)';
+                    if (jf.includes('INSPECTOR GENERAL')) return 'INSPECTOR GENERAL';
+                    if (jf.includes('JEFE') && (jf.includes('UTP') || jf.includes('TÉCNIC') || jf.includes('PEDAGÓGIC'))) return 'JEFE UNIDAD TÉCNICO-PEDAGÓGICA';
+                    if (jf.includes('COORDINADOR') && jf.includes('PIE')) return 'COORDINADOR(A) PIE';
+                    if (jf.includes('ORIENTADOR')) return 'ORIENTADOR';
+                    if (jf.includes('CONVIVENCIA')) return 'ENCARGADO(A) CONVIVENCIA ESCOLAR';
+                    return 'NINGUNO';
+                  })()}
+                  onChange={e => {
+                    const selRole = e.target.value;
+                    setEditingUser((prev: any) => {
+                      const prevRoles = parseRolesList(prev.roles, prev.role);
+                      let newJob = prev.job_function;
+                      let updatedRoles = [...prevRoles];
+                      let newRole = prev.role;
+
+                      if (selRole === 'NINGUNO') {
+                        if (newJob === 'DIRECTOR(A)' || newJob === 'INSPECTOR GENERAL' || newJob === 'JEFE UNIDAD TÉCNICO-PEDAGÓGICA' || newJob === 'COORDINADOR(A) PIE' || newJob === 'ORIENTADOR' || newJob === 'ENCARGADO(A) CONVIVENCIA ESCOLAR') {
+                          newJob = 'Docente de Aula';
+                        }
+                      } else {
+                        newJob = selRole;
+                        if (!updatedRoles.includes('Director')) updatedRoles.push('Director');
+                        if (selRole === 'DIRECTOR(A)' || selRole === 'JEFE UNIDAD TÉCNICO-PEDAGÓGICA' || selRole === 'INSPECTOR GENERAL') {
+                          newRole = 'Director';
+                        }
+                      }
+
+                      return {
+                        ...prev,
+                        job_function: newJob,
+                        roles: updatedRoles,
+                        role: newRole
+                      };
+                    });
+                  }}
+                  style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: '6px', border: '1px solid #86efac', fontWeight: 700, fontSize: '0.8rem', color: '#14532d', background: '#ffffff' }}
+                >
+                  <option value="NINGUNO">-- Ninguno (Docente / Asistente / Funcionario Regular) --</option>
+                  <option value="DIRECTOR(A)">🎓 Director(a) del Establecimiento</option>
+                  <option value="INSPECTOR GENERAL">🛡️ Inspector(a) General</option>
+                  <option value="JEFE UNIDAD TÉCNICO-PEDAGÓGICA">📚 Jefe(a) Unidad Técnica Pedagógica (UTP)</option>
+                  <option value="COORDINADOR(A) PIE">🧩 Coordinador(a) Proyecto de Integración Escolar (PIE)</option>
+                  <option value="ORIENTADOR">🧭 Orientador(a) Educacional</option>
+                  <option value="ENCARGADO(A) CONVIVENCIA ESCOLAR">🤝 Encargado(a) de Convivencia Escolar</option>
+                </select>
+                <div style={{ fontSize: '0.7rem', color: '#15803d', marginTop: '0.25rem' }}>
+                  El funcionario seleccionado será reconocido automáticamente para emitir y firmar los documentos oficiales correspondientes a su cargo.
                 </div>
               </div>
 

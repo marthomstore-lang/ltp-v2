@@ -76,6 +76,8 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
             setDirectorName(data.directorName.toUpperCase());
           }
           if (data.directorRun && data.directorRun !== '11.111.111-1') setDirectorRun(data.directorRun);
+          if (data.utpName) setUtpName(data.utpName.toUpperCase());
+          if (data.utpRun) setUtpRun(data.utpRun);
         }
       })
       .catch(() => {});
