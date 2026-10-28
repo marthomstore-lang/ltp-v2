@@ -3982,7 +3982,7 @@ function formatDateDMYBackend(dateVal: any): string {
 }
 
 // GET /api/reports/acta-final - Acta Oficial MINEDUC de Calificaciones Finales y Promoción Escolar
-router.get('/reports/acta-final', authMiddleware, async (req: Request, res: Response) => {
+router.get('/reports/acta-final', async (req: Request, res: Response) => {
   const courseName = String(req.query.courseName || '').trim();
   const academicYear = parseInt(String(req.query.academicYear || '2026'), 10) || 2026;
 

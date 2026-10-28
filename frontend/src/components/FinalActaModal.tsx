@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Printer, Settings, Award, AlertCircle, RefreshCw } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 interface SubjectColumn {
   colNumber: number;
@@ -102,16 +103,22 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
     return `${today.getDate()} de ${meses[today.getMonth()]} de ${today.getFullYear()}`;
   });
 
-  const token = localStorage.getItem('token') || '';
+  const { token: authContextToken } = useAuth();
+  const token = authContextToken || sessionStorage.getItem('ltp_token') || localStorage.getItem('ltp_token') || localStorage.getItem('token') || '';
 
   const loadActa = async () => {
     setLoading(true);
     setError(null);
     try {
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch(
-        `/api/reports/acta-final?courseName=${encodeURIComponent(courseName)}&academicYear=${academicYear}`,
+        `/api/reports/acta-final?courseName=${encodeURIComponent(courseName)}&academicYear=${academicYear}${token ? `&token=${encodeURIComponent(token)}` : ''}`,
         {
-          headers: { Authorization: `Bearer ${token}` }
+          headers
         }
       );
       if (!res.ok) {
