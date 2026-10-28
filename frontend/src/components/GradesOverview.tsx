@@ -3,6 +3,7 @@ import { BookOpen, Award, AlertTriangle, CheckCircle2, X, ChevronRight, ChevronD
 import { useAuth } from '../context/AuthContext';
 import { PrintGradeReportModal } from './PrintGradeReportModal';
 import { FinalActaModal } from './FinalActaModal';
+import { PrintPanoramaReportModal } from './PrintPanoramaReportModal';
 import { isStudentRetired, getStudentWithdrawalDate, sortCoursesList, getStudentCourse } from '../utils/course';
 
 interface SubjectGradeDetail {
@@ -17,7 +18,7 @@ interface StudentSubjectPerformance {
   grades: SubjectGradeDetail[];
 }
 
-interface StudentData {
+export interface StudentData {
   number: number;
   id: string;
   fullName: string;
@@ -30,7 +31,7 @@ interface StudentData {
   subjectGrades: Record<string, StudentSubjectPerformance>;
 }
 
-interface CourseSubject {
+export interface CourseSubject {
   name: string;
   teacher: string;
   status: 'CON NOTAS' | 'SIN NOTAS';
@@ -73,7 +74,7 @@ const getConceptBadgeStyle = (concept: string) => {
   }
 };
 
-interface CourseData {
+export interface CourseData {
   courseName: string;
   promedioCurso: number;
   alumnosRegistrados: number;
@@ -200,6 +201,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
   // ESTADOS PARA MODAL DE IMPRESIÓN DE INFORMES DE NOTAS Y ACTA OFICIAL MINEDUC
   const [showPrintReportsModal, setShowPrintReportsModal] = useState<boolean>(false);
   const [showFinalActaModal, setShowFinalActaModal] = useState<boolean>(false);
+  const [showPrintPanoramaModal, setShowPrintPanoramaModal] = useState<boolean>(false);
   const [initialPrintStudentId, setInitialPrintStudentId] = useState<string | undefined>(undefined);
 
   // ESTRUCTURA VACÍA POR DEFECTO PARA CURSOS SIN NOTAS EN BASE DE DATOS
@@ -270,7 +272,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
   };
 
   const handlePrint = () => {
-    window.print();
+    setShowPrintPanoramaModal(true);
   };
 
   if (loadingCourses && coursesList.length === 0) {
@@ -1419,6 +1421,18 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
           courseName={currentCourseData.courseName}
           academicYear={selectedYear}
           onClose={() => setShowFinalActaModal(false)}
+        />
+      )}
+
+      {/* MODAL INFORME DETALLADO DE PANORAMA Y RENDIMIENTO DEL CURSO */}
+      {showPrintPanoramaModal && (
+        <PrintPanoramaReportModal
+          courseName={currentCourseData.courseName}
+          academicYear={selectedYear}
+          period={selectedPeriod}
+          homeroomTeacher={realStudents.find(r => r.id === currentCourseData.students[0]?.id)?.profesor_jefe || undefined}
+          courseData={currentCourseData}
+          onClose={() => setShowPrintPanoramaModal(false)}
         />
       )}
 
