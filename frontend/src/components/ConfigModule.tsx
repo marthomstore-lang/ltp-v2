@@ -455,7 +455,13 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
-          setSubjectsList(data.map((s, i) => ({ id: s.id || i + 1, name: s.name, order: i + 1 })));
+          setSubjectsList(data.map((s, i) => ({
+            id: s.id || i + 1,
+            name: s.name,
+            mineduc_code: s.mineduc_code,
+            official_name: s.official_name,
+            order: i + 1
+          })));
         }
       })
       .catch(() => {});
@@ -726,6 +732,33 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
   const [editingAssignment, setEditingAssignment] = useState<any | null>(null);
   const [showAssignmentModal, setShowAssignmentModal] = useState<boolean>(false);
   const [newAssignment, setNewAssignment] = useState({ teacherName: '', teacherName2: '', levelName: '', subjectName: '' });
+
+  // Catálogo Oficial MINEDUC (9.504 subsectores)
+  const [mineducSearchQuery, setMineducSearchQuery] = useState<string>('');
+  const [mineducCatalogResults, setMineducCatalogResults] = useState<any[]>([]);
+  const [mineducSearching, setMineducSearching] = useState<boolean>(false);
+
+  const searchMineducCatalog = async (q: string) => {
+    setMineducSearchQuery(q);
+    if (!q || q.trim().length < 2) {
+      setMineducCatalogResults([]);
+      return;
+    }
+    setMineducSearching(true);
+    try {
+      const res = await fetch(`/api/mineduc/subsectors?q=${encodeURIComponent(q.trim())}&limit=20`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMineducCatalogResults(Array.isArray(data) ? data : []);
+      }
+    } catch (_) {
+      setMineducCatalogResults([]);
+    } finally {
+      setMineducSearching(false);
+    }
+  };
 
   // 1. Usuarios (Cargados desde la base de datos)
   const [usersList, setUsersList] = useState<any[]>([]);
@@ -1627,7 +1660,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
     }
   };
 
-  // GUARDAR EDICIÓN DE ASIGNATURAS
+  // GUARDAR EDICIÓN DE ASIGNATURAS Y HOMOLOGACIÓN MINEDUC
   const handleSaveSubjectEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSubject?.name?.trim()) {
@@ -1636,11 +1669,17 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
     }
 
     try {
+      const payload = {
+        name: editingSubject.name.trim(),
+        mineduc_code: editingSubject.mineduc_code ? parseInt(String(editingSubject.mineduc_code), 10) : null,
+        official_name: (editingSubject.official_name || editingSubject.name).trim()
+      };
+
       if (editingSubject.isNew) {
         const res = await fetch('/api/subjects', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ name: editingSubject.name.trim() })
+          body: JSON.stringify(payload)
         });
         if (!res.ok) {
           const err = await res.json();
@@ -1651,7 +1690,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
         const res = await fetch(`/api/subjects/${editingSubject.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ name: editingSubject.name.trim() })
+          body: JSON.stringify(payload)
         });
         if (!res.ok) {
           const err = await res.json();
@@ -1662,12 +1701,21 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
 
       Swal.fire('Guardado', `Asignatura "${editingSubject.name}" guardada exitosamente`, 'success');
       setEditingSubject(null);
+      setMineducCatalogResults([]);
+      setMineducSearchQuery('');
+
       // Recargar desde base de datos
       fetch('/api/subjects', { headers: { Authorization: `Bearer ${token}` } })
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
-            setSubjectsList(data.map((s, i) => ({ id: s.id || i + 1, name: s.name, order: i + 1 })));
+            setSubjectsList(data.map((s, i) => ({
+              id: s.id || i + 1,
+              name: s.name,
+              mineduc_code: s.mineduc_code,
+              official_name: s.official_name,
+              order: i + 1
+            })));
           }
         })
         .catch(() => {});
@@ -3680,33 +3728,71 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
         </div>
       )}
 
-      {/* SUB-VENTANA 6.2: ASIGNATURAS */}
+      {/* SUB-VENTANA 6.2: ASIGNATURAS Y CATÁLOGO MINEDUC */}
       {subTab === 'subjects' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-            <h3>Directorio de Asignaturas Impartidas</h3>
-            <button onClick={() => setEditingSubject({ isNew: true, name: '', order: subjectsList.length + 1 })} className="btn btn-primary">+ Nueva Asignatura</button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ margin: 0, fontWeight: 800 }}>Directorio de Asignaturas y Catálogo MINEDUC</h3>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                Homologación oficial de asignaturas impartidas con el catálogo de 9.504 subsectores MINEDUC para Actas Oficiales y SIGE.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setEditingSubject({ isNew: true, name: '', mineduc_code: '', official_name: '', order: subjectsList.length + 1 });
+                setMineducSearchQuery('');
+                setMineducCatalogResults([]);
+              }}
+              className="btn btn-primary"
+            >
+              + Nueva Asignatura
+            </button>
           </div>
           <div className="table-container">
             <table>
               <thead>
                 <tr>
-                  <th>ID</th>
+                  <th style={{ width: '50px' }}>ID</th>
+                  <th style={{ width: '110px' }}>Cód. MINEDUC</th>
                   <th>Nombre Materia</th>
+                  <th>Subsector Oficial MINEDUC</th>
                   <th>Validación checkSubjectGrades</th>
-                  <th>Acciones</th>
+                  <th style={{ width: '170px' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {subjectsList.map(s => (
                   <tr key={s.id}>
                     <td>{s.id}</td>
+                    <td>
+                      {s.mineduc_code ? (
+                        <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 800, fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                          #{s.mineduc_code}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#94a3b8', fontSize: '0.75rem', fontStyle: 'italic' }}>Sin vincular</span>
+                      )}
+                    </td>
                     <td><strong>{s.name}</strong></td>
+                    <td>
+                      <span style={{ color: s.official_name ? '#1e293b' : '#94a3b8', fontSize: '0.8rem', fontWeight: 600 }}>
+                        {s.official_name || s.name}
+                      </span>
+                    </td>
                     <td><span style={{ color: '#10b981', fontSize: '0.8rem', fontWeight: 600 }}>✅ Protegida con Notas</span></td>
                     <td>
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
-                        <button onClick={() => setEditingSubject({ ...s })} className="btn btn-primary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}>
-                          <Edit size={12} /> Editar
+                        <button
+                          onClick={() => {
+                            setEditingSubject({ ...s });
+                            setMineducSearchQuery(s.mineduc_code ? `${s.mineduc_code} - ${s.official_name || s.name}` : '');
+                            setMineducCatalogResults([]);
+                          }}
+                          className="btn btn-primary"
+                          style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+                        >
+                          <Edit size={12} /> Editar / Homologar
                         </button>
                         <button
                           onClick={() => handleDeleteSubject(s)}
@@ -5329,32 +5415,148 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
         </div>
       )}
 
-      {/* MODAL 3: EDICIÓN DE ASIGNATURAS (SUB-VENTANA 6.2) */}
+      {/* MODAL 3: EDICIÓN DE ASIGNATURAS Y HOMOLOGACIÓN MINEDUC (SUB-VENTANA 6.2) */}
       {editingSubject && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.75)', zIndex: 3000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem' }}>
-          <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.75rem', width: '100%', maxWidth: '440px' }}>
+          <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.75rem', width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#4f46e5' }}>
-                {editingSubject.isNew ? 'Crear Nueva Asignatura' : 'Editar Asignatura'}
-              </h3>
-              <button onClick={() => setEditingSubject(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+              <div>
+                <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#4f46e5', margin: 0 }}>
+                  {editingSubject.isNew ? 'Crear Nueva Asignatura' : 'Editar y Homologar Asignatura'}
+                </h3>
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                  Vinculación oficial con el Catálogo de 9.504 Subsectores MINEDUC
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingSubject(null);
+                  setMineducCatalogResults([]);
+                  setMineducSearchQuery('');
+                }}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* BÚSQUEDA INTERACTIVA EN CATÁLOGO MINEDUC */}
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '1rem', marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.35rem' }}>
+                🔍 Buscar Subsector Oficial MINEDUC (9.504 disponibles)
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  value={mineducSearchQuery}
+                  onChange={e => searchMineducCatalog(e.target.value)}
+                  placeholder="Escriba código o nombre oficial (ej: 14, Matemática, Soldadura...)"
+                  style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                />
+                {mineducSearching && (
+                  <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', color: '#64748b' }}>
+                    Buscando...
+                  </span>
+                )}
+              </div>
+
+              {mineducCatalogResults.length > 0 && (
+                <div style={{ marginTop: '0.5rem', maxHeight: '160px', overflowY: 'auto', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
+                  {mineducCatalogResults.map((sub: any) => (
+                    <div
+                      key={sub.code}
+                      onClick={() => {
+                        setEditingSubject({
+                          ...editingSubject,
+                          mineduc_code: sub.code,
+                          official_name: sub.name,
+                          name: editingSubject.name ? editingSubject.name : sub.name
+                        });
+                        setMineducCatalogResults([]);
+                        setMineducSearchQuery(`${sub.code} - ${sub.name}`);
+                      }}
+                      style={{
+                        padding: '0.45rem 0.75rem',
+                        borderBottom: '1px solid #f1f5f9',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f0fdf4')}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                    >
+                      <div>
+                        <span style={{ fontWeight: 800, color: '#4f46e5', marginRight: '6px' }}>[{sub.code}]</span>
+                        <span style={{ fontWeight: 600, color: '#1e293b' }}>{sub.name}</span>
+                      </div>
+                      <span style={{ fontSize: '0.7rem', color: '#64748b', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
+                        {sub.area || 'General'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <form onSubmit={handleSaveSubjectEdit}>
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>Nombre de la Asignatura</label>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>
+                  Nombre Local en Plataforma
+                </label>
                 <input
                   type="text"
                   value={editingSubject.name || ''}
                   onChange={e => setEditingSubject({ ...editingSubject, name: e.target.value })}
-                  placeholder="Ej: Matemática"
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                  placeholder="Ej: Lengua y Literatura"
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                 />
               </div>
 
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>
+                    Cód. MINEDUC
+                  </label>
+                  <input
+                    type="number"
+                    value={editingSubject.mineduc_code || ''}
+                    onChange={e => setEditingSubject({ ...editingSubject, mineduc_code: e.target.value })}
+                    placeholder="Ej: 14"
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontFamily: 'monospace' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>
+                    Nombre Oficial MINEDUC (para Actas)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingSubject.official_name || ''}
+                    onChange={e => setEditingSubject({ ...editingSubject, official_name: e.target.value })}
+                    placeholder="Ej: LENGUAJE Y COMUNICACIÓN"
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', textTransform: 'uppercase' }}
+                  />
+                </div>
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" onClick={() => setEditingSubject(null)} className="btn" style={{ background: '#cbd5e1' }}>Cancelar</button>
-                <button type="submit" className="btn btn-primary"><Save size={16} /> Guardar</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingSubject(null);
+                    setMineducCatalogResults([]);
+                    setMineducSearchQuery('');
+                  }}
+                  className="btn"
+                  style={{ background: '#cbd5e1' }}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  <Save size={16} /> Guardar Asignatura
+                </button>
               </div>
             </form>
           </div>

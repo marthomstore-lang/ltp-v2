@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { BookOpen, Award, AlertTriangle, CheckCircle2, X, ChevronRight, ChevronDown, User, Printer, RefreshCw, BarChart3, Users } from 'lucide-react';
+import { BookOpen, Award, AlertTriangle, CheckCircle2, X, ChevronRight, ChevronDown, User, Printer, RefreshCw, BarChart3, Users, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { PrintGradeReportModal } from './PrintGradeReportModal';
+import { FinalActaModal } from './FinalActaModal';
 import { isStudentRetired, getStudentWithdrawalDate, sortCoursesList, getStudentCourse } from '../utils/course';
 
 interface SubjectGradeDetail {
@@ -196,8 +197,9 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
   const [selectedSubjectModal, setSelectedSubjectModal] = useState<CourseSubject | null>(null);
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
 
-  // ESTADOS PARA MODAL DE IMPRESIÓN DE INFORMES DE NOTAS
+  // ESTADOS PARA MODAL DE IMPRESIÓN DE INFORMES DE NOTAS Y ACTA OFICIAL MINEDUC
   const [showPrintReportsModal, setShowPrintReportsModal] = useState<boolean>(false);
+  const [showFinalActaModal, setShowFinalActaModal] = useState<boolean>(false);
   const [initialPrintStudentId, setInitialPrintStudentId] = useState<string | undefined>(undefined);
 
   // ESTRUCTURA VACÍA POR DEFECTO PARA CURSOS SIN NOTAS EN BASE DE DATOS
@@ -414,6 +416,14 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1.1rem', borderRadius: '8px', border: 'none', background: '#0284c7', color: '#ffffff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)' }}
           >
             <Printer size={16} /> Imprimir Informes
+          </button>
+
+          <button
+            onClick={() => setShowFinalActaModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1.1rem', borderRadius: '8px', border: 'none', background: '#059669', color: '#ffffff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 2px 4px rgba(5, 150, 105, 0.25)' }}
+            title="Generar Acta Oficial de Calificaciones Finales y Promoción Escolar (Decreto 67 MINEDUC)"
+          >
+            <FileText size={16} /> Acta Final MINEDUC
           </button>
         </div>
       </div>
@@ -1400,6 +1410,15 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
               homeroomTeacher: realStudents.find(r => r.id === st.id)?.profesor_jefe || undefined
             };
           })}
+        />
+      )}
+
+      {/* MODAL ACTA OFICIAL DE CALIFICACIONES FINALES Y PROMOCIÓN ESCOLAR (MINEDUC) */}
+      {showFinalActaModal && (
+        <FinalActaModal
+          courseName={currentCourseData.courseName}
+          academicYear={selectedYear}
+          onClose={() => setShowFinalActaModal(false)}
         />
       )}
 
