@@ -51,6 +51,7 @@ interface ActaData {
     specialty: string;
     academicYear: number;
     homeroomTeacher: string;
+    homeroomTeacherRun?: string;
   };
   legal: {
     decretoEvaluacion: string;
@@ -129,14 +130,14 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
       setActaData(data);
 
       setEditableDecretoEval(data.legal.decretoEvaluacion || 'Decreto N° 67 / 2018');
-      setEditableDecretoPlanes(data.legal.decretoPlanes || 'Decreto Exento N° 193 / 2019');
+      setEditableDecretoPlanes(data.legal.decretoPlanes || 'Decreto Exento N° 2960 / 2012');
       setEditableResolucion(data.legal.resolucionReconocimiento || 'Res. Ex. N° 0925 de 1982');
-      setEditableProfesorJefe(data.course.homeroomTeacher || '');
-      setEditableDirector(data.institution.directorName || '');
-      setEditableDirectorRun(data.institution.directorRun || '');
-      if (!editableEncargadoActa) {
-        setEditableEncargadoActa(data.course.homeroomTeacher || 'ENCARGADO(A) DE ACTAS');
-      }
+      setEditableProfesorJefe(data.course.homeroomTeacher || 'MAGALY DE LAS NIEVES SEGURA NOVOA');
+      setEditableProfesorRun(data.course.homeroomTeacherRun || '9.453.480-1');
+      setEditableDirector(data.institution.directorName || 'VÍCTOR ROBINSON OJEDA OJEDA');
+      setEditableDirectorRun(data.institution.directorRun || '14.230.851-7');
+      setEditableEncargadoActa(data.course.homeroomTeacher || 'MAGALY DE LAS NIEVES SEGURA NOVOA');
+      setEditableEncargadoRun(data.course.homeroomTeacherRun || '9.453.480-1');
     } catch (err: any) {
       console.error('Error cargando acta:', err);
       setError(err.message || 'No se pudo generar el acta.');

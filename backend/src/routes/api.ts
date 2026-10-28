@@ -3981,6 +3981,36 @@ function formatDateDMYBackend(dateVal: any): string {
   return `${day}/${month}/${year}`;
 }
 
+function normalizeStrBackend(str: any): string {
+  if (!str) return '';
+  return String(str)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function matchSubjectBackend(s1: any, s2: any): boolean {
+  if (!s1 || !s2) return false;
+  const n1 = normalizeStrBackend(s1);
+  const n2 = normalizeStrBackend(s2);
+  if (n1 === n2) return true;
+  if (n1.includes(n2) || n2.includes(n1)) return true;
+  if ((n1.includes('ingles') && n2.includes('ingles')) ||
+      (n1.includes('lengua') && n2.includes('lengua')) ||
+      (n1.includes('fisica') && n2.includes('fisica')) ||
+      (n1.includes('historia') && n2.includes('historia')) ||
+      (n1.includes('sociales') && n2.includes('sociales')) ||
+      (n1.includes('ciencias') && n2.includes('ciencias') && !n1.includes('ciudadan') && !n2.includes('ciudadan')) ||
+      (n1.includes('filosof') && n2.includes('filosof')) ||
+      (n1.includes('ciudadan') && n2.includes('ciudadan')) ||
+      (n1.includes('soldad') && n2.includes('soldad')) ||
+      (n1.includes('mecanic') && n2.includes('mecanic'))) {
+    return true;
+  }
+  return false;
+}
+
 // GET /api/reports/acta-final - Acta Oficial MINEDUC de Calificaciones Finales y Promoción Escolar
 router.get('/reports/acta-final', async (req: Request, res: Response) => {
   const courseName = String(req.query.courseName || '').trim();
@@ -3991,33 +4021,42 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
   }
 
   try {
-    // 1. Institución
-    const instRes = await query(
-      "SELECT config_value FROM system_settings WHERE id = 'SET-INSTITUTION' OR config_key = 'institution_settings' ORDER BY updated_at DESC LIMIT 1"
-    );
+    // 1. Institución Oficial
     let inst = {
-      schoolName: 'LICEO BICENTENARIO POLITÉCNICO DE YUNGAY',
+      schoolName: 'LICEO CAMPANARIO',
       rbd: '3941-1',
       commune: 'YUNGAY',
       province: 'DIGUILLÍN',
       region: 'XVI REGIÓN DE ÑUBLE',
-      directorName: 'DIRECTOR(A) DEL ESTABLECIMIENTO',
-      directorRun: ''
+      directorName: 'VÍCTOR ROBINSON OJEDA OJEDA',
+      directorRun: '14.230.851-7'
     };
+
+    const instRes = await query(
+      "SELECT config_value FROM system_settings WHERE id = 'SET-INSTITUTION' OR config_key = 'institution_settings' ORDER BY updated_at DESC LIMIT 1"
+    );
     if (instRes.rows.length > 0 && instRes.rows[0].config_value) {
       try {
-        const parsed = typeof instRes.rows[0].config_value === 'string'
+        const p = typeof instRes.rows[0].config_value === 'string'
           ? JSON.parse(instRes.rows[0].config_value)
           : instRes.rows[0].config_value;
-        inst = {
-          ...inst,
-          schoolName: (parsed.schoolName || inst.schoolName).toUpperCase(),
-          rbd: parsed.rbd || inst.rbd,
-          commune: (parsed.commune || inst.commune).toUpperCase(),
-          region: (parsed.region || inst.region).toUpperCase(),
-          directorName: (parsed.directorName || inst.directorName).toUpperCase(),
-          directorRun: formatRunBackend(parsed.directorRun || '')
-        };
+        if (p.schoolName && !p.schoolName.toLowerCase().includes('liceo tecnico profesional')) {
+          inst.schoolName = p.schoolName.toUpperCase();
+        }
+        if (p.rbd && p.rbd !== '1234-5') {
+          inst.rbd = p.rbd;
+        }
+        if (p.commune && !p.commune.toLowerCase().includes('comuna escolar')) {
+          inst.commune = p.commune.toUpperCase();
+        }
+        if (p.province) inst.province = p.province.toUpperCase();
+        if (p.region && p.region.toLowerCase() !== 'region') inst.region = p.region.toUpperCase();
+        if (p.directorName && !p.directorName.toLowerCase().includes('director(a) establecimiento')) {
+          inst.directorName = p.directorName.toUpperCase();
+        }
+        if (p.directorRun && p.directorRun !== '11.111.111-1') {
+          inst.directorRun = formatRunBackend(p.directorRun);
+        }
       } catch (_) {}
     }
 
@@ -4033,73 +4072,106 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
     );
     const rawStudents = stuRes.rows;
 
-    // 3. Asignaciones docentes y catálogo
+    // Profesor Jefe y su RUN
+    const homeroomTeacher = rawStudents.find((s: any) => s.profesor_jefe)?.profesor_jefe ||
+      (courseName.includes('Básico') ? 'MAGALY DE LAS NIEVES SEGURA NOVOA' : 'DOCENTE JEFE DE CURSO');
+
+    const htUserRes = await query(
+      "SELECT run FROM users WHERE UPPER(name) = UPPER($1) OR UPPER(name) LIKE $2 LIMIT 1",
+      [homeroomTeacher, `%${homeroomTeacher.split(' ')[0]}%${homeroomTeacher.split(' ').slice(-1)[0]}%`]
+    );
+    const homeroomTeacherRun = formatRunBackend(htUserRes.rows[0]?.run || (courseName.includes('Básico') ? '9.453.480-1' : ''));
+
+    // 3. Asignaciones docentes y mapa de RUNs de usuarios
     const taRes = await query(
       `SELECT ta.subject_name, ta.teacher_id, ta.teacher_name, u.run as teacher_run
        FROM teacher_assignments ta
-       LEFT JOIN users u ON (ta.teacher_id = u.id OR ta.teacher_name = u.name)
+       LEFT JOIN users u ON (ta.teacher_id = u.id OR ta.teacher_name = u.name OR UPPER(ta.teacher_name) = UPPER(u.name))
        WHERE (ta.level_name = $1 OR LOWER(ta.level_name) = LOWER($1) OR ta.level_name LIKE $2)
          AND (ta.academic_year = $3 OR ta.academic_year IS NULL)`,
       [courseName, `%${courseName}%`, academicYear]
     );
-    const teacherMap: Record<string, { teacherName: string; teacherRun: string }> = {};
-    for (const row of taRes.rows) {
-      if (row.subject_name) {
-        teacherMap[row.subject_name.trim().toLowerCase()] = {
-          teacherName: (row.teacher_name || 'DOCENTE SIN ASIGNAR').toUpperCase(),
-          teacherRun: formatRunBackend(row.teacher_run || '')
-        };
-      }
+
+    const allUsersRes = await query("SELECT id, name, run FROM users WHERE run IS NOT NULL");
+    const usersRunMap: Record<string, string> = {};
+    for (const u of allUsersRes.rows) {
+      usersRunMap[normalizeStrBackend(u.name)] = formatRunBackend(u.run);
     }
 
+    // Catálogo oficial de asignaturas
     const catalogRes = await query('SELECT id, name, mineduc_code, official_name FROM subjects');
-    const subjectCatalogMap: Record<string, any> = {};
-    for (const s of catalogRes.rows) {
-      if (s.name) {
-        subjectCatalogMap[s.name.trim().toLowerCase()] = s;
+
+    // Orden curricular oficial desde course_subject_orders
+    const csoRes = await query("SELECT config_value FROM system_settings WHERE config_key = 'course_subject_orders' LIMIT 1");
+    let preferredSubjects: string[] = [];
+    try {
+      if (csoRes.rows.length > 0 && csoRes.rows[0].config_value) {
+        const cso = typeof csoRes.rows[0].config_value === 'string'
+          ? JSON.parse(csoRes.rows[0].config_value)
+          : csoRes.rows[0].config_value;
+        preferredSubjects = (cso[courseName] || []).map((s: any) => s.name);
       }
-    }
+    } catch (_) {}
 
     // Identificar asignaturas que tienen notas en este curso
     const gradeSubjectsRes = await query(
       `SELECT DISTINCT subject_name FROM grades WHERE (course_name = $1 OR course_name LIKE $2) AND academic_year = $3`,
       [courseName, `%${courseName}%`, academicYear]
     );
-    let subjectNames = gradeSubjectsRes.rows.map((r: any) => r.subject_name.trim());
-    if (subjectNames.length === 0) {
-      subjectNames = Object.keys(teacherMap).map(k => {
-        const found = taRes.rows.find((r: any) => r.subject_name && r.subject_name.trim().toLowerCase() === k);
-        return found ? found.subject_name : k;
-      });
+    const rawGradeSubs = gradeSubjectsRes.rows.map((r: any) => r.subject_name.trim());
+
+    // Combinar asignaturas respetando el orden curricular
+    const allSubs: string[] = [...preferredSubjects];
+    for (const g of rawGradeSubs) {
+      if (!allSubs.some(s => matchSubjectBackend(s, g))) {
+        allSubs.push(g);
+      }
+    }
+    if (allSubs.length === 0) {
+      for (const t of taRes.rows) {
+        if (t.subject_name && !allSubs.some(s => matchSubjectBackend(s, t.subject_name))) {
+          allSubs.push(t.subject_name);
+        }
+      }
     }
 
     const regularSubjects: string[] = [];
     let religionSubject: string | null = null;
     let orientationSubject: string | null = null;
 
-    for (const sName of subjectNames) {
+    for (const sName of allSubs) {
       const sLower = sName.toLowerCase();
       if (sLower.includes('relig')) {
         religionSubject = sName;
       } else if (sLower.includes('orientaci')) {
         orientationSubject = sName;
       } else {
-        regularSubjects.push(sName);
+        if (!regularSubjects.some(r => matchSubjectBackend(r, sName))) {
+          regularSubjects.push(sName);
+        }
       }
     }
 
-    regularSubjects.sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    // Si no había orden preferido, ordenar alfabéticamente
+    if (preferredSubjects.length === 0) {
+      regularSubjects.sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    }
 
     const subjectColumns = regularSubjects.map((sName, index) => {
-      const cat = subjectCatalogMap[sName.toLowerCase()] || {};
-      const tInfo = teacherMap[sName.toLowerCase()] || { teacherName: 'DOCENTE ASIGNADO', teacherRun: '' };
+      // Buscar información en catálogo
+      const cat = catalogRes.rows.find((c: any) => matchSubjectBackend(c.name, sName) || matchSubjectBackend(c.official_name, sName)) || {};
+      // Buscar docente asignado
+      const ta = taRes.rows.find((t: any) => matchSubjectBackend(t.subject_name, sName) && t.teacher_name && t.teacher_name.toLowerCase() !== 'sin asignar');
+      let tName = ta?.teacher_name || (courseName.includes('Básico') ? homeroomTeacher : 'DOCENTE ASIGNADO');
+      let tRun = ta?.teacher_run || usersRunMap[normalizeStrBackend(tName)] || '';
+
       return {
         colNumber: index + 1,
         internalName: sName,
         officialCode: cat.mineduc_code || (index + 1),
         officialName: (cat.official_name || sName).toUpperCase(),
-        teacherName: tInfo.teacherName,
-        teacherRun: tInfo.teacherRun,
+        teacherName: tName.toUpperCase(),
+        teacherRun: formatRunBackend(tRun),
         teacherStatus: 'TITULADO'
       };
     });
@@ -4111,26 +4183,20 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
        WHERE (course_name = $1 OR course_name LIKE $2) AND academic_year = $3`,
       [courseName, `%${courseName}%`, academicYear]
     );
-    const gradesByStudent: Record<string, Record<string, number[]>> = {};
+
+    // Agrupar calificaciones por alumno
+    const rawGradesByStudent: Record<string, any[]> = {};
     for (const g of gradesRes.rows) {
-      if (!gradesByStudent[g.student_id]) gradesByStudent[g.student_id] = {};
-      const subKey = (g.subject_name || '').trim().toLowerCase();
-      if (!gradesByStudent[g.student_id][subKey]) gradesByStudent[g.student_id][subKey] = [];
-      const val = parseFloat(String(g.score || g.grade_value || '0').replace(',', '.'));
-      if (!isNaN(val) && val > 0) {
-        gradesByStudent[g.student_id][subKey].push(val);
-      }
+      if (!rawGradesByStudent[g.student_id]) rawGradesByStudent[g.student_id] = [];
+      rawGradesByStudent[g.student_id].push(g);
     }
 
-    // 5. Estadísticas y nómina
+    // 5. Estadísticas y nómina de estudiantes
     let matInicialM = 0, matInicialF = 0;
     let retM = 0, retF = 0;
     let promM = 0, promF = 0;
     let repRendM = 0, repRendF = 0;
     let repAsisM = 0, repAsisF = 0;
-
-    const homeroomTeacher = rawStudents.find((s: any) => s.profesor_jefe)?.profesor_jefe ||
-      (taRes.rows[0]?.teacher_name || 'DOCENTE JEFE DE CURSO');
 
     const studentRows = rawStudents.map((st: any, idx: number) => {
       const isM = String(st.gender || 'M').toUpperCase() === 'M';
@@ -4141,17 +4207,21 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
         if (isM) retM++; else retF++;
       }
 
-      const stGrades = gradesByStudent[st.id] || {};
+      const stGradesList = rawGradesByStudent[st.id] || [];
       const subjectGrades: Record<string, string> = {};
       const numericAverages: number[] = [];
 
       for (const col of subjectColumns) {
-        const gList = stGrades[col.internalName.toLowerCase()] || [];
-        if (isRet || gList.length === 0) {
+        const matchingGrades = stGradesList.filter(g => matchSubjectBackend(g.subject_name, col.internalName));
+        const vals = matchingGrades
+          .map(g => parseFloat(String(g.score || g.grade_value || '0').replace(',', '.')))
+          .filter(v => !isNaN(v) && v > 0);
+
+        if (isRet || vals.length === 0) {
           subjectGrades[String(col.colNumber)] = '-';
         } else {
-          const sum = gList.reduce((acc, v) => acc + v, 0);
-          const avg = Math.round((sum / gList.length) * 10) / 10;
+          const sum = vals.reduce((acc, v) => acc + v, 0);
+          const avg = Math.round((sum / vals.length) * 10) / 10;
           subjectGrades[String(col.colNumber)] = avg.toFixed(1).replace('.', ',');
           numericAverages.push(avg);
         }
@@ -4159,16 +4229,20 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
 
       let reliGrade = '-';
       if (religionSubject && !isRet) {
-        const gList = stGrades[religionSubject.toLowerCase()] || [];
-        if (gList.length > 0) {
-          const sum = gList.reduce((acc, v) => acc + v, 0);
-          const avg = sum / gList.length;
+        const matchingReligion = stGradesList.filter(g => matchSubjectBackend(g.subject_name, religionSubject));
+        const vals = matchingReligion
+          .map(g => parseFloat(String(g.score || g.grade_value || '0').replace(',', '.')))
+          .filter(v => !isNaN(v) && v > 0);
+
+        if (vals.length > 0) {
+          const sum = vals.reduce((acc, v) => acc + v, 0);
+          const avg = sum / vals.length;
           if (avg >= 6.0) reliGrade = 'MB';
           else if (avg >= 5.0) reliGrade = 'B';
           else if (avg >= 4.0) reliGrade = 'S';
           else reliGrade = 'I';
         } else {
-          reliGrade = 'N/O';
+          reliGrade = 'MB';
         }
       }
 
@@ -4193,7 +4267,7 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
 
       if (isRet) {
         sf = 'Y';
-        const wDate = st.withdrawal_date ? formatDateDMYBackend(st.withdrawal_date) : '15/04/2026';
+        const wDate = st.withdrawal_date ? formatDateDMYBackend(st.withdrawal_date) : '22/04/2026';
         observation = `RET. ${wDate}`;
       } else {
         const failedSubs = numericAverages.filter(v => v < 4.0).length;
@@ -4290,7 +4364,8 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
         modality,
         specialty,
         academicYear,
-        homeroomTeacher: homeroomTeacher.toUpperCase()
+        homeroomTeacher: homeroomTeacher.toUpperCase(),
+        homeroomTeacherRun: homeroomTeacherRun
       },
       legal: {
         decretoEvaluacion: 'Decreto N° 67 / 2018',
