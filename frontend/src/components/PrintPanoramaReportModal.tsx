@@ -25,7 +25,7 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
   const token = authContextToken || sessionStorage.getItem('ltp_token') || localStorage.getItem('ltp_token') || localStorage.getItem('token') || '';
 
   const [showConfig, setShowConfig] = useState<boolean>(false);
-  const [fontScale, setFontScale] = useState<'tiny' | 'compact' | 'normal'>('compact');
+  const [fontScale, setFontScale] = useState<'normal' | 'compact' | 'large'>('normal');
 
   const [schoolName, setSchoolName] = useState<string>('LICEO CAMPANARIO');
   const [rbd, setRbd] = useState<string>('3941-1');
@@ -99,71 +99,71 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
 
   // Definición de multiplicador de fuentes según escala seleccionada
   const typography = {
-    tiny: {
-      headerSchool: '9.5px',
-      headerRbd: '7px',
-      headerUtp: '6.5px',
-      titleMain: '8.5px',
-      titleSub: '7.5px',
-      kpiTitle: '6px',
-      kpiNumber: '11px',
-      kpiSub: '5.5px',
-      sectionTitle: '7px',
-      tableHeader: '5.8px',
-      tableCell: '5.5px',
-      matrixNames: '5.6px',
-      matrixRun: '5.2px',
-      matrixGrade: '5.6px',
-      matrixRowHeight: '9.5px',
-      boxPadding: '2px 4px',
-      signaturesPadding: '14px 4px 3px 4px',
-      signaturesMinHeight: '42px',
-      signaturesName: '6.5px',
-      footer: '5.5px'
-    },
     compact: {
-      headerSchool: '10.5px',
-      headerRbd: '7.5px',
-      headerUtp: '7px',
-      titleMain: '9.5px',
-      titleSub: '8.5px',
-      kpiTitle: '6.5px',
-      kpiNumber: '13px',
-      kpiSub: '6px',
-      sectionTitle: '7.5px',
-      tableHeader: '6.5px',
-      tableCell: '6.2px',
-      matrixNames: '6.2px',
-      matrixRun: '5.8px',
-      matrixGrade: '6.2px',
-      matrixRowHeight: '11px',
-      boxPadding: '3px 6px',
-      signaturesPadding: '18px 4px 4px 4px',
-      signaturesMinHeight: '48px',
-      signaturesName: '7px',
-      footer: '6px'
-    },
-    normal: {
-      headerSchool: '11.5px',
+      headerSchool: '11px',
       headerRbd: '8.5px',
-      headerUtp: '7.5px',
+      headerUtp: '7.8px',
       titleMain: '10.5px',
-      titleSub: '9.5px',
+      titleSub: '9.2px',
       kpiTitle: '7.5px',
       kpiNumber: '15px',
-      kpiSub: '6.8px',
-      sectionTitle: '8.5px',
-      tableHeader: '7.5px',
-      tableCell: '7px',
-      matrixNames: '7px',
-      matrixRun: '6.5px',
-      matrixGrade: '7px',
-      matrixRowHeight: '13px',
-      boxPadding: '4px 8px',
-      signaturesPadding: '24px 6px 6px 6px',
-      signaturesMinHeight: '60px',
-      signaturesName: '8px',
-      footer: '6.8px'
+      kpiSub: '7px',
+      sectionTitle: '9px',
+      tableHeader: '8.2px',
+      tableCell: '8px',
+      matrixNames: '8.5px',
+      matrixRun: '8.5px',
+      matrixGrade: '8.5px',
+      matrixRowPadding: '2.5px 3px',
+      boxPadding: '3px 6px',
+      signaturesPadding: '18px 4px 4px 4px',
+      signaturesMinHeight: '52px',
+      signaturesName: '8.5px',
+      footer: '7.5px'
+    },
+    normal: {
+      headerSchool: '13px',
+      headerRbd: '9.5px',
+      headerUtp: '8.5px',
+      titleMain: '11.5px',
+      titleSub: '10px',
+      kpiTitle: '8.5px',
+      kpiNumber: '18px',
+      kpiSub: '8px',
+      sectionTitle: '10px',
+      tableHeader: '9.5px',
+      tableCell: '9.5px',
+      matrixNames: '10px',
+      matrixRun: '9.5px',
+      matrixGrade: '10px',
+      matrixRowPadding: '4px 5px',
+      boxPadding: '5px 8px',
+      signaturesPadding: '26px 6px 6px 6px',
+      signaturesMinHeight: '65px',
+      signaturesName: '10px',
+      footer: '8.5px'
+    },
+    large: {
+      headerSchool: '14.5px',
+      headerRbd: '10.5px',
+      headerUtp: '9.5px',
+      titleMain: '13px',
+      titleSub: '11px',
+      kpiTitle: '9.5px',
+      kpiNumber: '21px',
+      kpiSub: '9px',
+      sectionTitle: '11.5px',
+      tableHeader: '11px',
+      tableCell: '10.5px',
+      matrixNames: '11px',
+      matrixRun: '10.5px',
+      matrixGrade: '11px',
+      matrixRowPadding: '5.5px 6px',
+      boxPadding: '6px 10px',
+      signaturesPadding: '32px 8px 8px 8px',
+      signaturesMinHeight: '75px',
+      signaturesName: '11px',
+      footer: '9.5px'
     }
   }[fontScale];
 
@@ -228,54 +228,54 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
             <span style={{ marginRight: '2px' }}>Letra:</span>
             <button
               type="button"
-              onClick={() => setFontScale('tiny')}
-              style={{
-                padding: '0.2rem 0.45rem',
-                borderRadius: '4px',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: fontScale === 'tiny' ? 700 : 500,
-                backgroundColor: fontScale === 'tiny' ? '#2563eb' : '#334155',
-                color: '#fff',
-                fontSize: '0.7rem'
-              }}
-              title="Letra muy compacta para optimizar espacio"
-            >
-              Muy Chica
-            </button>
-            <button
-              type="button"
-              onClick={() => setFontScale('compact')}
-              style={{
-                padding: '0.2rem 0.45rem',
-                borderRadius: '4px',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: fontScale === 'compact' ? 700 : 500,
-                backgroundColor: fontScale === 'compact' ? '#2563eb' : '#334155',
-                color: '#fff',
-                fontSize: '0.7rem'
-              }}
-              title="Tamaño recomendado y equilibrado"
-            >
-              Chica (Recomendada)
-            </button>
-            <button
-              type="button"
               onClick={() => setFontScale('normal')}
               style={{
-                padding: '0.2rem 0.45rem',
+                padding: '0.25rem 0.55rem',
                 borderRadius: '4px',
                 border: 'none',
                 cursor: 'pointer',
                 fontWeight: fontScale === 'normal' ? 700 : 500,
                 backgroundColor: fontScale === 'normal' ? '#2563eb' : '#334155',
                 color: '#fff',
-                fontSize: '0.7rem'
+                fontSize: '0.72rem'
               }}
-              title="Tamaño original más legible"
+              title="Tamaño nítido, claro y 100% legible (Recomendado)"
             >
-              Normal
+              Normal (Legible)
+            </button>
+            <button
+              type="button"
+              onClick={() => setFontScale('compact')}
+              style={{
+                padding: '0.25rem 0.55rem',
+                borderRadius: '4px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: fontScale === 'compact' ? 700 : 500,
+                backgroundColor: fontScale === 'compact' ? '#2563eb' : '#334155',
+                color: '#fff',
+                fontSize: '0.72rem'
+              }}
+              title="Tamaño optimizado para cursos con más de 35 estudiantes"
+            >
+              Compacta
+            </button>
+            <button
+              type="button"
+              onClick={() => setFontScale('large')}
+              style={{
+                padding: '0.25rem 0.55rem',
+                borderRadius: '4px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: fontScale === 'large' ? 700 : 500,
+                backgroundColor: fontScale === 'large' ? '#2563eb' : '#334155',
+                color: '#fff',
+                fontSize: '0.72rem'
+              }}
+              title="Tamaño de letra grande para máxima visualización"
+            >
+              Grande
             </button>
           </div>
 
@@ -613,16 +613,16 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
               </thead>
               <tbody>
                 {courseData.subjects.map((sub, i) => (
-                  <tr key={i} style={{ height: typography.matrixRowHeight, borderBottom: '1px solid #000' }}>
-                    <td style={{ border: '1px solid #000', padding: '1.5px 4px', fontWeight: 700 }}>{sub.name}</td>
-                    <td style={{ border: '1px solid #000', padding: '1.5px 4px' }}>{sub.teacher || teacherName}</td>
-                    <td style={{ border: '1px solid #000', textAlign: 'center', fontFamily: 'monospace' }}>
+                  <tr key={i} style={{ borderBottom: '1px solid #000' }}>
+                    <td style={{ border: '1px solid #000', padding: typography.matrixRowPadding, fontWeight: 700 }}>{sub.name}</td>
+                    <td style={{ border: '1px solid #000', padding: typography.matrixRowPadding }}>{sub.teacher || teacherName}</td>
+                    <td style={{ border: '1px solid #000', padding: typography.matrixRowPadding, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
                       {sub.registeredCount} {sub.registeredCount === 1 ? 'nota' : 'notas'}
                     </td>
-                    <td style={{ border: '1px solid #000', textAlign: 'center', fontFamily: 'monospace', fontWeight: 800, color: sub.courseAverage >= 4.0 ? '#047857' : '#b91c1c' }}>
+                    <td style={{ border: '1px solid #000', padding: typography.matrixRowPadding, textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: sub.courseAverage >= 4.0 ? '#047857' : '#b91c1c' }}>
                       {sub.courseAverage > 0 ? sub.courseAverage.toFixed(1) : '-'}
                     </td>
-                    <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 700, color: sub.status === 'CON NOTAS' ? '#047857' : '#d97706' }}>
+                    <td style={{ border: '1px solid #000', padding: typography.matrixRowPadding, textAlign: 'center', fontWeight: 700, color: sub.status === 'CON NOTAS' ? '#047857' : '#d97706' }}>
                       {sub.status === 'CON NOTAS' ? 'CON NOTAS' : 'PENDIENTE'}
                     </td>
                   </tr>
@@ -649,11 +649,11 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
             >
               <thead>
                 <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '1px solid #000' }}>
-                  <th style={{ border: '1px solid #000', padding: '2px 2px', width: '18px', textAlign: 'center', fontSize: typography.tableHeader }}>N°</th>
-                  <th style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', minWidth: '150px', fontSize: typography.tableHeader }}>
+                  <th style={{ border: '1px solid #000', padding: '3px 2px', width: '22px', textAlign: 'center', fontSize: typography.tableHeader }}>N°</th>
+                  <th style={{ border: '1px solid #000', padding: '3px 6px', textAlign: 'left', minWidth: '180px', fontSize: typography.tableHeader }}>
                     APELLIDOS Y NOMBRES
                   </th>
-                  <th style={{ border: '1px solid #000', padding: '2px 2px', width: '54px', textAlign: 'center', fontSize: typography.tableHeader }}>R.U.N.</th>
+                  <th style={{ border: '1px solid #000', padding: '3px 4px', width: '80px', minWidth: '80px', textAlign: 'center', fontSize: typography.tableHeader, whiteSpace: 'nowrap' }}>R.U.N.</th>
 
                   {/* COLUMNAS POR ASIGNATURA */}
                   {regularSubjects.map((sub, idx) => (
@@ -661,8 +661,9 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
                       key={idx}
                       style={{
                         border: '1px solid #000',
-                        padding: '1px 1px',
-                        width: '22px',
+                        padding: '3px 2px',
+                        width: '28px',
+                        minWidth: '28px',
                         textAlign: 'center',
                         fontSize: typography.tableHeader
                       }}
@@ -672,10 +673,10 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
                     </th>
                   ))}
 
-                  <th style={{ border: '1px solid #000', padding: '2px 2px', width: '20px', textAlign: 'center', color: '#047857', fontSize: typography.tableHeader }}>AZ</th>
-                  <th style={{ border: '1px solid #000', padding: '2px 2px', width: '20px', textAlign: 'center', color: '#b91c1c', fontSize: typography.tableHeader }}>RO</th>
-                  <th style={{ border: '1px solid #000', padding: '2px 2px', width: '26px', textAlign: 'center', backgroundColor: '#e2e8f0', fontWeight: 900, fontSize: typography.tableHeader }}>PROM</th>
-                  <th style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', width: '55px', fontSize: typography.tableHeader }}>ESTADO</th>
+                  <th style={{ border: '1px solid #000', padding: '3px 2px', width: '24px', textAlign: 'center', color: '#047857', fontSize: typography.tableHeader }}>AZ</th>
+                  <th style={{ border: '1px solid #000', padding: '3px 2px', width: '24px', textAlign: 'center', color: '#b91c1c', fontSize: typography.tableHeader }}>RO</th>
+                  <th style={{ border: '1px solid #000', padding: '3px 2px', width: '32px', textAlign: 'center', backgroundColor: '#e2e8f0', fontWeight: 900, fontSize: typography.tableHeader }}>PROM</th>
+                  <th style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', width: '68px', fontSize: typography.tableHeader, whiteSpace: 'nowrap' }}>ESTADO</th>
                 </tr>
               </thead>
               <tbody>
@@ -685,16 +686,15 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
                     <tr
                       key={st.id}
                       style={{
-                        height: typography.matrixRowHeight,
                         borderBottom: '1px solid #000',
                         backgroundColor: hasRedAvg ? '#fee2e2' : st.rojas > 0 ? '#fffbeb' : 'transparent'
                       }}
                     >
-                      <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 700, fontSize: typography.matrixGrade }}>{st.number}</td>
-                      <td style={{ border: '1px solid #000', padding: '1px 3px', fontWeight: 600, fontSize: typography.matrixNames, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <td style={{ border: '1px solid #000', textAlign: 'center', padding: typography.matrixRowPadding, fontWeight: 700, fontSize: typography.matrixGrade }}>{st.number}</td>
+                      <td style={{ border: '1px solid #000', padding: typography.matrixRowPadding, fontWeight: 700, fontSize: typography.matrixNames, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {st.fullName.toUpperCase()}
                       </td>
-                      <td style={{ border: '1px solid #000', textAlign: 'center', fontFamily: 'monospace', fontSize: typography.matrixRun }}>{st.run}</td>
+                      <td style={{ border: '1px solid #000', textAlign: 'center', padding: typography.matrixRowPadding, fontVariantNumeric: 'tabular-nums', fontWeight: 600, letterSpacing: '0.2px', fontSize: typography.matrixRun, whiteSpace: 'nowrap' }}>{st.run}</td>
 
                       {/* NOTAS POR ASIGNATURA */}
                       {regularSubjects.map((sub, idx) => {
@@ -708,7 +708,8 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
                             style={{
                               border: '1px solid #000',
                               textAlign: 'center',
-                              fontFamily: 'monospace',
+                              padding: typography.matrixRowPadding,
+                              fontVariantNumeric: 'tabular-nums',
                               fontWeight: avgVal !== '-' ? 700 : 400,
                               fontSize: typography.matrixGrade,
                               color: isRed ? '#b91c1c' : '#000000'
@@ -719,16 +720,17 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
                         );
                       })}
 
-                      <td style={{ border: '1px solid #000', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, fontSize: typography.matrixGrade, color: '#047857' }}>
+                      <td style={{ border: '1px solid #000', textAlign: 'center', padding: typography.matrixRowPadding, fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: typography.matrixGrade, color: '#047857' }}>
                         {st.azules}
                       </td>
-                      <td style={{ border: '1px solid #000', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, fontSize: typography.matrixGrade, color: st.rojas > 0 ? '#b91c1c' : '#94a3b8' }}>
+                      <td style={{ border: '1px solid #000', textAlign: 'center', padding: typography.matrixRowPadding, fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: typography.matrixGrade, color: st.rojas > 0 ? '#b91c1c' : '#94a3b8' }}>
                         {st.rojas}
                       </td>
                       <td style={{
                         border: '1px solid #000',
                         textAlign: 'center',
-                        fontFamily: 'monospace',
+                        padding: typography.matrixRowPadding,
+                        fontVariantNumeric: 'tabular-nums',
                         fontWeight: 900,
                         fontSize: typography.matrixGrade,
                         backgroundColor: '#f1f5f9',
@@ -739,8 +741,10 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
                       <td style={{
                         border: '1px solid #000',
                         textAlign: 'center',
-                        fontSize: typography.matrixRun,
+                        padding: typography.matrixRowPadding,
+                        fontSize: typography.tableCell,
                         fontWeight: 800,
+                        whiteSpace: 'nowrap',
                         color: hasRedAvg ? '#b91c1c' : st.rojas > 0 ? '#d97706' : '#047857'
                       }}>
                         {hasRedAvg ? 'EN RIESGO' : st.rojas > 0 ? 'CON ROJAS' : 'AL DÍA'}
