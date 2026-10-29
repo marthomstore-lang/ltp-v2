@@ -754,6 +754,41 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
                 })}
               </tbody>
             </table>
+
+            {/* LEYENDA Y GLOSARIO DE ABREVIATURAS DE LA MATRIZ */}
+            <div
+              className="page-break-avoid"
+              style={{
+                marginTop: '6px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#f8fafc',
+                padding: '4px 8px',
+                fontSize: typography.footer,
+                color: '#334155',
+                lineHeight: 1.4
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '2px', color: '#0f172a', letterSpacing: '0.2px' }}>
+                <span>📌 GLOSARIO DE ABREVIATURAS DEL INFORME:</span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px' }}>
+                <span><strong>R.U.N.:</strong> Rol Único Nacional</span>
+                <span><strong style={{ color: '#047857' }}>AZ (Azules):</strong> Total notas aprobadas (≥ 4.0)</span>
+                <span><strong style={{ color: '#b91c1c' }}>RO (Rojas):</strong> Total notas reprobadas (&lt; 4.0)</span>
+                <span><strong>PROM:</strong> Promedio general ponderado del estudiante</span>
+                <span><strong>AL DÍA:</strong> Sin asignaturas reprobadas</span>
+                <span><strong>CON ROJAS:</strong> Presenta calificaciones insuficientes (&lt; 4.0)</span>
+                <span><strong>EN RIESGO:</strong> Promedio general insuficiente (&lt; 4.0)</span>
+              </div>
+              {regularSubjects.length > 0 && (
+                <div style={{ marginTop: '3px', borderTop: '1px dotted #cbd5e1', paddingTop: '3px', display: 'flex', flexWrap: 'wrap', gap: '5px 12px' }}>
+                  <strong style={{ color: '#475569' }}>Asignaturas:</strong>
+                  {regularSubjects.map((sub, idx) => (
+                    <span key={idx}><strong>{sub.name.slice(0, 4).toUpperCase()}:</strong> {sub.name}</span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* ========================================================== */}
