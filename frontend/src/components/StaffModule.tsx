@@ -230,16 +230,30 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ token }) => {
   const handleDeleteStaff = (id: string, name: string) => {
     Swal.fire({
       title: '¿Eliminar Funcionario?',
-      text: `¿Estás seguro de desvincular el registro de ${name}?`,
+      text: `¿Estás seguro de desvincular y eliminar el registro de ${name} de la base de datos?`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#ef4444',
       confirmButtonText: 'Sí, eliminar',
       cancelButtonText: 'Cancelar'
-    }).then(result => {
+    }).then(async result => {
       if (result.isConfirmed) {
-        setStaffList(prev => prev.filter(s => s.id !== id));
-        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Funcionario eliminado', timer: 1200, showConfirmButton: false });
+        try {
+          const res = await fetch(`/api/users/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) {
+            setStaffList(prev => prev.filter(s => s.id !== id));
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Funcionario ${name} eliminado`, timer: 1500, showConfirmButton: false });
+            fetchStaffData();
+          } else {
+            Swal.fire('Error', data.error || 'No se pudo eliminar el funcionario.', 'error');
+          }
+        } catch (_) {
+          Swal.fire('Error', 'Error de conexión al eliminar funcionario.', 'error');
+        }
       }
     });
   };

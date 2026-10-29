@@ -2544,6 +2544,103 @@ router.put('/users/:id', authMiddleware, checkRoles(['Admin', 'Director']), asyn
   }
 });
 
+// ELIMINAR USUARIO / FUNCIONARIO DE LA BASE DE DATOS
+router.delete('/users/:id', authMiddleware, checkRoles(['Admin']), async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const targetId = String(id || '').trim();
+
+  try {
+    // 1. Buscar usuario a eliminar
+    const uRes = await query(
+      `SELECT id, name, run, email, role FROM users 
+       WHERE id = $1 
+          OR run = $1 
+          OR REPLACE(REPLACE(run, '.', ''), '-', '') = REPLACE(REPLACE($1, '.', ''), '-', '')
+       LIMIT 1`,
+      [targetId]
+    );
+
+    if (uRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado en la base de datos.' });
+    }
+
+    const userToDelete = uRes.rows[0];
+
+    // Proteger al usuario en sesión para que no se autoelimine
+    const currentRequesterRun = (req as any).user?.run || '';
+    const currentRequesterId = (req as any).user?.id || '';
+    if (
+      userToDelete.id === currentRequesterId ||
+      (currentRequesterRun && userToDelete.run && userToDelete.run.replace(/[^0-9kK]/g, '') === currentRequesterRun.replace(/[^0-9kK]/g, ''))
+    ) {
+      return res.status(400).json({ error: 'No puedes eliminar tu propia cuenta de usuario en sesión activa.' });
+    }
+
+    const cleanRun = String(userToDelete.run || '').replace(/\./g, '').trim();
+    const alnumRun = cleanRun.replace(/[^0-9kK]/g, '');
+
+    // 2. Limpiar registros vinculados
+    // a. Desvincular de jefaturas de curso
+    await query("UPDATE courses SET teacher = 'Sin Asignar' WHERE teacher = $1 OR teacher = $2", [userToDelete.name, `Prof. ${userToDelete.name}`]).catch(() => {});
+
+    // b. Eliminar permisos de matriz
+    await query("DELETE FROM user_permissions WHERE user_id = $1 OR user_id = $2", [userToDelete.id, targetId]).catch(() => {});
+
+    // c. Eliminar de staff_profiles
+    await query(
+      `DELETE FROM staff_profiles 
+       WHERE id = $1 
+          OR user_id = $1 
+          OR user_id = $2 
+          OR run = $3 
+          OR run = $4 
+          OR REPLACE(REPLACE(run, '.', ''), '-', '') = $5`,
+      [userToDelete.id, targetId, userToDelete.run, cleanRun, alnumRun]
+    ).catch(() => {});
+
+    // d. Eliminar finalmente de users
+    await query(
+      `DELETE FROM users 
+       WHERE id = $1 
+          OR id = $2 
+          OR run = $3 
+          OR run = $4 
+          OR REPLACE(REPLACE(run, '.', ''), '-', '') = $5`,
+      [userToDelete.id, targetId, userToDelete.run, cleanRun, alnumRun]
+    );
+
+    // e. Si pertenecía al equipo directivo en institution_settings, actualizar
+    try {
+      const instSettings = await getInstitutionalSettingsHelper();
+      let changed = false;
+      const rolesKeys = ['director', 'inspectorGeneral', 'utp', 'pieCoordinator', 'orientador', 'convivencia'];
+      for (const k of rolesKeys) {
+        if (instSettings[`${k}Id`] === userToDelete.id || instSettings[`${k}Run`] === userToDelete.run) {
+          instSettings[`${k}Id`] = '';
+          instSettings[`${k}Name`] = '';
+          instSettings[`${k}Run`] = '';
+          instSettings[`${k}Email`] = '';
+          changed = true;
+        }
+      }
+      if (changed) {
+        const serialized = JSON.stringify(instSettings);
+        await query(
+          "INSERT INTO system_settings (id, config_key, config_value, updated_at) VALUES ('SET-INSTITUTION', 'institution_settings', $1, NOW()) ON CONFLICT (id) DO UPDATE SET config_value = $1, updated_at = NOW()",
+          [serialized]
+        );
+      }
+    } catch (_) {}
+
+    await logAudit(req, 'DELETE_USER', `Usuario ${userToDelete.name} (${userToDelete.run || userToDelete.id}) eliminado de la base de datos`);
+
+    res.json({ success: true, message: `Usuario "${userToDelete.name}" eliminado correctamente.` });
+  } catch (err: any) {
+    console.error('Error al eliminar usuario:', err);
+    res.status(500).json({ error: err.message || 'Error interno al eliminar usuario de la base de datos.' });
+  }
+});
+
 // -----------------------------------------------------------------------------
 // GESTIÓN DE FUNCIONARIOS Y CARGOS INSTITUCIONALES (DOCENTES Y ASISTENTES)
 // -----------------------------------------------------------------------------
@@ -3422,25 +3519,28 @@ export async function getInstitutionalSettingsHelper() {
     inspectorGeneralRun: '8.095.478-6',
     inspectorGeneralEmail: '8095478@liceocampanario.cl',
 
-    utpId: 'USR-19251099',
-    utpName: 'Scarlette Catalina Burgos Sandoval',
-    utpRun: '19.251.099-6',
-    utpEmail: 'scarlette.burgos@eduvallediguillin.gob.cl',
+    // ENROQUE: JULIO ES JEFE DE UTP
+    utpId: 'USR-17246556',
+    utpName: 'José Julio Ignacio Lizama Alarcón',
+    utpRun: '17.246.556-0',
+    utpEmail: 'julio.lizama@eduvallediguillin.gob.cl',
 
-    pieCoordinatorId: 'USR-17246556',
-    pieCoordinatorName: 'José Julio Ignacio Lizama Alarcón',
-    pieCoordinatorRun: '17246556-0',
-    pieCoordinatorEmail: 'julio.lizama@eduvallediguillin.gob.cl',
+    // ENROQUE: SCARLETTE ES COORDINADORA PIE
+    pieCoordinatorId: 'USR-19251099',
+    pieCoordinatorName: 'Scarlette Catalina Burgos Sandoval',
+    pieCoordinatorRun: '19.251.099-6',
+    pieCoordinatorEmail: 'scarlette.burgos@eduvallediguillin.gob.cl',
 
     orientadorId: 'USR-7253290',
     orientadorName: 'Carlos Fernando Aranda Pino',
     orientadorRun: '7.253.290-2',
     orientadorEmail: '7253290@liceocampanario.cl',
 
-    convivenciaId: 'USR-17756494',
-    convivenciaName: 'Angela Soledad Avilés Avilés',
-    convivenciaRun: '17.756.494-K',
-    convivenciaEmail: '17756494@liceocampanario.cl',
+    // CONVIVENCIA ESCOLAR: CAMILA CARRASCO
+    convivenciaId: 'USR-17152906',
+    convivenciaName: 'Camila Elizabeth Carrasco Cordero',
+    convivenciaRun: '17.152.906-9',
+    convivenciaEmail: '17152906@liceocampanario.cl',
 
     ...fileSettings,
     ...(dbSettings || {})
@@ -4120,8 +4220,8 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
       region: (instHelper.region || 'XVI REGIÓN DE ÑUBLE').toUpperCase(),
       directorName: (instHelper.directorName || 'VÍCTOR ROBINSON OJEDA OJEDA').toUpperCase(),
       directorRun: formatRunBackend(instHelper.directorRun || '14.230.851-7'),
-      utpName: (instHelper.utpName || 'SCARLETTE CATALINA BURGOS SANDOVAL').toUpperCase(),
-      utpRun: formatRunBackend(instHelper.utpRun || '19.251.099-6'),
+      utpName: (instHelper.utpName || 'JOSÉ JULIO IGNACIO LIZAMA ALARCÓN').toUpperCase(),
+      utpRun: formatRunBackend(instHelper.utpRun || '17.246.556-0'),
       inspectorGeneralName: (instHelper.inspectorGeneralName || 'ERNESTO ALFONSO BÓRQUEZ CÁRDENAS').toUpperCase(),
       inspectorGeneralRun: formatRunBackend(instHelper.inspectorGeneralRun || '8.095.478-6')
     };

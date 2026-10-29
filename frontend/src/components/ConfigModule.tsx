@@ -1540,15 +1540,17 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
   const handleDeleteUser = (u: any) => {
     confirmDelete(u.name, async () => {
       try {
-        const res = await fetch(`/api/users/${u.id}`, {
+        const targetIdentifier = encodeURIComponent(u.id || u.run);
+        const res = await fetch(`/api/users/${targetIdentifier}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
         });
+        const data = await res.json().catch(() => ({}));
         if (res.ok) {
           Swal.fire('Eliminado', `Usuario "${u.name}" eliminado de la base de datos.`, 'success');
           fetchUsers();
         } else {
-          Swal.fire('Error', 'No se pudo eliminar de la base de datos.', 'error');
+          Swal.fire('Error', data.error || 'No se pudo eliminar de la base de datos.', 'error');
         }
       } catch (err) {
         Swal.fire('Error', 'Error de conexión al servidor.', 'error');
