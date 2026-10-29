@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutGrid, List, BookOpen, Star, AlertTriangle, ArrowRight, Calendar, UserCheck, Search, Filter, MessageSquare, Users, CalendarDays } from 'lucide-react';
+import { LayoutGrid, List, BookOpen, Star, AlertTriangle, ArrowRight, Calendar, UserCheck, Search, Filter, MessageSquare, Users, CalendarDays, Award, TrendingUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getStudentCourse, sortCoursesList } from '../utils/course';
 import { CourseMessageModal } from './CourseMessageModal';
@@ -78,6 +78,7 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
   const [assignments, setAssignments] = useState<any[]>([]);
   const [coursesInfo, setCoursesInfo] = useState<any[]>([]);
   const [rawStudents, setRawStudents] = useState<any[]>([]);
+  const [averagesSummary, setAveragesSummary] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [showModal, setShowModal] = useState<boolean>(false);
   const [modalCourse, setModalCourse] = useState<string>('');
@@ -91,6 +92,22 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim();
+
+  const getCanonicalSubGroup = (nameOrId: any): string => {
+    const n = normalizeStr(nameOrId);
+    if (n.includes('fisica') || n.includes('salud')) return 'eq_ed_fisica';
+    if (n.includes('ingles') || n.includes('idioma')) return 'eq_ingles';
+    if (n.includes('lengua') || n.includes('comunicac') || n.includes('literatur')) return 'eq_lenguaje';
+    if (n.includes('tecnolog')) return 'eq_tecnologia';
+    if (n.includes('arte') || n.includes('visual')) return 'eq_arte';
+    if (n.includes('music')) return 'eq_musica';
+    if (n.includes('historia') || n.includes('social')) return 'eq_historia';
+    if (n.includes('ciencia') || n.includes('natural') || n.includes('biolog') || n.includes('quimic')) return 'eq_ciencias';
+    if (n.includes('matemat')) return 'eq_matematica';
+    if (n.includes('orientac')) return 'eq_orientacion';
+    if (n.includes('relig')) return 'eq_religion';
+    return n;
+  };
 
   const isUserMatch = (cand: any) => {
     if (!user || !cand) return false;
@@ -126,17 +143,19 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
     Promise.all([
       fetch('/api/assignments', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => []),
       fetch('/api/courses', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => ({ courses: [] })),
-      fetch('/api/students', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => ([]))
-    ]).then(([assignmentsData, coursesRes, studentsData]) => {
+      fetch('/api/students', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => []),
+      fetch(`/api/grades/averages-summary?year=${selectedYear}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => [])
+    ]).then(([assignmentsData, coursesRes, studentsData, averagesData]) => {
       setAssignments(Array.isArray(assignmentsData) ? assignmentsData : []);
       setCoursesInfo((coursesRes && Array.isArray(coursesRes.courses)) ? coursesRes.courses : []);
       setRawStudents(Array.isArray(studentsData) ? studentsData : []);
+      setAveragesSummary(Array.isArray(averagesData) ? averagesData : []);
     }).catch(err => {
       console.error('Error cargando datos de cursos asignados:', err);
     }).finally(() => {
       setLoading(false);
     });
-  }, [token]);
+  }, [token, selectedYear]);
 
   // Determinar si el usuario es profesor jefe de un curso
   const isHomeroomTeacherOf = (courseName: string): boolean => {
@@ -221,6 +240,78 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
       normalizeStr(c.subjectName).includes(term)
     );
   }, [cardsList, searchTerm]);
+
+  // Cálculo de promedios para cada tarjeta
+  const getCardAverages = (card: TeacherAssignmentCard) => {
+    const nCourse = normalizeStr(card.courseName);
+    if (card.isHomeroom) {
+      const courseRows = averagesSummary.filter(row => {
+        const rC = normalizeStr(row.course_name);
+        return rC === nCourse || rC.includes(nCourse) || nCourse.includes(rC);
+      });
+      if (courseRows.length === 0) return { avgS1: null, avgS2: null, avgAnual: null, totalStudents: 0 };
+      
+      const s1Vals = courseRows.map(r => parseFloat(r.avg_s1)).filter(v => !isNaN(v) && v > 0);
+      const s2Vals = courseRows.map(r => parseFloat(r.avg_s2)).filter(v => !isNaN(v) && v > 0);
+      const anVals = courseRows.map(r => parseFloat(r.avg_anual)).filter(v => !isNaN(v) && v > 0);
+
+      const avgS1 = s1Vals.length > 0 ? Number((s1Vals.reduce((a, b) => a + b, 0) / s1Vals.length).toFixed(1)) : null;
+      const avgS2 = s2Vals.length > 0 ? Number((s2Vals.reduce((a, b) => a + b, 0) / s2Vals.length).toFixed(1)) : null;
+      const avgAnual = anVals.length > 0 ? Number((anVals.reduce((a, b) => a + b, 0) / anVals.length).toFixed(1)) : null;
+      return { avgS1, avgS2, avgAnual, totalStudents: courseRows[0]?.total_students || 0 };
+    }
+
+    const nSub = getCanonicalSubGroup(card.subjectName);
+    const rawSub = normalizeStr(card.subjectName);
+
+    const match = averagesSummary.find(row => {
+      const rC = normalizeStr(row.course_name);
+      const isCourseMatch = rC === nCourse || rC.includes(nCourse) || nCourse.includes(rC);
+      if (!isCourseMatch) return false;
+      const rS = getCanonicalSubGroup(row.subject_name);
+      const rRaw = normalizeStr(row.subject_name);
+      return rS === nSub || rRaw === rawSub || rRaw.includes(rawSub) || rawSub.includes(rRaw);
+    });
+
+    if (!match) return { avgS1: null, avgS2: null, avgAnual: null, totalStudents: 0 };
+    return {
+      avgS1: match.avg_s1 ? parseFloat(match.avg_s1) : null,
+      avgS2: match.avg_s2 ? parseFloat(match.avg_s2) : null,
+      avgAnual: match.avg_anual ? parseFloat(match.avg_anual) : null,
+      totalStudents: parseInt(match.total_students || '0', 10)
+    };
+  };
+
+  // Resumen global de promedios para el docente
+  const teacherStats = useMemo(() => {
+    const s1List: number[] = [];
+    const s2List: number[] = [];
+    const anList: number[] = [];
+    let evaluatedCards = 0;
+
+    filteredCards.forEach(c => {
+      if (c.isHomeroom) return;
+      const avgs = getCardAverages(c);
+      if (avgs.avgS1) s1List.push(avgs.avgS1);
+      if (avgs.avgS2) s2List.push(avgs.avgS2);
+      if (avgs.avgAnual) {
+        anList.push(avgs.avgAnual);
+        evaluatedCards++;
+      }
+    });
+
+    const teacherS1 = s1List.length > 0 ? (s1List.reduce((a, b) => a + b, 0) / s1List.length).toFixed(1) : null;
+    const teacherS2 = s2List.length > 0 ? (s2List.reduce((a, b) => a + b, 0) / s2List.length).toFixed(1) : null;
+    const teacherAnual = anList.length > 0 ? (anList.reduce((a, b) => a + b, 0) / anList.length).toFixed(1) : null;
+
+    return {
+      teacherS1,
+      teacherS2,
+      teacherAnual,
+      totalCards: filteredCards.length,
+      evaluatedCards
+    };
+  }, [filteredCards, averagesSummary]);
 
   return (
     <div style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -332,6 +423,108 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
         </div>
       </div>
 
+      {/* BANNER DE RESUMEN DE PROMEDIOS DEL DOCENTE */}
+      {!loading && filteredCards.length > 0 && (
+        <div style={{
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%)',
+          borderRadius: '16px',
+          padding: '1.25rem 1.5rem',
+          marginBottom: '1.75rem',
+          color: '#ffffff',
+          boxShadow: '0 8px 20px -4px rgba(30, 27, 75, 0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '1.25rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '12px',
+              background: 'rgba(255, 255, 255, 0.12)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backdropFilter: 'blur(8px)',
+              flexShrink: 0
+            }}>
+              <Award size={26} color="#fbbf24" />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#c7d2fe', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Rendimiento Académico Docente • Año {selectedYear}
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0.15rem 0 0 0', color: '#ffffff' }}>
+                Resumen de Promedios Semestrales y Anuales
+              </h3>
+              <div style={{ fontSize: '0.8rem', color: '#e0e7ff', marginTop: '0.2rem' }}>
+                {isAdmin ? 'Vista General de Asignaturas' : `Docente: ${user?.name || 'Profesor'}`} • {teacherStats.totalCards} asignación(es) ({teacherStats.evaluatedCards} con notas evaluadas)
+              </div>
+            </div>
+          </div>
+
+          {/* INDICADORES CLAVE KPI */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            
+            {/* 1er Semestre */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.12)',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              borderRadius: '12px',
+              padding: '0.55rem 0.95rem',
+              textAlign: 'center',
+              minWidth: '105px'
+            }}>
+              <div style={{ fontSize: '0.68rem', color: '#93c5fd', fontWeight: 700, textTransform: 'uppercase' }}>1° Semestre</div>
+              <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#ffffff', lineHeight: 1.15, marginTop: '2px' }}>
+                {teacherStats.teacherS1 ? teacherStats.teacherS1.replace('.', ',') : '—'}
+              </div>
+              <div style={{ fontSize: '0.65rem', color: '#c7d2fe' }}>Promedio S1</div>
+            </div>
+
+            {/* 2do Semestre */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.12)',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              borderRadius: '12px',
+              padding: '0.55rem 0.95rem',
+              textAlign: 'center',
+              minWidth: '105px'
+            }}>
+              <div style={{ fontSize: '0.68rem', color: '#86efac', fontWeight: 700, textTransform: 'uppercase' }}>2° Semestre</div>
+              <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#ffffff', lineHeight: 1.15, marginTop: '2px' }}>
+                {teacherStats.teacherS2 ? teacherStats.teacherS2.replace('.', ',') : '—'}
+              </div>
+              <div style={{ fontSize: '0.65rem', color: '#c7d2fe' }}>Promedio S2</div>
+            </div>
+
+            {/* Promedio Anual ⭐ */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(217, 119, 6, 0.35) 100%)',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(251, 191, 36, 0.45)',
+              borderRadius: '12px',
+              padding: '0.55rem 1.1rem',
+              textAlign: 'center',
+              minWidth: '115px'
+            }}>
+              <div style={{ fontSize: '0.68rem', color: '#fef08a', fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                ⭐ Prom. Anual
+              </div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#fef08a', lineHeight: 1.15, marginTop: '2px' }}>
+                {teacherStats.teacherAnual ? teacherStats.teacherAnual.replace('.', ',') : '—'}
+              </div>
+              <div style={{ fontSize: '0.65rem', color: '#fde68a' }}>Consolidado Anual</div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* ESTADO DE CARGA */}
       {loading && (
         <CardSkeletonGrid count={6} />
@@ -362,6 +555,7 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
         }}>
           {filteredCards.map(card => {
             const bgImage = getSubjectImage(card.subjectName, card.isHomeroom);
+            const avgs = getCardAverages(card);
 
             return (
               <div
@@ -464,8 +658,71 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
                   </p>
                 </div>
 
+                {/* PROMEDIOS SEMESTRALES Y ANUAL DE LA ASIGNATURA */}
+                <div style={{
+                  position: 'relative',
+                  zIndex: 2,
+                  marginTop: '0.85rem',
+                  background: 'rgba(255, 255, 255, 0.95)',
+                  backdropFilter: 'blur(4px)',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '0.4rem 0.6rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                }}>
+                  {/* 1° Semestre */}
+                  <div style={{ textAlign: 'center', flex: 1 }}>
+                    <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>1° Sem</div>
+                    <div style={{
+                      fontSize: '0.9rem',
+                      fontWeight: 800,
+                      color: avgs.avgS1 ? (avgs.avgS1 < 4.0 ? '#dc2626' : '#2563eb') : '#94a3b8'
+                    }}>
+                      {avgs.avgS1 !== null ? avgs.avgS1.toFixed(1).replace('.', ',') : '—'}
+                    </div>
+                  </div>
+
+                  <div style={{ width: '1px', height: '20px', background: '#e2e8f0' }} />
+
+                  {/* 2° Semestre */}
+                  <div style={{ textAlign: 'center', flex: 1 }}>
+                    <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>2° Sem</div>
+                    <div style={{
+                      fontSize: '0.9rem',
+                      fontWeight: 800,
+                      color: avgs.avgS2 ? (avgs.avgS2 < 4.0 ? '#dc2626' : '#059669') : '#94a3b8'
+                    }}>
+                      {avgs.avgS2 !== null ? avgs.avgS2.toFixed(1).replace('.', ',') : '—'}
+                    </div>
+                  </div>
+
+                  <div style={{ width: '1px', height: '20px', background: '#e2e8f0' }} />
+
+                  {/* Promedio Anual */}
+                  <div style={{
+                    textAlign: 'center',
+                    flex: 1.15,
+                    background: '#faf5ff',
+                    border: '1px solid #e9d5ff',
+                    borderRadius: '7px',
+                    padding: '2px 4px'
+                  }}>
+                    <div style={{ fontSize: '0.62rem', color: '#7c3aed', fontWeight: 800, textTransform: 'uppercase' }}>⭐ Anual</div>
+                    <div style={{
+                      fontSize: '0.96rem',
+                      fontWeight: 900,
+                      color: avgs.avgAnual ? (avgs.avgAnual < 4.0 ? '#dc2626' : '#6d28d9') : '#94a3b8'
+                    }}>
+                      {avgs.avgAnual !== null ? avgs.avgAnual.toFixed(1).replace('.', ',') : '—'}
+                    </div>
+                  </div>
+                </div>
+
                 {/* CONTENIDO INFERIOR: AÑO Y COMUNICAR */}
-                <div style={{ position: 'relative', zIndex: 2, marginTop: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ position: 'relative', zIndex: 2, marginTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{
                     fontSize: '0.75rem',
                     color: '#64748b',
@@ -566,15 +823,21 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
             <thead>
               <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                <th style={{ padding: '0.85rem 1.25rem' }}>Curso</th>
-                <th style={{ padding: '0.85rem 1.25rem' }}>Asignatura</th>
-                <th style={{ padding: '0.85rem 1.25rem' }}>Tipo</th>
-                <th style={{ padding: '0.85rem 1.25rem' }}>Año</th>
-                <th style={{ padding: '0.85rem 1.25rem', textAlign: 'right' }}>Acción</th>
+                <th style={{ padding: '0.85rem 1rem' }}>Curso</th>
+                <th style={{ padding: '0.85rem 1rem' }}>Asignatura</th>
+                <th style={{ padding: '0.85rem 1rem' }}>Tipo</th>
+                <th style={{ padding: '0.85rem 0.75rem', textAlign: 'center' }}>1° Sem</th>
+                <th style={{ padding: '0.85rem 0.75rem', textAlign: 'center' }}>2° Sem</th>
+                <th style={{ padding: '0.85rem 0.75rem', textAlign: 'center', background: '#faf5ff', color: '#6b21a8' }}>⭐ Prom. Anual</th>
+                <th style={{ padding: '0.85rem 0.75rem', textAlign: 'center' }}>Año</th>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Acción</th>
               </tr>
             </thead>
             <tbody>
-              {filteredCards.map((card, idx) => (
+              {filteredCards.map((card, idx) => {
+                const avgs = getCardAverages(card);
+
+                return (
                 <tr
                   key={card.id}
                   onClick={() => onSelectCourse(card.courseName, card.subjectName, card.isHomeroom)}
@@ -586,13 +849,13 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
                   onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
-                  <td style={{ padding: '0.85rem 1.25rem', fontWeight: 700, color: '#0f172a' }}>
+                  <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>
                     {card.courseName}
                   </td>
-                  <td style={{ padding: '0.85rem 1.25rem', color: '#334155', fontWeight: 600 }}>
+                  <td style={{ padding: '0.85rem 1rem', color: '#334155', fontWeight: 600 }}>
                     {card.subjectName}
                   </td>
-                  <td style={{ padding: '0.85rem 1.25rem' }}>
+                  <td style={{ padding: '0.85rem 1rem' }}>
                     {card.isHomeroom ? (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '0.2rem 0.55rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700 }}>
                         <Star size={12} fill="#10b981" /> Jefatura
@@ -603,10 +866,49 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
                       </span>
                     )}
                   </td>
-                  <td style={{ padding: '0.85rem 1.25rem', color: '#64748b' }}>
+                  <td style={{ padding: '0.85rem 0.75rem', textAlign: 'center' }}>
+                    <span style={{
+                      fontWeight: 800,
+                      fontSize: '0.85rem',
+                      padding: '0.15rem 0.5rem',
+                      borderRadius: '6px',
+                      background: avgs.avgS1 ? (avgs.avgS1 < 4.0 ? '#fee2e2' : '#eff6ff') : '#f1f5f9',
+                      color: avgs.avgS1 ? (avgs.avgS1 < 4.0 ? '#dc2626' : '#1d4ed8') : '#94a3b8',
+                      border: `1px solid ${avgs.avgS1 ? (avgs.avgS1 < 4.0 ? '#fca5a5' : '#bfdbfe') : '#e2e8f0'}`
+                    }}>
+                      {avgs.avgS1 !== null ? avgs.avgS1.toFixed(1).replace('.', ',') : '—'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '0.85rem 0.75rem', textAlign: 'center' }}>
+                    <span style={{
+                      fontWeight: 800,
+                      fontSize: '0.85rem',
+                      padding: '0.15rem 0.5rem',
+                      borderRadius: '6px',
+                      background: avgs.avgS2 ? (avgs.avgS2 < 4.0 ? '#fee2e2' : '#ecfdf5') : '#f1f5f9',
+                      color: avgs.avgS2 ? (avgs.avgS2 < 4.0 ? '#dc2626' : '#047857') : '#94a3b8',
+                      border: `1px solid ${avgs.avgS2 ? (avgs.avgS2 < 4.0 ? '#fca5a5' : '#a7f3d0') : '#e2e8f0'}`
+                    }}>
+                      {avgs.avgS2 !== null ? avgs.avgS2.toFixed(1).replace('.', ',') : '—'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '0.85rem 0.75rem', textAlign: 'center', background: '#faf5ff' }}>
+                    <span style={{
+                      fontWeight: 900,
+                      fontSize: '0.9rem',
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '6px',
+                      background: avgs.avgAnual ? (avgs.avgAnual < 4.0 ? '#fee2e2' : '#f5f3ff') : '#f1f5f9',
+                      color: avgs.avgAnual ? (avgs.avgAnual < 4.0 ? '#dc2626' : '#6b21a8') : '#94a3b8',
+                      border: `1px solid ${avgs.avgAnual ? (avgs.avgAnual < 4.0 ? '#fca5a5' : '#ddd6fe') : '#e2e8f0'}`
+                    }}>
+                      {avgs.avgAnual !== null ? avgs.avgAnual.toFixed(1).replace('.', ',') : '—'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '0.85rem 0.75rem', textAlign: 'center', color: '#64748b' }}>
                     {card.year}
                   </td>
-                  <td style={{ padding: '0.85rem 1.25rem', textAlign: 'right' }}>
+                  <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
                       <button
                         type="button"
@@ -699,7 +1001,8 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+            })}
             </tbody>
           </table>
         </div>

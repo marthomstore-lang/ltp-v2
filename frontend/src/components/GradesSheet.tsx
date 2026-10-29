@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Lock, Unlock, Save, Plus, Edit2, Trash2, Printer, ArrowUpDown, BarChart2, Layers, Star, BookOpen, AlertTriangle, Clipboard, Zap, Sparkles, FileSpreadsheet, X } from 'lucide-react';
+import { Lock, Unlock, Save, Plus, Edit2, Trash2, Printer, ArrowUpDown, BarChart2, Layers, Star, BookOpen, AlertTriangle, Clipboard, Zap, Sparkles, FileSpreadsheet, X, Award, TrendingUp } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext';
 import { PrintGradeReportModal } from './PrintGradeReportModal';
@@ -18,6 +18,7 @@ interface GradeColumn {
   id: string;
   title: string;
   position?: number;
+  period?: string;
   is_cumulative?: boolean;
   sub_evaluations_count?: number;
 }
@@ -456,11 +457,27 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
     }
   };
 
-  // Columnas regulares de evaluación (excluyendo columnas de promedio manual en asignaturas conceptuales)
+  const s1Columns = useMemo(() => {
+    return columns.filter(c => c.period === '1er Semestre' || (!c.period && !c.id.includes('S2')));
+  }, [columns]);
+
+  const s2Columns = useMemo(() => {
+    return columns.filter(c => c.period === '2do Semestre' || c.id.includes('S2'));
+  }, [columns]);
+
+  // Columnas regulares de evaluación para el período activo
   const evalColumns = useMemo(() => {
-    if (!isConceptual) return columns;
-    return columns.filter(c => c.title.toLowerCase().trim() !== 'promedio' && !c.id.includes('FINAL'));
-  }, [columns, isConceptual]);
+    let activeCols: GradeColumn[] = [];
+    if (period === '1er Semestre') {
+      activeCols = s1Columns.length > 0 ? s1Columns : columns;
+    } else if (period === '2do Semestre') {
+      activeCols = s2Columns.length > 0 ? s2Columns : columns;
+    } else {
+      activeCols = columns; // Anual consolidado
+    }
+    if (!isConceptual) return activeCols;
+    return activeCols.filter(c => c.title.toLowerCase().trim() !== 'promedio' && !c.id.includes('FINAL'));
+  }, [columns, s1Columns, s2Columns, period, isConceptual]);
 
   // ID de la columna que almacena el promedio final conceptual
   const finalColumnId = useMemo(() => {
@@ -469,6 +486,118 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
     const periodCode = period.includes('2') ? 'S2' : 'S1';
     return `COL-${levelId}-${subjectId}-${periodCode}-FINAL`;
   }, [columns, levelId, subjectId, period]);
+
+  // Helper para formatear notas según la escala (decimal o entera)
+  const formatGradeValue = (val: number | null | undefined): string => {
+    if (val === null || val === undefined || isNaN(val) || val <= 0) return '—';
+    if (gradeScaleMode === 'entera') {
+      return Math.round(val * 10).toString();
+    }
+    return val.toFixed(1).replace('.', ',');
+  };
+
+  // Promedio de 1er Semestre para un estudiante
+  const getStudentSemester1Avg = (studentId: string): number | null => {
+    const cols = s1Columns.filter(c => !c.id.includes('FINAL') && c.title.toLowerCase().trim() !== 'promedio');
+    if (cols.length === 0) return null;
+    let sum = 0;
+    let count = 0;
+    cols.forEach(col => {
+      const val = gradesMap[`${studentId}_${col.id}`];
+      if (val && val > 0) {
+        sum += val;
+        count++;
+      }
+    });
+    if (count === 0) return null;
+    return Number((sum / count).toFixed(1));
+  };
+
+  // Promedio de 2do Semestre para un estudiante
+  const getStudentSemester2Avg = (studentId: string): number | null => {
+    const cols = s2Columns.filter(c => !c.id.includes('FINAL') && c.title.toLowerCase().trim() !== 'promedio');
+    if (cols.length === 0) return null;
+    let sum = 0;
+    let count = 0;
+    cols.forEach(col => {
+      const val = gradesMap[`${studentId}_${col.id}`];
+      if (val && val > 0) {
+        sum += val;
+        count++;
+      }
+    });
+    if (count === 0) return null;
+    return Number((sum / count).toFixed(1));
+  };
+
+  // Promedio Anual para un estudiante (Regla oficial MINEDUC: media aritmética P1 y P2)
+  const getStudentAnnualAvg = (studentId: string): number | null => {
+    const p1 = getStudentSemester1Avg(studentId);
+    const p2 = getStudentSemester2Avg(studentId);
+    if (p1 !== null && p2 !== null) {
+      return Number(((p1 + p2) / 2).toFixed(1));
+    }
+    if (p1 !== null) return p1;
+    if (p2 !== null) return p2;
+    return null;
+  };
+
+  // Promedio de una columna específica para el curso
+  const calculateColumnAverage = (colId: string): number | null => {
+    let sum = 0;
+    let count = 0;
+    students.forEach(s => {
+      if (isStudentRetired(s)) return;
+      const val = gradesMap[`${s.id}_${colId}`];
+      if (val && val > 0) {
+        sum += val;
+        count++;
+      }
+    });
+    if (count === 0) return null;
+    return Number((sum / count).toFixed(1));
+  };
+
+  // Resumen de promedios del curso en esta asignatura
+  const courseAverages = useMemo(() => {
+    const activeStudents = students.filter(s => !isStudentRetired(s));
+    if (activeStudents.length === 0) {
+      return { avgS1: null, avgS2: null, avgAnual: null, passedCount: 0, atRiskCount: 0, totalEvaluated: 0 };
+    }
+
+    const s1List: number[] = [];
+    const s2List: number[] = [];
+    const anList: number[] = [];
+    let passed = 0;
+    let atRisk = 0;
+
+    activeStudents.forEach(s => {
+      const p1 = getStudentSemester1Avg(s.id);
+      const p2 = getStudentSemester2Avg(s.id);
+      const an = getStudentAnnualAvg(s.id);
+
+      if (p1 !== null) s1List.push(p1);
+      if (p2 !== null) s2List.push(p2);
+      if (an !== null) {
+        anList.push(an);
+        if (an < 4.0) atRisk++;
+        else passed++;
+      }
+    });
+
+    const avgS1 = s1List.length > 0 ? Number((s1List.reduce((a, b) => a + b, 0) / s1List.length).toFixed(1)) : null;
+    const avgS2 = s2List.length > 0 ? Number((s2List.reduce((a, b) => a + b, 0) / s2List.length).toFixed(1)) : null;
+    const avgAnual = anList.length > 0 ? Number((anList.reduce((a, b) => a + b, 0) / anList.length).toFixed(1)) : null;
+
+    return {
+      avgS1,
+      avgS2,
+      avgAnual,
+      passedCount: passed,
+      atRiskCount: atRisk,
+      totalEvaluated: anList.length
+    };
+  }, [students, s1Columns, s2Columns, gradesMap]);
 
   // CARGAR ALUMNOS, COLUMNAS Y CALIFICACIONES
   useEffect(() => {
@@ -505,8 +634,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       })
       .catch(err => console.error(err));
 
-    // Columnas (Iniciar con N1 o las que el docente haya creado)
-    fetch(`/api/grade-columns?levelId=${targetLevelId}&subjectId=${targetSubjectId}&courseName=${encodeURIComponent(courseParam)}&subjectName=${encodeURIComponent(validSubject.name)}&academicYear=${academicYear}&period=${encodeURIComponent(period)}`, {
+    // Columnas de todo el año lectivo
+    fetch(`/api/grade-columns?levelId=${targetLevelId}&subjectId=${targetSubjectId}&courseName=${encodeURIComponent(courseParam)}&subjectName=${encodeURIComponent(validSubject.name)}&academicYear=${academicYear}&period=Anual`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -515,6 +644,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
         if (Array.isArray(data) && data.length > 0) {
           const mapped = data.map((c: any) => ({
             ...c,
+            period: c.period || (c.id?.includes('S2') ? '2do Semestre' : '1er Semestre'),
             is_cumulative: Boolean(Number(c.is_cumulative)) || c.is_cumulative === true || c.title?.toLowerCase().includes('acumulativ')
           }));
           setColumns(mapped);
@@ -533,8 +663,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
         if (!isCancelled) setColumns(defaultSingleColumn);
       });
 
-    // Calificaciones
-    fetch(`/api/grades?levelId=${targetLevelId}&subjectId=${targetSubjectId}&courseName=${encodeURIComponent(courseParam)}&subjectName=${encodeURIComponent(validSubject.name)}&academicYear=${academicYear}&period=${encodeURIComponent(period)}`, {
+    // Calificaciones de todo el año lectivo
+    fetch(`/api/grades?levelId=${targetLevelId}&subjectId=${targetSubjectId}&courseName=${encodeURIComponent(courseParam)}&subjectName=${encodeURIComponent(validSubject.name)}&academicYear=${academicYear}&period=Anual`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -1509,25 +1639,16 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
   // CÁLCULO DE PROMEDIO ARITMÉTICO Y REDONDEO SEGÚN REGLA MINEDUC
   const calculateAverage = (studentId: string) => {
-    let simpleSum = 0;
-    let count = 0;
-
-    columns.forEach(col => {
-      const val = gradesMap[`${studentId}_${col.id}`];
-      if (val && val > 0) {
-        simpleSum += val;
-        count++;
-      }
-    });
-
-    if (count === 0) return '-';
-    const rawAvg = simpleSum / count;
-
-    if (gradeScaleMode === 'entera') {
-      return Math.round(rawAvg * 10).toString();
-    } else {
-      return rawAvg.toFixed(1).replace('.', ',');
+    if (period === '1er Semestre') {
+      const s1 = getStudentSemester1Avg(studentId);
+      return formatGradeValue(s1);
     }
+    if (period === '2do Semestre') {
+      const s2 = getStudentSemester2Avg(studentId);
+      return formatGradeValue(s2);
+    }
+    const an = getStudentAnnualAvg(studentId);
+    return formatGradeValue(an);
   };
 
   return (
@@ -1629,9 +1750,10 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
         <div>
           <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', display: 'block', textTransform: 'uppercase' }}>Período</label>
-          <select value={period} onChange={e => setPeriod(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, background: '#ffffff' }}>
+          <select value={period} onChange={e => setPeriod(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, background: '#ffffff', color: '#0f172a' }}>
             <option value="1er Semestre">1er Semestre</option>
             <option value="2do Semestre">2do Semestre</option>
+            <option value="Anual">Vista Anual Consolidada (1° y 2° Sem)</option>
           </select>
         </div>
 
@@ -1826,6 +1948,124 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
         </div>
       )}
 
+      {/* KPI RESUMEN DE PROMEDIOS DEL CURSO EN ESTA ASIGNATURA */}
+      {!isParvulariaCourse(currentCourseName) && allowedSubjects.length > 0 && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: '0.85rem',
+          marginBottom: '1.25rem'
+        }}>
+          {/* Promedio 1° Semestre */}
+          <div style={{
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '0.85rem 1.1rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+          }}>
+            <div>
+              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Promedio 1° Semestre</div>
+              <div style={{
+                fontSize: '1.45rem',
+                fontWeight: 900,
+                color: courseAverages.avgS1 ? (courseAverages.avgS1 < 4.0 ? '#dc2626' : '#2563eb') : '#94a3b8',
+                lineHeight: 1.2,
+                marginTop: '2px'
+              }}>
+                {formatGradeValue(courseAverages.avgS1)}
+              </div>
+            </div>
+            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <TrendingUp size={20} />
+            </div>
+          </div>
+
+          {/* Promedio 2° Semestre */}
+          <div style={{
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '0.85rem 1.1rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+          }}>
+            <div>
+              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Promedio 2° Semestre</div>
+              <div style={{
+                fontSize: '1.45rem',
+                fontWeight: 900,
+                color: courseAverages.avgS2 ? (courseAverages.avgS2 < 4.0 ? '#dc2626' : '#059669') : '#94a3b8',
+                lineHeight: 1.2,
+                marginTop: '2px'
+              }}>
+                {formatGradeValue(courseAverages.avgS2)}
+              </div>
+            </div>
+            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <TrendingUp size={20} />
+            </div>
+          </div>
+
+          {/* Promedio Anual del Curso ⭐ */}
+          <div style={{
+            background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)',
+            border: '1px solid #d8b4fe',
+            borderRadius: '12px',
+            padding: '0.85rem 1.1rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 2px 6px rgba(126, 34, 206, 0.08)'
+          }}>
+            <div>
+              <div style={{ fontSize: '0.72rem', color: '#7c3aed', fontWeight: 800, textTransform: 'uppercase' }}>⭐ Promedio Anual Curso</div>
+              <div style={{
+                fontSize: '1.55rem',
+                fontWeight: 900,
+                color: courseAverages.avgAnual ? (courseAverages.avgAnual < 4.0 ? '#dc2626' : '#6b21a8') : '#94a3b8',
+                lineHeight: 1.2,
+                marginTop: '2px'
+              }}>
+                {formatGradeValue(courseAverages.avgAnual)}
+              </div>
+            </div>
+            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#ffffff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e9d5ff' }}>
+              <Award size={22} />
+            </div>
+          </div>
+
+          {/* Alumnos Evaluados y Rendimiento */}
+          <div style={{
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '0.85rem 1.1rem',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+          }}>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Estado de Alumnos</div>
+            <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#16a34a', background: '#dcfce7', padding: '2px 7px', borderRadius: '6px' }}>
+                ✓ {courseAverages.passedCount} aprobados
+              </span>
+              {courseAverages.atRiskCount > 0 && (
+                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#dc2626', background: '#fee2e2', padding: '2px 7px', borderRadius: '6px' }}>
+                  ⚠ {courseAverages.atRiskCount} en riesgo
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* PLANILLA DE CALIFICACIONES (SIEMPRE ORDENADA STRICTAMENTE POR N° DE LISTA) */}
       {isParvulariaCourse(currentCourseName) ? (
         <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: '12px', padding: '2.5rem', textAlign: 'center', margin: '1.5rem 0' }}>
@@ -1851,6 +2091,11 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               <th style={{ width: '45px', padding: '0.8rem 0.5rem', textAlign: 'center' }}>N°</th>
               <th style={{ width: '105px', padding: '0.8rem 0.5rem', textAlign: 'center', minWidth: '95px' }}>N° Matrícula</th>
               <th style={{ padding: '0.8rem 1rem', textAlign: 'left', minWidth: '220px' }}>Estudiante</th>
+              {period === '2do Semestre' && (
+                <th style={{ textAlign: 'center', background: '#f1f5f9', color: '#334155', fontWeight: 800, padding: '0.8rem 0.65rem', borderLeft: '2px solid #cbd5e1', borderRight: '2px solid #cbd5e1' }} title="Promedio obtenido en 1er Semestre (Referencial)">
+                  PROM. 1° SEM
+                </th>
+              )}
               {evalColumns.map(col => {
                 const isCumulative = col.is_cumulative || col.title?.toLowerCase().includes('acumulativ') || cumulativeColumnsMap[col.id]?.isCumulative;
 
@@ -1912,8 +2157,16 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                   </th>
                 );
               })}
-              <th style={{ textAlign: 'center', background: isConceptual ? '#f0fdf4' : '#eff6ff', color: isConceptual ? '#166534' : '#1e40af', fontWeight: 800, padding: '0.8rem 0.75rem' }}>
-                {isConceptual ? 'PROMEDIO CONCEPTUAL (MANUAL)' : 'PROMEDIO'}
+              {period !== '2do Semestre' && (
+                <th style={{ textAlign: 'center', background: isConceptual ? '#f0fdf4' : '#eff6ff', color: isConceptual ? '#166534' : '#1e40af', fontWeight: 800, padding: '0.8rem 0.75rem' }}>
+                  {isConceptual ? 'PROM. 1° SEM (MANUAL)' : 'PROM. 1° SEM'}
+                </th>
+              )}
+              <th style={{ textAlign: 'center', background: '#ecfdf5', color: '#047857', fontWeight: 800, padding: '0.8rem 0.75rem' }} title="Promedio 2do Semestre">
+                PROM. 2° SEM
+              </th>
+              <th style={{ textAlign: 'center', background: '#faf5ff', color: '#6b21a8', fontWeight: 900, padding: '0.8rem 0.75rem', borderLeft: '2px solid #e9d5ff' }} title="Promedio Anual (Media oficial MINEDUC)">
+                ⭐ PROM. ANUAL
               </th>
             </tr>
           </thead>
@@ -1921,9 +2174,9 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
             {students.map((s, idx) => {
               const retired = isStudentRetired(s);
               const retiredDate = getStudentWithdrawalDate(s);
-              const avg = calculateAverage(s.id);
-              const avgNum = parseFloat(avg.replace(',', '.'));
-              const avgColor = retired ? '#dc2626' : (isNaN(avgNum) ? '#64748b' : (avgNum < 4.0 || (gradeScaleMode === 'entera' && avgNum < 40)) ? '#ef4444' : '#16a34a');
+              const p1 = getStudentSemester1Avg(s.id);
+              const p2 = getStudentSemester2Avg(s.id);
+              const pAnual = getStudentAnnualAvg(s.id);
 
               return (
                 <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9', background: retired ? '#fef2f2' : 'transparent' }}>
@@ -1941,6 +2194,20 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                       </span>
                     )}
                   </td>
+                  {period === '2do Semestre' && (
+                    <td style={{
+                      textAlign: 'center',
+                      fontWeight: 800,
+                      fontSize: '0.95rem',
+                      color: p1 ? (p1 < 4.0 ? '#dc2626' : '#1e40af') : '#94a3b8',
+                      background: '#f8fafc',
+                      padding: '0.65rem 0.75rem',
+                      borderLeft: '2px solid #e2e8f0',
+                      borderRight: '2px solid #e2e8f0'
+                    }} title="Promedio obtenido en 1er Semestre (Referencial)">
+                      {formatGradeValue(p1)}
+                    </td>
+                  )}
                   {evalColumns.map((col, cIdx) => {
                     const isCumulative = col.is_cumulative || col.title?.toLowerCase().includes('acumulativ') || cumulativeColumnsMap[col.id]?.isCumulative;
                     const key = `${s.id}_${col.id}`;
@@ -2031,7 +2298,88 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                       </td>
                     );
                   })}
-                  {isConceptual ? (() => {
+                  {/* Promedio 1° Semestre (si no estamos en vista exclusiva de 2do Semestre) */}
+                  {period !== '2do Semestre' && (
+                    isConceptual && period === '1er Semestre' ? (() => {
+                      const finalVal = gradesMap[`${s.id}_${finalColumnId}`];
+                      const currentConcept = finalVal ? numberToConcept(finalVal) : '';
+                      const badge = getConceptBadgeStyle(currentConcept);
+
+                      return (
+                        <td style={{ textAlign: 'center', background: '#f0fdf4', padding: '0.4rem 0.5rem' }}>
+                          <select
+                            value={currentConcept}
+                            disabled={isLocked || retired}
+                            onChange={async (e) => {
+                              const newConcept = e.target.value;
+                              const numVal = newConcept ? conceptToNumber(newConcept) : 0;
+                              setGradesMap(prev => ({
+                                ...prev,
+                                [`${s.id}_${finalColumnId}`]: numVal
+                              }));
+
+                              if (!retired) {
+                                try {
+                                  await fetch('/api/grades', {
+                                    method: 'POST',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                      Authorization: `Bearer ${token}`
+                                    },
+                                    body: JSON.stringify({
+                                      studentId: s.id,
+                                      gradeColumnId: finalColumnId,
+                                      gradeValue: numVal,
+                                      levelId,
+                                      subjectId,
+                                      courseName: currentCourseName,
+                                      subjectName: currentSubjectName,
+                                      academicYear,
+                                      period: '1er Semestre'
+                                    })
+                                  });
+                                  Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Promedio ${newConcept || 'eliminado'} guardado`, timer: 1000, showConfirmButton: false });
+                                } catch (_) {}
+                              }
+                            }}
+                            style={{
+                              padding: '0.35rem 0.5rem',
+                              borderRadius: '8px',
+                              fontWeight: 800,
+                              fontSize: '0.85rem',
+                              border: `1.5px solid ${badge.border}`,
+                              background: badge.bg,
+                              color: badge.color,
+                              cursor: retired ? 'not-allowed' : 'pointer',
+                              outline: 'none',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                            }}
+                            title="Promedio 1er Semestre conceptual llenado manualmente por el docente"
+                          >
+                            <option value="">- (Sin asignar)</option>
+                            <option value="MB">MB (Muy Bueno)</option>
+                            <option value="B">B (Bueno)</option>
+                            <option value="S">S (Suficiente)</option>
+                            <option value="I">I (Insuficiente)</option>
+                          </select>
+                        </td>
+                      );
+                    })() : (
+                      <td style={{
+                        textAlign: 'center',
+                        fontWeight: 800,
+                        fontSize: '0.98rem',
+                        color: p1 ? (p1 < 4.0 ? '#dc2626' : '#1d4ed8') : '#94a3b8',
+                        background: '#eff6ff',
+                        padding: '0.65rem 0.75rem'
+                      }}>
+                        {formatGradeValue(p1)}
+                      </td>
+                    )
+                  )}
+
+                  {/* Promedio 2° Semestre */}
+                  {isConceptual && period === '2do Semestre' ? (() => {
                     const finalVal = gradesMap[`${s.id}_${finalColumnId}`];
                     const currentConcept = finalVal ? numberToConcept(finalVal) : '';
                     const badge = getConceptBadgeStyle(currentConcept);
@@ -2066,7 +2414,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                                     courseName: currentCourseName,
                                     subjectName: currentSubjectName,
                                     academicYear,
-                                    period
+                                    period: '2do Semestre'
                                   })
                                 });
                                 Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Promedio ${newConcept || 'eliminado'} guardado`, timer: 1000, showConfirmButton: false });
@@ -2085,7 +2433,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                             outline: 'none',
                             boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
                           }}
-                          title="Promedio final salida conceptual llenado manualmente por el docente (Decreto 67 y 924)"
+                          title="Promedio 2do Semestre conceptual llenado manualmente por el docente"
                         >
                           <option value="">- (Sin asignar)</option>
                           <option value="MB">MB (Muy Bueno)</option>
@@ -2096,14 +2444,65 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                       </td>
                     );
                   })() : (
-                    <td style={{ textAlign: 'center', fontWeight: 800, fontSize: '1.1rem', color: avgColor, background: '#f8fafc', padding: '0.65rem 0.75rem' }}>
-                      {avg}
+                    <td style={{
+                      textAlign: 'center',
+                      fontWeight: 800,
+                      fontSize: '0.98rem',
+                      color: p2 ? (p2 < 4.0 ? '#dc2626' : '#047857') : '#94a3b8',
+                      background: '#ecfdf5',
+                      padding: '0.65rem 0.75rem'
+                    }}>
+                      {formatGradeValue(p2)}
                     </td>
                   )}
+
+                  {/* Promedio Anual ⭐ */}
+                  <td style={{
+                    textAlign: 'center',
+                    fontWeight: 900,
+                    fontSize: '1.05rem',
+                    color: pAnual ? (pAnual < 4.0 ? '#dc2626' : '#6b21a8') : '#94a3b8',
+                    background: '#faf5ff',
+                    padding: '0.65rem 0.75rem',
+                    borderLeft: '2px solid #e9d5ff'
+                  }}>
+                    {formatGradeValue(pAnual)}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
+          <tfoot style={{ position: 'sticky', bottom: 0, zIndex: 10, background: '#f8fafc', boxShadow: '0 -2px 6px rgba(0,0,0,0.06)' }}>
+            <tr style={{ borderTop: '2px solid #cbd5e1', fontWeight: 800, fontSize: '0.85rem' }}>
+              <td colSpan={3} style={{ padding: '0.75rem 1rem', color: '#0f172a', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                PROMEDIO DEL CURSO ({currentCourseName})
+              </td>
+              {period === '2do Semestre' && (
+                <td style={{ textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 800, color: '#334155', background: '#f1f5f9' }}>
+                  {formatGradeValue(courseAverages.avgS1)}
+                </td>
+              )}
+              {evalColumns.map(col => {
+                const colAvg = calculateColumnAverage(col.id);
+                return (
+                  <td key={col.id} style={{ textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 800, color: colAvg ? (colAvg < 4.0 ? '#dc2626' : '#1e293b') : '#94a3b8' }}>
+                    {formatGradeValue(colAvg)}
+                  </td>
+                );
+              })}
+              {period !== '2do Semestre' && (
+                <td style={{ textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 800, color: '#1d4ed8', background: '#eff6ff' }}>
+                  {formatGradeValue(courseAverages.avgS1)}
+                </td>
+              )}
+              <td style={{ textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 800, color: '#047857', background: '#ecfdf5' }}>
+                {formatGradeValue(courseAverages.avgS2)}
+              </td>
+              <td style={{ textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 900, color: '#6b21a8', background: '#faf5ff' }}>
+                {formatGradeValue(courseAverages.avgAnual)}
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
       )}

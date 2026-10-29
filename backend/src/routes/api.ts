@@ -4853,7 +4853,7 @@ router.get('/grade-columns', authMiddleware, async (req: Request, res: Response)
       ctx.subjectLowerNames,
       parseInt(String(academicYear || 2026), 10)
     ];
-    if (period) {
+    if (period && period !== 'Anual' && period !== 'Todos' && period !== 'all') {
       sql += ' AND (gc.period = $' + (params.length + 1) + ' OR gc.period IS NULL)';
       params.push(String(period));
     }
@@ -5534,6 +5534,52 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
   }
 });
 
+// GET /api/grades/averages-summary (Promedios semestrales y anuales por curso y asignatura para docentes)
+router.get('/grades/averages-summary', authMiddleware, async (req: Request, res: Response) => {
+  const { year, courseName, subjectName } = req.query;
+  const academicYear = parseInt(String(year || 2026), 10);
+  try {
+    let sql = `
+      SELECT 
+        COALESCE(l.name, g.course_name) as course_name,
+        COALESCE(s.name, g.subject_name) as subject_name,
+        COALESCE(CAST(gc.level_id AS TEXT), CAST(g.level_id AS TEXT)) as level_id,
+        COALESCE(CAST(gc.subject_id AS TEXT), CAST(g.subject_id AS TEXT)) as subject_id,
+        ROUND(AVG(CASE WHEN g.period = '1er Semestre' OR gc.period = '1er Semestre' THEN g.score END), 1) as avg_s1,
+        ROUND(AVG(CASE WHEN g.period = '2do Semestre' OR gc.period = '2do Semestre' THEN g.score END), 1) as avg_s2,
+        ROUND(AVG(g.score), 1) as avg_anual,
+        COUNT(CASE WHEN g.period = '1er Semestre' OR gc.period = '1er Semestre' THEN 1 END) as count_s1,
+        COUNT(CASE WHEN g.period = '2do Semestre' OR gc.period = '2do Semestre' THEN 1 END) as count_s2,
+        COUNT(*) as count_total,
+        COUNT(DISTINCT g.student_id) as total_students
+      FROM grades g
+      LEFT JOIN grade_columns gc ON g.grade_column_id = gc.id
+      LEFT JOIN subjects s ON (CAST(gc.subject_id AS TEXT) = CAST(s.id AS TEXT) OR CAST(g.subject_id AS TEXT) = CAST(s.id AS TEXT))
+      LEFT JOIN levels l ON (CAST(gc.level_id AS TEXT) = CAST(l.id AS TEXT) OR CAST(g.level_id AS TEXT) = CAST(l.id AS TEXT))
+      WHERE (g.academic_year = $1 OR gc.academic_year = $1 OR g.academic_year IS NULL)
+        AND g.score > 0
+    `;
+    const params: any[] = [academicYear];
+    if (courseName) {
+      params.push(String(courseName));
+      sql += ` AND (LOWER(COALESCE(l.name, g.course_name)) = LOWER($${params.length}) OR LOWER(COALESCE(g.course_name, '')) LIKE '%' || LOWER($${params.length}) || '%')`;
+    }
+    if (subjectName) {
+      params.push(String(subjectName));
+      sql += ` AND (LOWER(COALESCE(s.name, g.subject_name)) = LOWER($${params.length}) OR LOWER(COALESCE(g.subject_name, '')) LIKE '%' || LOWER($${params.length}) || '%')`;
+    }
+    sql += `
+      GROUP BY COALESCE(l.name, g.course_name), COALESCE(s.name, g.subject_name), COALESCE(CAST(gc.level_id AS TEXT), CAST(g.level_id AS TEXT)), COALESCE(CAST(gc.subject_id AS TEXT), CAST(g.subject_id AS TEXT))
+      ORDER BY course_name, subject_name;
+    `;
+    const result = await query(sql, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error al obtener resumen de promedios para docentes:', err);
+    res.status(500).json({ error: 'Error al consultar promedios semestrales y anuales.' });
+  }
+});
+
 // GET /api/grades
 router.get('/grades', authMiddleware, async (req: Request, res: Response) => {
   const { levelId, subjectId, courseName, subjectName, academicYear, period } = req.query;
@@ -5557,7 +5603,7 @@ router.get('/grades', authMiddleware, async (req: Request, res: Response) => {
       ctx.subjectLowerNames,
       parseInt(String(academicYear || 2026), 10)
     ];
-    if (period) {
+    if (period && period !== 'Anual' && period !== 'Todos' && period !== 'all') {
       sql += ' AND (g.period = $' + (params.length + 1) + ' OR gc.period = $' + (params.length + 1) + ' OR g.period IS NULL)';
       params.push(String(period));
     }
