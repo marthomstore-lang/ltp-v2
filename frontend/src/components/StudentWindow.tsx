@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { User, Shield, Heart, FileText, CheckCircle, X, Users, Home, Search, ClipboardList } from 'lucide-react';
 import { formatRut } from '../utils/rut';
 import { formatPhone } from '../utils/phone';
@@ -58,10 +58,10 @@ export function calculateExactAge(birthDateString: string | null): string {
     parts = str.split('-');
   }
   
-  if (!parts || parts.length !== 3) return 'Fecha invÃ¡lida';
+  if (!parts || parts.length !== 3) return 'Fecha inválida';
   
-  const birthDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-  if (isNaN(birthDate.getTime())) return 'Fecha invÃ¡lida';
+  const birthDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  if (isNaN(birthDate.getTime())) return 'Fecha inválida';
   
   const today = new Date();
   let years = today.getFullYear() - birthDate.getFullYear();
@@ -79,8 +79,9 @@ export function calculateExactAge(birthDateString: string | null): string {
     months += 12;
   }
 
-  return `${years} aÃ±os, ${months} meses y ${days} dÃ­as`;
+  return `${years} años, ${months} meses y ${days} días`;
 }
+
 
 export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, onSave, onPrint, token, readOnly = false }) => {
   const { user } = useAuth();
@@ -115,7 +116,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
     anno: student?.anno || student?.academic_year || student?.entry_year || 2027,
     enrolled_by_name: student?.enrolled_by_name || user?.name || '',
     enrolled_by_run: student?.enrolled_by_run || user?.run || '',
-    enrolled_by_role: student?.enrolled_by_role || user?.role || 'Encargado de MatrÃ­cula'
+    enrolled_by_role: student?.enrolled_by_role || user?.role || 'Encargado de Matrícula'
   });
 
   const [coursesList, setCoursesList] = useState<string[]>([]);
@@ -145,7 +146,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
     }
   }, [allStudents, formData.level_name, formData.desc_grado]);
 
-  // Auto-asignar NÃºmero de MatrÃ­cula Ãºnico (ej: 2026-004) si no lo tiene asignado aÃºn
+  // Auto-asignar Número de Matrícula único (ej: 2026-004) si no lo tiene asignado aún
   React.useEffect(() => {
     const currentMat = cleanEnrollmentVal(formData.enrollment_number);
     if (allStudents.length > 0 && !currentMat) {
@@ -188,7 +189,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose, showGuardianSearchModal, showSiblingModal]);
 
-  // Recalcular NÂ° de Lista correlativo exacto segÃºn la posiciÃ³n en el curso asignado
+  // Recalcular N° de Lista correlativo exacto según la posición en el curso asignado
   const currentCourseForList = getStudentCourse(formData);
   const courseStudentsForList = allStudents
     .filter((s: any) => getStudentCourse(s) === currentCourseForList)
@@ -296,7 +297,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
       toast: true,
       position: 'top-end',
       icon: 'success',
-      title: `âœ¨ Datos de "${data.name}" autocompletados por RUT`,
+      title: `✨ Datos de "${data.name}" autocompletados por RUT`,
       showConfirmButton: false,
       timer: 2200
     });
@@ -306,7 +307,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
     const cleanDigits = String(rut || '').replace(/[^0-9kK]/g, '').toLowerCase();
     if (cleanDigits.length <= 4) return;
 
-    // 1. Buscar primero en nÃ³mina cargada en memoria
+    // 1. Buscar primero en nómina cargada en memoria
     const match = allStudents.find((s: any) => {
       const g1 = String(s.guardian_run || '').replace(/[^0-9kK]/g, '').toLowerCase();
       const g2 = String(s.guardian_sec_run || '').replace(/[^0-9kK]/g, '').toLowerCase();
@@ -404,7 +405,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
 
   const handleSave = async () => {
     if (readOnly) {
-      Swal.fire('Solo Vista', 'Tu perfil solo tiene acceso de consulta e impresiÃ³n en esta ficha.', 'info');
+      Swal.fire('Solo Vista', 'Tu perfil solo tiene acceso de consulta e impresión en esta ficha.', 'info');
       return;
     }
     try {
@@ -413,7 +414,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
         anno: formData.anno || 2027,
         enrolled_by_name: formData.enrolled_by_name || user?.name || 'Administrador',
         enrolled_by_run: formData.enrolled_by_run || user?.run || '',
-        enrolled_by_role: formData.enrolled_by_role || user?.role || 'Encargado de MatrÃ­cula',
+        enrolled_by_role: formData.enrolled_by_role || user?.role || 'Encargado de Matrícula',
         list_number: formData.list_number !== undefined && formData.list_number !== null ? formData.list_number : calculatedListNumber,
         enrollment_number: formData.enrollment_number || '',
         gender: formData.gender === 'OTRO' ? (formData.gender_custom || 'OTRO') : formData.gender,
@@ -432,14 +433,14 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
       if (!res.ok) throw new Error(data.error || 'Error al guardar');
       
       Swal.fire({
-        title: 'Â¡Ficha Guardada con Ã‰xito!',
-        text: 'Los datos del estudiante han sido guardados exitosamente en la base de datos. Â¿Desea imprimir la Ficha Oficial FIDE ahora?',
+        title: '¡Ficha Guardada con Éxito!',
+        text: 'Los datos del estudiante han sido guardados exitosamente en la base de datos. ¿Desea imprimir la Ficha Oficial FIDE ahora?',
         icon: 'success',
         showCancelButton: true,
         confirmButtonColor: '#4f46e5',
         cancelButtonColor: '#64748b',
-        confirmButtonText: 'ðŸ–¨ï¸ Guardar e Imprimir Ficha FIDE',
-        cancelButtonText: 'ðŸ’¾ Solo Guardar'
+        confirmButtonText: '🖨️ Guardar e Imprimir Ficha FIDE',
+        cancelButtonText: '💾 Solo Guardar'
       }).then((result) => {
         onSave(payload);
         onClose();
@@ -468,16 +469,16 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
               </span>
               {readOnly && (
                 <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.65rem', borderRadius: '9999px', background: '#fef3c7', color: '#92400e', fontWeight: 800 }}>
-                  ðŸ‘ï¸ MODO SOLO VISTA
+                  👁️ MODO SOLO VISTA
                 </span>
               )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.4rem', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '0.9rem', fontWeight: 700, background: 'rgba(255,255,255,0.18)', padding: '0.2rem 0.6rem', borderRadius: '6px' }}>
-                ðŸ‘¤ {formData.full_name || 'Nuevo Alumno'}
+                👤 {formData.full_name || 'Nuevo Alumno'}
               </span>
-              <span style={{ fontSize: '0.85rem', opacity: 0.95 }}>ðŸ†” RUT: <strong>{formData.run || 'Sin registro'}</strong></span>
-              <span style={{ fontSize: '0.85rem', opacity: 0.95 }}>ðŸ« Curso: <strong>{getStudentCourse(formData)}</strong></span>
+              <span style={{ fontSize: '0.85rem', opacity: 0.95 }}>🆔 RUT: <strong>{formData.run || 'Sin registro'}</strong></span>
+              <span style={{ fontSize: '0.85rem', opacity: 0.95 }}>🏫 Curso: <strong>{getStudentCourse(formData)}</strong></span>
             </div>
           </div>
 
@@ -501,7 +502,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                 gap: '4px',
                 cursor: 'pointer'
               }}
-              title="Abrir verificaciÃ³n documental de Retiro o MatrÃ­cula"
+              title="Abrir verificación documental de Retiro o Matrícula"
             >
               <ClipboardList size={13} color="#4f46e5" /> Checklist Documental
             </button>
@@ -518,7 +519,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                   style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 700 }}
                   title="Ver o imprimir documentos entregados en el retiro"
                 >
-                  ðŸšª Doc. Retiro
+                  🚪 Doc. Retiro
                 </button>
                 <button
                   onClick={() => {
@@ -528,14 +529,14 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                   className="btn"
                   style={{ background: '#dcfce7', color: '#15803d', border: 'none', padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 700 }}
                 >
-                  ðŸ”„ Reincorporar
+                  🔄 Reincorporar
                 </button>
               </>
             ) : (
               <button
                 onClick={() => {
                   Swal.fire({
-                    title: 'Â¿Retirar Estudiante?',
+                    title: '¿Retirar Estudiante?',
                     text: 'Ingrese motivo o fecha de retiro del alumno:',
                     input: 'text',
                     inputPlaceholder: 'Ej: Traslado a otro establecimiento / Retiro voluntario',
@@ -548,11 +549,11 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                       setFormData((prev: any) => ({ ...prev, is_retired: true, retirement_reason: res.value }));
                       Swal.fire({
                         title: 'Estudiante Retirado',
-                        text: 'Â¿Deseas abrir el Checklist Oficial de Retiro para registrar los documentos que se lleva el apoderado?',
+                        text: '¿Deseas abrir el Checklist Oficial de Retiro para registrar los documentos que se lleva el apoderado?',
                         icon: 'question',
                         showCancelButton: true,
-                        confirmButtonText: 'SÃ­, abrir Checklist',
-                        cancelButtonText: 'MÃ¡s tarde',
+                        confirmButtonText: 'Sí, abrir Checklist',
+                        cancelButtonText: 'Más tarde',
                         confirmButtonColor: '#4f46e5'
                       }).then(subRes => {
                         if (subRes.isConfirmed) {
@@ -566,7 +567,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                 className="btn"
                 style={{ background: '#fee2e2', color: '#be123c', border: 'none', padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 700 }}
               >
-                âš ï¸ Retirar Estudiante
+                ⚠️ Retirar Estudiante
               </button>
             ))}
 
@@ -577,11 +578,11 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     title: 'Cambiar de Curso',
                     input: 'select',
                     inputOptions: {
-                      '1Â° Medio A': '1Â° Medio A',
-                      '1Â° Medio B': '1Â° Medio B',
-                      '2Â° Medio A': '2Â° Medio A',
-                      '3Â° Medio TP Telecomunicaciones': '3Â° Medio TP Telecomunicaciones',
-                      '4Â° Medio TP Electricidad': '4Â° Medio TP Electricidad'
+                      '1° Medio A': '1° Medio A',
+                      '1° Medio B': '1° Medio B',
+                      '2° Medio A': '2° Medio A',
+                      '3° Medio TP Telecomunicaciones': '3° Medio TP Telecomunicaciones',
+                      '4° Medio TP Electricidad': '4° Medio TP Electricidad'
                     },
                     showCancelButton: true,
                     confirmButtonText: 'Cambiar Curso'
@@ -595,7 +596,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                 className="btn"
                 style={{ background: '#e0e7ff', color: '#3730a3', border: 'none', padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 700 }}
               >
-                ðŸ”€ Cambiar de Curso
+                🔀 Cambiar de Curso
               </button>
             )}
 
@@ -605,7 +606,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
           </div>
         </div>
 
-        {/* PestaÃ±as de NavegaciÃ³n FIDE/MINEDUC Alineadas en 1 Sola Fila Limpia */}
+        {/* Pestañas de Navegación FIDE/MINEDUC Alineadas en 1 Sola Fila Limpia */}
         <div style={{ display: 'flex', background: '#f1f5f9', borderBottom: '1px solid #cbd5e1', padding: '0.5rem 1.25rem 0 1.25rem', gap: '0.5rem', flexWrap: 'nowrap', overflowX: 'auto', whiteSpace: 'nowrap' }}>
           <button
             onClick={() => setActiveTab('personal')}
@@ -643,18 +644,18 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
         <div style={{ flex: 1, padding: '1.5rem', overflowY: 'auto' }}>
           <fieldset disabled={readOnly} style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
           
-          {/* SECCIÃ“N 1: DATOS PERSONALES DEL ESTUDIANTE */}
+          {/* SECCIÓN 1: DATOS PERSONALES DEL ESTUDIANTE */}
           {activeTab === 'personal' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               
-              {/* TARJETA 1: IDENTIFICACIÃ“N Y NOMBRES DESGLOSADOS */}
+              {/* TARJETA 1: IDENTIFICACIÓN Y NOMBRES DESGLOSADOS */}
               <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
                 <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.6rem', marginBottom: '1rem' }}>
                   <h4 style={{ color: '#4f46e5', margin: 0, fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    ðŸ‘¤ Nombres y Apellidos Desglosados del Estudiante
+                    👤 Nombres y Apellidos Desglosados del Estudiante
                   </h4>
                   <p style={{ color: '#64748b', fontSize: '0.78rem', margin: '0.2rem 0 0 0' }}>
-                    InformaciÃ³n oficial de filiaciÃ³n del alumno segÃºn CÃ©dula de Identidad o Certificado de Nacimiento MINEDUC
+                    Información oficial de filiación del alumno según Cédula de Identidad o Certificado de Nacimiento MINEDUC
                   </p>
                 </div>
 
@@ -675,7 +676,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                       type="text"
                       value={formData.paternal_surname || ''}
                       onChange={e => handleChange('paternal_surname', e.target.value)}
-                      placeholder="Ej: PÃ©rez"
+                      placeholder="Ej: Pérez"
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.85rem', boxSizing: 'border-box' }}
                     />
                   </div>
@@ -685,7 +686,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                       type="text"
                       value={formData.maternal_surname || ''}
                       onChange={e => handleChange('maternal_surname', e.target.value)}
-                      placeholder="Ej: GonzÃ¡lez"
+                      placeholder="Ej: González"
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.85rem', boxSizing: 'border-box' }}
                     />
                   </div>
@@ -702,11 +703,11 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                 </div>
               </div>
 
-              {/* TARJETA 2: CÃ‰DULA & DATOS DEMOGRÃFICOS Y PUEBLOS ORIGINARIOS */}
+              {/* TARJETA 2: CÉDULA & DATOS DEMOGRÁFICOS Y PUEBLOS ORIGINARIOS */}
               <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
                 <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.6rem', marginBottom: '1.25rem' }}>
                   <h4 style={{ color: '#0f172a', margin: 0, fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    ðŸ†” CÃ©dula, DemografÃ­a & Pueblo Originario
+                    🆔 Cédula, Demografía & Pueblo Originario
                   </h4>
                 </div>
 
@@ -722,7 +723,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#4338ca', marginBottom: '0.4rem' }}>NÂ° de MatrÃ­cula (Ãšnico)</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#4338ca', marginBottom: '0.4rem' }}>N° de Matrícula (Único)</label>
                     <input
                       type="text"
                       value={formData.enrollment_number || ''}
@@ -732,7 +733,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>NÂ° de Lista en Libro</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>N° de Lista en Libro</label>
                     <input
                       type="number"
                       value={formData.list_number !== undefined && formData.list_number !== null ? formData.list_number : calculatedListNumber}
@@ -742,21 +743,20 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Fecha de Nacimiento</label>
-                                        <input
+                    <input
                       type="date"
                       value={formatDateForInput(formData.birth_date)}
                       onChange={e => handleChange('birth_date', e.target.value)}
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
                     />
                     <div style={{ marginTop: '0.4rem', fontSize: '0.85rem', color: '#2563eb', fontWeight: 700 }}>
-                      â³ Edad: {calculateExactAge(formData.birth_date)}
+                      🎂 Edad: {calculateExactAge(formData.birth_date)}
                     </div>
-                    
                   </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1.5rem', marginBottom: '1.25rem' }}>
-                  {/* SEXO / GÃ‰NERO */}
+                  {/* SEXO / GÉNERO */}
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Sexo</label>
                     <select
@@ -773,7 +773,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                         type="text"
                         value={formData.gender_custom || ''}
                         onChange={e => handleChange('gender_custom', e.target.value)}
-                        placeholder="Ingresar gÃ©nero manualmente..."
+                        placeholder="Ingresar género manualmente..."
                         style={{ width: '100%', marginTop: '0.4rem', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
                       />
                     )}
@@ -791,12 +791,12 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                       <option value="Mapuche">Mapuche</option>
                       <option value="Aymara">Aymara</option>
                       <option value="Rapa Nui">Rapa Nui (Pascuense)</option>
-                      <option value="AtacameÃ±o">AtacameÃ±o (Likan Antai)</option>
+                      <option value="Atacameño">Atacameño (Likan Antai)</option>
                       <option value="Quechua">Quechua</option>
                       <option value="Colla">Colla</option>
                       <option value="Diaguita">Diaguita</option>
-                      <option value="KawÃ©sqar">KawÃ©sqar</option>
-                      <option value="YagÃ¡n">YagÃ¡n (YÃ¡mana)</option>
+                      <option value="Kawésqar">Kawésqar</option>
+                      <option value="Yagán">Yagán (Yámana)</option>
                       <option value="Chango">Chango</option>
                       <option value="Otro">Otro (Especificar)</option>
                     </select>
@@ -821,7 +821,6 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                       placeholder="Chilena, Venezolana, etc."
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
                     />
-                    
                   </div>
                 </div>
 
@@ -834,21 +833,19 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                       onChange={e => handleChange('marital_status', e.target.value)}
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
                     />
-                    
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>ReligiÃ³n / Creencia</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Religión / Creencia</label>
                     <input
                       type="text"
                       value={formData.religion || 'Ninguna'}
                       onChange={e => handleChange('religion', e.target.value)}
-                      placeholder="EvangÃ©lica, CatÃ³lica, etc."
+                      placeholder="Evangélica, Católica, etc."
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
                     />
-                    
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>PrevisiÃ³n de Salud</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Previsión de Salud</label>
                     <select
                       value={formData.health_system || 'Fonasa A'}
                       onChange={e => handleChange('health_system', e.target.value)}
@@ -865,37 +862,37 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                 </div>
               </div>
 
-              {/* TARJETA: FUNCIONARIO RESPONSABLE DE MATRÃCULA & PERÃODO LECTIVO */}
+              {/* TARJETA: FUNCIONARIO RESPONSABLE DE MATRÍCULA & PERÍODO LECTIVO */}
               <div style={{ background: '#ffffff', border: '1.5px solid #c7d2fe', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 2px 4px rgba(79, 70, 229, 0.05)' }}>
                 <div style={{ borderBottom: '1px solid #e0e7ff', paddingBottom: '0.6rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                   <div>
                     <h4 style={{ color: '#3730a3', margin: 0, fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      âœï¸ Funcionario que Matricula & PerÃ­odo Lectivo (Ficha Oficial)
+                      ✍️ Funcionario que Matricula & Período Lectivo (Ficha Oficial)
                     </h4>
                     <p style={{ color: '#64748b', fontSize: '0.78rem', margin: '0.2rem 0 0 0' }}>
-                      Datos del funcionario que realiza o registra la matrÃ­cula. SaldrÃ¡n impresos en la Ficha Oficial FIDE para saber a quiÃ©n consultar si falta documentaciÃ³n.
+                      Datos del funcionario que realiza o registra la matrícula. Saldrán impresos en la Ficha Oficial FIDE para saber a quién consultar si falta documentación.
                     </p>
                   </div>
                   {user && (
                     <span style={{ fontSize: '0.74rem', background: '#e0e7ff', color: '#3730a3', padding: '0.25rem 0.65rem', borderRadius: '6px', fontWeight: 700 }}>
-                      SesiÃ³n Activa: {user.name} ({user.role})
+                      Sesión Activa: {user.name} ({user.role})
                     </span>
                   )}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem 1.25rem' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#3730a3', marginBottom: '0.4rem' }}>AÃ±o Lectivo MatrÃ­cula</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#3730a3', marginBottom: '0.4rem' }}>Año Lectivo Matrícula</label>
                     <select
                       value={formData.anno || 2027}
                       onChange={e => handleChange('anno', parseInt(e.target.value, 10))}
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '2px solid #6366f1', fontWeight: 800, color: '#312e81', fontSize: '0.85rem', background: '#f5f3ff', boxSizing: 'border-box' }}
                     >
-                      <option value={2026}>AÃ±o Escolar 2026</option>
-                      <option value={2027}>AÃ±o Escolar 2027 (PrÃ³ximo AÃ±o)</option>
-                      <option value={2028}>AÃ±o Escolar 2028</option>
-                      <option value={2029}>AÃ±o Escolar 2029</option>
-                      <option value={2030}>AÃ±o Escolar 2030</option>
+                      <option value={2026}>Año Escolar 2026</option>
+                      <option value={2027}>Año Escolar 2027 (Próximo Año)</option>
+                      <option value={2028}>Año Escolar 2028</option>
+                      <option value={2029}>Año Escolar 2029</option>
+                      <option value={2030}>Año Escolar 2030</option>
                     </select>
                   </div>
                   <div>
@@ -919,23 +916,23 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Cargo / FunciÃ³n</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Cargo / Función</label>
                     <input
                       type="text"
                       value={formData.enrolled_by_role || ''}
                       onChange={e => handleChange('enrolled_by_role', e.target.value)}
-                      placeholder="Ej: Encargado de MatrÃ­cula / Administrativo"
+                      placeholder="Ej: Encargado de Matrícula / Administrativo"
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.85rem', boxSizing: 'border-box', color: '#334155' }}
                     />
                   </div>
                 </div>
               </div>
 
-              {/* TARJETA 3: ASIGNACIÃ“N ACADÃ‰MICA Y CONTACTO HOGAR */}
+              {/* TARJETA 3: ASIGNACIÓN ACADÉMICA Y CONTACTO HOGAR */}
               <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
                 <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.6rem', marginBottom: '1.25rem' }}>
                   <h4 style={{ color: '#0f172a', margin: 0, fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    ðŸ« AsignaciÃ³n Escolar & Domicilio del Estudiante
+                    🏫 Asignación Escolar & Domicilio del Estudiante
                   </h4>
                 </div>
 
@@ -981,15 +978,14 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     </select>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>DirecciÃ³n / Domicilio</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Dirección / Domicilio</label>
                     <input
                       type="text"
                       value={formData.address || ''}
                       onChange={e => handleChange('address', e.target.value)}
-                      placeholder="Av. O'Higgins 450, ChillÃ¡n"
+                      placeholder="Av. O'Higgins 450, Chillán"
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
                     />
-                    
                   </div>
                 </div>
               </div>
@@ -997,12 +993,12 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
             </div>
           )}
 
-          {/* SECCIÃ“N 2: APODERADO TITULAR */}
+          {/* SECCIÓN 2: APODERADO TITULAR */}
           {activeTab === 'guardian_main' && (
             <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
               <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.6rem', marginBottom: '1.25rem' }}>
                 <h4 style={{ color: '#4f46e5', margin: 0, fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  ðŸ›¡ï¸ InformaciÃ³n del Apoderado Titular (Primer Responsable)
+                  🛡️ Información del Apoderado Titular (Primer Responsable)
                 </h4>
                 <p style={{ color: '#64748b', fontSize: '0.78rem', margin: '0.2rem 0 0 0' }}>
                   Persona responsable directa matriculante ante el establecimiento y firma de documentos oficiales
@@ -1029,31 +1025,31 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                   <input type="text" value={formData.guardian_name || ''} onChange={e => handleChange('guardian_name', e.target.value)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Parentesco / VÃ­nculo</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Parentesco / Vínculo</label>
                   <input type="text" value={formData.guardian_relation || ''} onChange={e => handleChange('guardian_relation', e.target.value)} placeholder="Madre / Padre / Tutor Legal" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>TelÃ©fono Contacto Directo</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Teléfono Contacto Directo</label>
                   <input type="text" value={formData.guardian_phone || ''} onFocus={e => { if (!e.target.value) handleChange('guardian_phone', '+56'); }} onChange={e => handleChange('guardian_phone', formatPhone(e.target.value))} placeholder="+56912345678" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Correo ElectrÃ³nico</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Correo Electrónico</label>
                   <input type="email" value={formData.guardian_email || ''} onChange={e => handleChange('guardian_email', e.target.value)} placeholder="apoderado@correo.cl" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>OcupaciÃ³n / ProfesiÃ³n</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Ocupación / Profesión</label>
                   <input type="text" value={formData.guardian_occupation || ''} onChange={e => handleChange('guardian_occupation', e.target.value)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                 </div>
               </div>
             </div>
           )}
 
-          {/* SECCIÃ“N 3: APODERADO SUPLENTE */}
+          {/* SECCIÓN 3: APODERADO SUPLENTE */}
           {activeTab === 'guardian_secondary' && (
             <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
               <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.6rem', marginBottom: '1.25rem' }}>
                 <h4 style={{ color: '#4f46e5', margin: 0, fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  ðŸ›¡ï¸ Registro de Apoderado Suplente (Segundo Responsable)
+                  🛡️ Registro de Apoderado Suplente (Segundo Responsable)
                 </h4>
                 <p style={{ color: '#64748b', fontSize: '0.78rem', margin: '0.2rem 0 0 0' }}>
                   Persona autorizada institucionalmente en caso de emergencia o ausencia del apoderado titular
@@ -1080,10 +1076,10 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                   <input type="text" value={formData.guardian_sec_name || ''} onChange={e => handleChange('guardian_sec_name', e.target.value)} placeholder="Nombre y Apellidos" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Parentesco / VÃ­nculo</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Parentesco / Vínculo</label>
                   <select value={formData.guardian_sec_relation || 'Abuelo/a'} onChange={e => handleChange('guardian_sec_relation', e.target.value)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.85rem' }}>
                     <option value="Abuelo/a">Abuelo / Abuela</option>
-                    <option value="TÃ­o/a">TÃ­o / TÃ­a</option>
+                    <option value="Tío/a">Tío / Tía</option>
                     <option value="Hermano/a">Hermano / Hermana Mayor</option>
                     <option value="Padre/Madre">Padre / Madre</option>
                     <option value="Tutor Legal">Tutor Legal</option>
@@ -1091,29 +1087,29 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                   </select>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>TelÃ©fono de Contacto Directo</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Teléfono de Contacto Directo</label>
                   <input type="text" value={formData.guardian_sec_phone || ''} onFocus={e => { if (!e.target.value) handleChange('guardian_sec_phone', '+56'); }} onChange={e => handleChange('guardian_sec_phone', formatPhone(e.target.value))} placeholder="+56912345678" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Correo ElectrÃ³nico</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Correo Electrónico</label>
                   <input type="email" value={formData.guardian_sec_email || ''} onChange={e => handleChange('guardian_sec_email', e.target.value)} placeholder="suplente@correo.cl" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>OcupaciÃ³n / ProfesiÃ³n</label>
-                  <input type="text" value={formData.guardian_sec_occupation || ''} onChange={e => handleChange('guardian_sec_occupation', e.target.value)} placeholder="Ej: Comerciante / TÃ©cnico" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Ocupación / Profesión</label>
+                  <input type="text" value={formData.guardian_sec_occupation || ''} onChange={e => handleChange('guardian_sec_occupation', e.target.value)} placeholder="Ej: Comerciante / Técnico" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                 </div>
               </div>
             </div>
           )}
 
-          {/* SECCIÃ“N 4: PADRES Y FAMILIA (PADRE, MADRE U OTRO TUTOR) */}
+          {/* SECCIÓN 4: PADRES Y FAMILIA (PADRE, MADRE U OTRO TUTOR) */}
           {activeTab === 'parents_family' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               
-              {/* SUB-SECCIÃ“N MADRE */}
+              {/* SUB-SECCIÓN MADRE */}
               <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #cbd5e1', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
                 <h4 style={{ color: '#0f172a', fontSize: '0.95rem', fontWeight: 800, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
-                  ðŸ‘© Datos BiolÃ³gicos o Legales de la Madre
+                  👩 Datos Biológicos o Legales de la Madre
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1rem' }}>
                   <div>
@@ -1135,7 +1131,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     </div>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>TelÃ©fono Madre</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Teléfono Madre</label>
                     <input type="text" value={formData.mother_phone || ''} onFocus={e => { if (!e.target.value) handleChange('mother_phone', '+56'); }} onChange={e => handleChange('mother_phone', formatPhone(e.target.value))} placeholder="+56912345678" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                   </div>
                   <div>
@@ -1147,16 +1143,16 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     <input type="text" value={formData.mother_education || ''} onChange={e => handleChange('mother_education', e.target.value)} placeholder="Ej: Media Completa / Superior" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>OcupaciÃ³n / Empleo</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Ocupación / Empleo</label>
                     <input type="text" value={formData.mother_occupation || ''} onChange={e => handleChange('mother_occupation', e.target.value)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                   </div>
                 </div>
               </div>
 
-              {/* SUB-SECCIÃ“N PADRE */}
+              {/* SUB-SECCIÓN PADRE */}
               <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #cbd5e1', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
                 <h4 style={{ color: '#0f172a', fontSize: '0.95rem', fontWeight: 800, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
-                  ðŸ‘¨ Datos BiolÃ³gicos o Legales del Padre
+                  👨 Datos Biológicos o Legales del Padre
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1rem' }}>
                   <div>
@@ -1178,7 +1174,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     </div>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>TelÃ©fono Padre</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Teléfono Padre</label>
                     <input type="text" value={formData.father_phone || ''} onFocus={e => { if (!e.target.value) handleChange('father_phone', '+56'); }} onChange={e => handleChange('father_phone', formatPhone(e.target.value))} placeholder="+56912345678" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                   </div>
                   <div>
@@ -1190,16 +1186,16 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     <input type="text" value={formData.father_education || ''} onChange={e => handleChange('father_education', e.target.value)} placeholder="Ej: Media Completa / Universitario" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>OcupaciÃ³n / Empleo</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Ocupación / Empleo</label>
                     <input type="text" value={formData.father_occupation || ''} onChange={e => handleChange('father_occupation', e.target.value)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                   </div>
                 </div>
               </div>
 
-              {/* SUB-SECCIÃ“N INFORMACIÃ“N DEL HOGAR Y OTROS TUTORES */}
+              {/* SUB-SECCIÓN INFORMACIÓN DEL HOGAR Y OTROS TUTORES */}
               <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #cbd5e1', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
                 <h4 style={{ color: '#3730a3', fontSize: '0.95rem', fontWeight: 800, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
-                  ðŸ  Convivencia Familiar & Tutores Legales
+                  🏠 Convivencia Familiar & Tutores Legales
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1rem' }}>
                   <div>
@@ -1214,7 +1210,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     </select>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#3730a3', marginBottom: '0.35rem' }}>NÂ° Integrantes Grupo Familiar</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#3730a3', marginBottom: '0.35rem' }}>N° Integrantes Grupo Familiar</label>
                     <input type="number" value={formData.family_count || 4} onChange={e => handleChange('family_count', parseInt(e.target.value, 10) || 4)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                   </div>
                   <div>
@@ -1224,12 +1220,12 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                 </div>
               </div>
 
-              {/* SUB-SECCIÃ“N HERMANOS EN EL ESTABLECIMIENTO */}
+              {/* SUB-SECCIÓN HERMANOS EN EL ESTABLECIMIENTO */}
               <div style={{ background: '#f0fdf4', padding: '1.25rem', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                   <div>
                     <h4 style={{ color: '#166534', fontSize: '0.95rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      ðŸ§’ Hermanos Estudiando en el Establecimiento Liceo Pro
+                      🧒 Hermanos Estudiando en el Establecimiento Liceo Pro
                     </h4>
                     <p style={{ color: '#15803d', fontSize: '0.78rem', margin: '0.2rem 0 0 0' }}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -1239,7 +1235,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                           className="btn btn-secondary"
                           style={{ background: '#0284c7', color: '#ffffff', borderColor: '#0284c7', padding: '0.4rem 0.85rem', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}
                         >
-                          ðŸ” Buscar / Seleccionar Hermano(a) del Liceo
+                          🔍 Buscar / Seleccionar Hermano(a) del Liceo
                         </button>
                         <button
                           type="button"
@@ -1247,7 +1243,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                             const currentSiblings = formData.siblings || [];
                             setFormData((prev: any) => ({
                               ...prev,
-                              siblings: [...currentSiblings, { name: '', run: '', level: '1Â° Medio A', relation: 'Hermano/a' }]
+                              siblings: [...currentSiblings, { name: '', run: '', level: '1° Medio A', relation: 'Hermano/a' }]
                             }));
                           }}
                           className="btn btn-primary"
@@ -1262,7 +1258,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
 
                 {(!formData.siblings || formData.siblings.length === 0) ? (
                   <p style={{ fontSize: '0.85rem', color: '#15803d', fontStyle: 'italic', margin: 0 }}>
-                    No se han registrado hermanos estudiando en el establecimiento. Presione "ðŸ” Buscar / Seleccionar Hermano(a) del Liceo" o "+ Agregar Hermano(a) Manual".
+                    No se han registrado hermanos estudiando en el establecimiento. Presione "🔍 Buscar / Seleccionar Hermano(a) del Liceo" o "+ Agregar Hermano(a) Manual".
                   </p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1306,14 +1302,14 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                               updated[idx].level = e.target.value;
                               setFormData((prev: any) => ({ ...prev, siblings: updated }));
                             }}
-                            placeholder="Ej: 7Â° BÃ¡sico A"
+                            placeholder="Ej: 7° Básico A"
                             style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
                           />
                         </div>
                         <div>
-                          <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '0.2rem' }}>VÃ­nculo</label>
+                          <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '0.2rem' }}>Vínculo</label>
                           <select
-                            value={sib.relation || 'Hermano/a ConsanguÃ­neo'}
+                            value={sib.relation || 'Hermano/a Consanguíneo'}
                             onChange={e => {
                               const updated = [...formData.siblings];
                               updated[idx].relation = e.target.value;
@@ -1321,7 +1317,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                             }}
                             style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
                           >
-                            <option value="Hermano/a ConsanguÃ­neo">Hermano/a ConsanguÃ­neo</option>
+                            <option value="Hermano/a Consanguíneo">Hermano/a Consanguíneo</option>
                             <option value="Medio Hermano/a">Medio Hermano/a</option>
                             <option value="Hermano/a Crianza">Hermano/a Crianza</option>
                           </select>
@@ -1334,7 +1330,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                           }}
                           style={{ background: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3', padding: '0.45rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginTop: '1.2rem' }}
                         >
-                          âœ• Quitar
+                          ✕ Quitar
                         </button>
                       </div>
                     ))}
@@ -1344,29 +1340,29 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
             </div>
           )}
 
-          {/* SECCIÃ“N 5: SALUD Y PIE / SEP */}
+          {/* SECCIÓN 5: SALUD Y PIE / SEP */}
           {activeTab === 'health_sep' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               
               {/* SALUD Y ALERGIAS */}
               <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #cbd5e1', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
                 <h4 style={{ color: '#0f172a', fontSize: '0.95rem', fontWeight: 800, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
-                  ðŸ¥ Ficha MÃ©dica, PrevisiÃ³n & Salud
+                  🏥 Ficha Médica, Previsión & Salud
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1rem' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Sistema de PrevisiÃ³n de Salud</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Sistema de Previsión de Salud</label>
                     <select value={formData.health_system || 'Fonasa A'} onChange={e => handleChange('health_system', e.target.value)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}>
                       <option value="Fonasa A">Fonasa Tramo A</option>
                       <option value="Fonasa B">Fonasa Tramo B</option>
                       <option value="Fonasa C">Fonasa Tramo C</option>
                       <option value="Fonasa D">Fonasa Tramo D</option>
                       <option value="Isapre">Isapre</option>
-                      <option value="Particular">Particular / Sin PrevisiÃ³n</option>
+                      <option value="Particular">Particular / Sin Previsión</option>
                     </select>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Grupo SanguÃ­neo</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Grupo Sanguíneo</label>
                     <input type="text" value={formData.blood_type || ''} onChange={e => handleChange('blood_type', e.target.value)} placeholder="Ej: ORH+" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                   </div>
                   <div>
@@ -1376,35 +1372,35 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                 </div>
               </div>
 
-              {/* PROGRAMA DE INTEGRACIÃ“N ESCOLAR (PIE) */}
+              {/* PROGRAMA DE INTEGRACIÓN ESCOLAR (PIE) */}
               <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #cbd5e1', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
                 <h4 style={{ color: '#4f46e5', fontSize: '0.95rem', fontWeight: 800, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
-                  ðŸŒŸ Programa de IntegraciÃ³n Escolar (PIE) & Prioridad SEP
+                  🌟 Programa de Integración Escolar (PIE) & Prioridad SEP
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Pertenece a Programa PIE</label>
-                    <select value={formData.pie_program ? 'SÃ­' : 'No'} onChange={e => handleChange('pie_program', e.target.value === 'SÃ­')} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, color: formData.pie_program ? '#16a34a' : '#64748b', fontSize: '0.85rem' }}>
+                    <select value={formData.pie_program ? 'Sí' : 'No'} onChange={e => handleChange('pie_program', e.target.value === 'Sí')} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, color: formData.pie_program ? '#16a34a' : '#64748b', fontSize: '0.85rem' }}>
                       <option value="No">No pertenece a PIE</option>
-                      <option value="SÃ­">SÃ­ pertenece a PIE</option>
+                      <option value="Sí">Sí pertenece a PIE</option>
                     </select>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>DiagnÃ³stico PIE Registrado</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Diagnóstico PIE Registrado</label>
                     <input type="text" value={formData.pie_diagnosis || ''} onChange={e => handleChange('pie_diagnosis', e.target.value)} placeholder="Ej: TEL Mixto / DEA / TDAH" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Prioridad SEP / Alumno Prioritario</label>
-                    <select value={formData.sep_priority ? 'SÃ­' : 'No'} onChange={e => handleChange('sep_priority', e.target.value === 'SÃ­')} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, color: formData.sep_priority ? '#d97706' : '#64748b', fontSize: '0.85rem' }}>
+                    <select value={formData.sep_priority ? 'Sí' : 'No'} onChange={e => handleChange('sep_priority', e.target.value === 'Sí')} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, color: formData.sep_priority ? '#d97706' : '#64748b', fontSize: '0.85rem' }}>
                       <option value="No">No Prioritario</option>
-                      <option value="SÃ­">SÃ­ Prioritario SEP</option>
+                      <option value="Sí">Sí Prioritario SEP</option>
                     </select>
                   </div>
                 </div>
 
                 <div style={{ marginTop: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f0f9ff', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #bae6fd', flexWrap: 'wrap', gap: '0.5rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#0369a1', fontWeight: 600 }}>
-                    <FileText size={16} /> Formularios Ãšnicos de ReevaluaciÃ³n Integral (Decreto 170 / MINEDUC)
+                    <FileText size={16} /> Formularios Únicos de Reevaluación Integral (Decreto 170 / MINEDUC)
                   </div>
                   <button
                     type="button"
@@ -1415,7 +1411,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     }}
                     style={{ background: '#0284c7', color: '#ffffff', border: 'none', padding: '0.4rem 0.85rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
                   >
-                    Gestionar en Informes MINEDUC â†’
+                    Gestionar en Informes MINEDUC →
                   </button>
                 </div>
               </div>
@@ -1423,16 +1419,16 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
               {/* SEGURO DE SALUD COMPLEMENTARIO */}
               <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #cbd5e1', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
                 <h4 style={{ color: '#0284c7', fontSize: '0.95rem', fontWeight: 800, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
-                  ðŸ›¡ï¸ Seguro de Salud Complementario
+                  🛡️ Seguro de Salud Complementario
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
-                      Â¿Posee Seguro Complementario?
+                      ¿Posee Seguro Complementario?
                     </label>
                     <select
-                      value={formData.has_complementary_insurance ? 'SÃ­' : 'No'}
-                      onChange={e => handleChange('has_complementary_insurance', e.target.value === 'SÃ­' ? 1 : 0)}
+                      value={formData.has_complementary_insurance ? 'Sí' : 'No'}
+                      onChange={e => handleChange('has_complementary_insurance', e.target.value === 'Sí' ? 1 : 0)}
                       style={{
                         width: '100%',
                         padding: '0.6rem 0.75rem',
@@ -1444,19 +1440,19 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                       }}
                     >
                       <option value="No">No posee seguro complementario</option>
-                      <option value="SÃ­">SÃ­ posee seguro complementario</option>
+                      <option value="Sí">Sí posee seguro complementario</option>
                     </select>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
-                      Nombre de la CompaÃ±Ã­a / Aseguradora
+                      Nombre de la Compañía / Aseguradora
                     </label>
                     <input
                       type="text"
                       disabled={!formData.has_complementary_insurance}
                       value={formData.complementary_insurance_name || ''}
                       onChange={e => handleChange('complementary_insurance_name', e.target.value)}
-                      placeholder={formData.has_complementary_insurance ? 'Ej: MetLife / BiceVida / ClÃ­nica...' : 'No aplica'}
+                      placeholder={formData.has_complementary_insurance ? 'Ej: MetLife / BiceVida / Clínica...' : 'No aplica'}
                       style={{
                         width: '100%',
                         padding: '0.6rem 0.75rem',
@@ -1476,7 +1472,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                       disabled={!formData.has_complementary_insurance}
                       value={formData.complementary_insurance_coverage || ''}
                       onChange={e => handleChange('complementary_insurance_coverage', e.target.value)}
-                      placeholder={formData.has_complementary_insurance ? 'Ej: Accidentes, hospitalizaciÃ³n, cirugÃ­as...' : 'No aplica'}
+                      placeholder={formData.has_complementary_insurance ? 'Ej: Accidentes, hospitalización, cirugías...' : 'No aplica'}
                       style={{
                         width: '100%',
                         padding: '0.6rem 0.75rem',
@@ -1490,15 +1486,15 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                 </div>
               </div>
 
-              {/* AUTORIZACIÃ“N DE USO DE IMAGEN DEL ESTUDIANTE */}
+              {/* AUTORIZACIÓN DE USO DE IMAGEN DEL ESTUDIANTE */}
               <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #cbd5e1', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
                 <h4 style={{ color: '#0f172a', fontSize: '0.95rem', fontWeight: 800, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
-                  ðŸ“¸ AutorizaciÃ³n de Uso de Imagen Institucional
+                  📸 Autorización de Uso de Imagen Institucional
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '1.5rem', alignItems: 'start' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
-                      Modalidad de AutorizaciÃ³n de Imagen:
+                      Modalidad de Autorización de Imagen:
                     </label>
                     <select
                       value={formData.image_auth_scope || (formData.authorize_image_use ? 'personal_y_grupal' : 'ninguna')}
@@ -1520,10 +1516,10 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                         fontSize: '0.85rem'
                       }}
                     >
-                      <option value="personal_y_grupal">âœ… SÃ­, Autorizo uso Personal y Grupal</option>
-                      <option value="grupal">ðŸ‘¥ SÃ­, Solo uso Grupal (Actos y Salidas)</option>
-                      <option value="personal">ðŸ‘¤ SÃ­, Solo uso Personal / Individual</option>
-                      <option value="ninguna">â›” No Autorizo uso de imagen</option>
+                      <option value="personal_y_grupal">✅ Sí, Autorizo uso Personal y Grupal</option>
+                      <option value="grupal">👥 Sí, Solo uso Grupal (Actos y Salidas)</option>
+                      <option value="personal">👤 Sí, Solo uso Personal / Individual</option>
+                      <option value="ninguna">⛔ No Autorizo uso de imagen</option>
                     </select>
                   </div>
                   <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.78rem', color: '#475569', lineHeight: 1.45 }}>
@@ -1531,13 +1527,13 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                       Consentimiento Informado Institucional:
                     </strong>
                     {(!formData.authorize_image_use || formData.image_auth_scope === 'ninguna') ? (
-                      <span>El apoderado <strong>NO autoriza</strong> la captaciÃ³n, registro ni difusiÃ³n de imÃ¡genes o videos del estudiante en ninguna modalidad (ni personal ni grupal).</span>
+                      <span>El apoderado <strong>NO autoriza</strong> la captación, registro ni difusión de imágenes o videos del estudiante en ninguna modalidad (ni personal ni grupal).</span>
                     ) : formData.image_auth_scope === 'grupal' ? (
-                      <span>El apoderado autoriza la captaciÃ³n y difusiÃ³n <strong>exclusivamente de forma GRUPAL</strong> en actividades de curso, talleres, salidas a terreno y eventos institucionales en medios y redes oficiales del establecimiento, no autorizando registros individuales o en primer plano.</span>
+                      <span>El apoderado autoriza la captación y difusión <strong>exclusivamente de forma GRUPAL</strong> en actividades de curso, talleres, salidas a terreno y eventos institucionales en medios y redes oficiales del establecimiento, no autorizando registros individuales o en primer plano.</span>
                     ) : formData.image_auth_scope === 'personal' ? (
-                      <span>El apoderado autoriza la captaciÃ³n de imÃ¡genes <strong>Ãºnicamente de forma PERSONAL / INDIVIDUAL</strong> para fines pedagÃ³gicos internos, credenciales y registro institucional del estudiante.</span>
+                      <span>El apoderado autoriza la captación de imágenes <strong>únicamente de forma PERSONAL / INDIVIDUAL</strong> para fines pedagógicos internos, credenciales y registro institucional del estudiante.</span>
                     ) : (
-                      <span>El apoderado autoriza la captaciÃ³n, ediciÃ³n y difusiÃ³n de imÃ¡genes y videos del estudiante <strong>tanto de forma personal (individual) como grupal</strong> en actividades curriculares, pedagÃ³gicas, salidas a terreno, talleres y eventos institucionales en medios y redes oficiales del Liceo TÃ©cnico Profesional Campanario Marcos Delucchi Fonck.</span>
+                      <span>El apoderado autoriza la captación, edición y difusión de imágenes y videos del estudiante <strong>tanto de forma personal (individual) como grupal</strong> en actividades curriculares, pedagógicas, salidas a terreno, talleres y eventos institucionales en medios y redes oficiales del Liceo Técnico Profesional Campanario Marcos Delucchi Fonck.</span>
                     )}
                   </div>
                 </div>
@@ -1554,7 +1550,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
             <div style={{ background: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '750px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.3)' }}>
               <div style={{ background: '#166534', color: '#ffffff', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  ðŸ§’ Seleccionar Hermano(a) Matriculado en el Liceo
+                  🧒 Seleccionar Hermano(a) Matriculado en el Liceo
                 </h3>
                 <button onClick={() => setShowSiblingModal(false)} style={{ background: 'transparent', border: 'none', color: '#ffffff', cursor: 'pointer' }}>
                   <X size={20} />
@@ -1566,7 +1562,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                   type="text"
                   value={siblingSearch}
                   onChange={e => setSiblingSearch(e.target.value)}
-                  placeholder="ðŸ” Buscar por nombre o RUT del hermano(a)..."
+                  placeholder="🔍 Buscar por nombre o RUT del hermano(a)..."
                   style={{ flex: 1, minWidth: '220px', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }}
                 />
                 <select
@@ -1574,7 +1570,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                   onChange={e => setSiblingCourseFilter(e.target.value)}
                   style={{ padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '0.85rem', outline: 'none' }}
                 >
-                  <option value="Todos">ðŸ« Todos los Cursos</option>
+                  <option value="Todos">🏫 Todos los Cursos</option>
                   {coursesList.map(c => (
                     <option key={c} value={c}>{c}</option>
                   ))}
@@ -1625,7 +1621,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                         className="btn btn-primary"
                         style={{ background: '#16a34a', borderColor: '#16a34a', padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 700 }}
                       >
-                        âž• Seleccionar Hermano(a)
+                        ➕ Seleccionar Hermano(a)
                       </button>
                     </div>
                   ))}
@@ -1634,7 +1630,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
           </div>
         )}
 
-        {/* MODAL DE SELECCIÃ“N DE APODERADOS Y TUTORES REGISTRADOS */}
+        {/* MODAL DE SELECCIÓN DE APODERADOS Y TUTORES REGISTRADOS */}
         {showGuardianSearchModal && (
           <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -1657,10 +1653,10 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
                 <div>
                   <h3 style={{ margin: 0, color: '#0f172a', fontWeight: 800, fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    ðŸ” Registro Institucional de Apoderados
+                    🔍 Registro Institucional de Apoderados
                   </h3>
                   <p style={{ margin: '0.2rem 0 0 0', color: '#64748b', fontSize: '0.78rem' }}>
-                    Selecciona un apoderado registrado para autocompletar sus datos en la secciÃ³n: <strong style={{ color: '#4f46e5' }}>{targetGuardianType === 'guardian' ? 'Apoderado Titular' : targetGuardianType === 'guardian_sec' ? 'Apoderado Suplente' : targetGuardianType === 'mother' ? 'Madre' : 'Padre'}</strong>
+                    Selecciona un apoderado registrado para autocompletar sus datos en la sección: <strong style={{ color: '#4f46e5' }}>{targetGuardianType === 'guardian' ? 'Apoderado Titular' : targetGuardianType === 'guardian_sec' ? 'Apoderado Suplente' : targetGuardianType === 'mother' ? 'Madre' : 'Padre'}</strong>
                   </p>
                 </div>
                 <button
@@ -1668,18 +1664,18 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                   onClick={() => setShowGuardianSearchModal(false)}
                   style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#64748b' }}
                 >
-                  âœ•
+                  ✕
                 </button>
               </div>
 
-              {/* BARRA DE BÃšSQUEDA */}
+              {/* BARRA DE BÚSQUEDA */}
               <div style={{ marginBottom: '1rem', position: 'relative' }}>
                 <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                 <input
                   type="text"
                   value={guardianSearchQuery}
                   onChange={e => setGuardianSearchQuery(e.target.value)}
-                  placeholder="Filtrar por RUT, Nombre de Apoderado, TelÃ©fono o Alumnos..."
+                  placeholder="Filtrar por RUT, Nombre de Apoderado, Teléfono o Alumnos..."
                   style={{
                     width: '100%',
                     padding: '0.65rem 0.85rem 0.65rem 2.2rem',
@@ -1697,7 +1693,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
               <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
                 {loadingGuardians ? (
                   <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontWeight: 600 }}>
-                    Cargando nÃ³mina de apoderados...
+                    Cargando nómina de apoderados...
                   </div>
                 ) : registeredGuardiansList.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
@@ -1711,7 +1707,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                         <th style={{ padding: '0.75rem 1rem' }}>NOMBRE COMPLETO</th>
                         <th style={{ padding: '0.75rem 1rem' }}>CONTACTO</th>
                         <th style={{ padding: '0.75rem 1rem' }}>PUPILOS ASOCIADOS</th>
-                        <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>ACCIÃ“N</th>
+                        <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>ACCIÓN</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1729,8 +1725,8 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                             <td style={{ padding: '0.75rem 1rem', fontWeight: 800, color: '#4f46e5' }}>{g.run || 'Sin RUT'}</td>
                             <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#0f172a' }}>{g.name}</td>
                             <td style={{ padding: '0.75rem 1rem', color: '#475569' }}>
-                              <div>ðŸ“ž {g.phone || 'Sin TelÃ©fono'}</div>
-                              {g.email && <div style={{ fontSize: '0.75rem', color: '#64748b' }}>âœ‰ï¸ {g.email}</div>}
+                              <div>📞 {g.phone || 'Sin Teléfono'}</div>
+                              {g.email && <div style={{ fontSize: '0.75rem', color: '#64748b' }}>✉️ {g.email}</div>}
                             </td>
                             <td style={{ padding: '0.75rem 1rem', color: '#334155', fontSize: '0.78rem' }}>
                               {g.pupilsSummary || 'Sin datos'}
@@ -1750,7 +1746,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                                   cursor: 'pointer'
                                 }}
                               >
-                                Seleccionar âž”
+                                Seleccionar ➔
                               </button>
                             </td>
                           </tr>
@@ -1768,7 +1764,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
           <div>
             {readOnly && (
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#92400e', background: '#fef3c7', border: '1px solid #fde68a', padding: '0.35rem 0.75rem', borderRadius: '8px' }}>
-                ðŸ‘ï¸ Perfil en Modo Solo Vista: puedes consultar todas las pestaÃ±as e imprimir documentos, pero no modificar la ficha.
+                👁️ Perfil en Modo Solo Vista: puedes consultar todas las pestañas e imprimir documentos, pero no modificar la ficha.
               </span>
             )}
           </div>
@@ -1779,7 +1775,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
             {readOnly ? (
               onPrint && (
                 <button onClick={() => onPrint(formData)} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#4f46e5' }}>
-                  ðŸ–¨ï¸ Imprimir Ficha Oficial
+                  🖨️ Imprimir Ficha Oficial
                 </button>
               )
             ) : (
@@ -1790,7 +1786,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
           </div>
         </div>
 
-        {/* MODAL CHECKLIST DOCUMENTAL (RETIRO / MATRÃCULA) */}
+        {/* MODAL CHECKLIST DOCUMENTAL (RETIRO / MATRÍCULA) */}
         <StudentDocumentChecklistModal
           isOpen={showChecklistModal}
           onClose={() => setShowChecklistModal(false)}
@@ -1801,5 +1797,3 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
     </div>
   );
 };
-
-
