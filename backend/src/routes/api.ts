@@ -467,7 +467,7 @@ const loginHandler = async (req: Request, res: Response) => {
     } catch (_) {}
 
     // Construir conjunto de claves válidas de 6 dígitos / RUT (tanto del propio RUT como del RUT de sus pupilos/apoderados)
-    const validFamilyPasswords = new Set<string>(['ltp2026!']);
+    const validFamilyPasswords = new Set<string>(['ltp2026!', 'ltp2026.']);
     const addRunVariantsToValidPasswords = (rVal: any) => {
       const rawR = String(rVal || '').replace(/\./g, '').trim().toLowerCase();
       if (!rawR) return;
@@ -2306,7 +2306,7 @@ router.post('/users', authMiddleware, checkRoles(['Admin', 'Director']), async (
   const rawRun = String(run || '').trim();
   const cleanRun = rawRun.replace(/\./g, '').trim();
   const alnumRun = cleanRun.replace(/[^0-9kK]/g, '');
-  const passStr = String(password || 'Ltp2026!').trim();
+  const passStr = String(password || 'Ltp2026.').trim();
 
   if (!cleanRun || !name) {
     return res.status(400).json({ error: 'RUT y Nombre son requeridos.' });

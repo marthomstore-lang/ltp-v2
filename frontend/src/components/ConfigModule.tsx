@@ -1447,7 +1447,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
 
     const staffTypeToSave = targetUser.staff_type || (primaryRole === 'Administrativo' || primaryRole === 'Asistente' ? 'Asistente de la Educación' : 'Docente');
     const jobFunctionToSave = targetUser.job_function || 'Docente de Aula';
-    const passwordToSave = targetUser.password_plain || targetUser.password || 'Ltp2026!';
+    const passwordToSave = targetUser.password_plain || targetUser.password || 'Ltp2026.';
 
     try {
       const res = await fetch(url, {
