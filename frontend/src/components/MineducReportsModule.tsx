@@ -2125,7 +2125,7 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
   const currentReportTypeObj = currentTypeInfo;
 
   return (
-    <div style={{ padding: '1.5rem', background: '#64748b', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+    <div className="mineduc-preview-wrapper" style={{ padding: '1.5rem', background: '#64748b', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       {/* Botonera de control (oculta en la impresión) */}
       <div className="no-print" style={{
         width: '100%',

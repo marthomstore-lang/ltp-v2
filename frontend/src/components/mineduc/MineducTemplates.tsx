@@ -5,51 +5,84 @@ export const MineducPrintStyles: React.FC = () => (
   <style>{`
     @media print {
       @page {
-        size: letter;
-        margin: 15mm 15mm 15mm 15mm;
+        size: letter portrait;
+        margin: 12mm 15mm 15mm 15mm;
       }
-      body {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        color: #0f172a;
-        background: #fff !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+      *, *::before, *::after {
+        box-sizing: border-box;
       }
-      body * {
-        visibility: hidden;
-      }
-      #mineduc-print-sheet, #mineduc-print-sheet * {
-        visibility: visible;
-      }
-      #mineduc-print-sheet {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100% !important;
-        max-width: 100% !important;
-        padding: 0 !important;
+      html, body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+        color: #0f172a !important;
+        background: #ffffff !important;
+        height: auto !important;
+        min-height: 100% !important;
+        overflow: visible !important;
         margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      /* Ocultar elementos de navegacion y UI externa */
+      nav, header, aside, button, .sidebar, .app-sidebar, .admin-sidebar,
+      .sidebar-container, .navbar-container, .top-bar, .app-header,
+      .no-print, .swal2-container, .tab-buttons, .header-container, .sub-nav-tabs,
+      .card-grid, .user-profile-badge, .status-dot {
+        display: none !important;
+      }
+      /* Permitir flujo de paginacion nativo y limpio */
+      #root, .app-container, .main-content, .dashboard-container,
+      .dashboard-layout, .admin-layout, .admin-content, .mineduc-preview-wrapper {
+        display: block !important;
+        position: static !important;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
         box-shadow: none !important;
         border: none !important;
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      #mineduc-print-sheet {
+        position: static !important;
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        border-radius: 0 !important;
         background: #ffffff !important;
+        overflow: visible !important;
       }
       .no-print { display: none !important; }
-      .page-break { page-break-after: always; break-after: always; }
-      .avoid-break { page-break-inside: avoid; break-inside: avoid; }
+      .page-break { page-break-after: always !important; break-after: page !important; }
+      .avoid-break { page-break-inside: avoid !important; break-inside: avoid !important; }
+      .break-after-avoid { page-break-after: avoid !important; break-after: avoid !important; }
+      p, div, td, th {
+        orphans: 3;
+        widows: 3;
+      }
     }
     .print-root {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
       color: #0f172a;
       background: #ffffff;
-      line-height: 1.4;
+      line-height: 1.45;
     }
     .grid-table {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      border: 1px solid #000;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
       gap: 1px;
-      background-color: #000;
+      background-color: #cbd5e1;
       margin-bottom: 1.25rem;
+      overflow: hidden;
     }
     .grid-cell {
       background-color: #fff;
@@ -63,13 +96,14 @@ export const MineducPrintStyles: React.FC = () => (
       font-size: 7.5pt;
       font-weight: 700;
       text-transform: uppercase;
-      color: #475569;
+      letter-spacing: 0.02em;
+      color: #64748b;
       margin-bottom: 2px;
     }
     .cell-value {
-      font-size: 9.5pt;
-      font-weight: 500;
-      color: #000;
+      font-size: 9pt;
+      font-weight: 600;
+      color: #0f172a;
     }
     .table-bordered {
       width: 100%;
@@ -78,23 +112,26 @@ export const MineducPrintStyles: React.FC = () => (
       margin-bottom: 1rem;
     }
     .table-bordered th, .table-bordered td {
-      border: 1px solid #000;
+      border: 1px solid #cbd5e1;
       padding: 6px 8px;
       font-size: 8.5pt;
     }
     .table-bordered th {
       background-color: #f1f5f9;
       font-weight: 700;
+      color: #1e293b;
       text-align: left;
     }
     .section-title {
-      font-size: 10pt;
+      font-size: 9.5pt;
       font-weight: 800;
       text-transform: uppercase;
+      letter-spacing: 0.03em;
       background-color: #f8fafc;
       border-left: 4px solid #002b49;
-      padding: 4px 8px;
+      padding: 5px 10px;
       margin: 1rem 0 0.5rem 0;
+      border-radius: 0 4px 4px 0;
     }
     .section-title.fus {
       border-left: 4px solid #002b49;
@@ -124,9 +161,93 @@ export const MineducPrintStyles: React.FC = () => (
     .signature-box {
       width: 220px;
       text-align: center;
-      border-top: 1px solid #000;
+      border-top: 1px solid #475569;
       padding-top: 5px;
       font-size: 8.5pt;
+    }
+    /* Estructuras de alta formalidad institucional */
+    .formal-doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #1e3a8a;
+      padding-bottom: 10px;
+      margin-bottom: 12px;
+    }
+    .formal-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      background-color: #cbd5e1;
+      gap: 1px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .formal-meta-cell {
+      background-color: #ffffff;
+      padding: 6px 10px;
+      display: flex;
+      flex-direction: column;
+    }
+    .formal-meta-cell.span-2 { grid-column: span 2; }
+    .formal-meta-cell.span-3 { grid-column: span 3; }
+    .formal-meta-label {
+      font-size: 7.2pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #64748b;
+      margin-bottom: 2px;
+    }
+    .formal-meta-value {
+      font-size: 8.8pt;
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .formal-area-card {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      background: #ffffff;
+      overflow: hidden;
+    }
+    .formal-area-header {
+      background-color: #f1f5f9;
+      color: #1e3a8a;
+      font-weight: 800;
+      font-size: 8.5pt;
+      padding: 6px 12px;
+      border-bottom: 1px solid #cbd5e1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      page-break-after: avoid !important;
+      break-after: avoid !important;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+    .formal-area-body {
+      padding: 10px 14px;
+      font-size: 8.8pt;
+      line-height: 1.6;
+      color: #1e293b;
+      text-align: justify;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .formal-badge {
+      display: inline-block;
+      font-size: 7pt;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 9999px;
+      background: #dbeafe;
+      color: #1e40af;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
   `}</style>
 );
@@ -402,14 +523,15 @@ export const FamilyReportSemester: React.FC<{ data: any; student: any; instituti
   const estudianteRut = student?.run || data.estudianteRut || '—';
   const estudianteCurso = student?.desc_grado || data.estudianteCurso || '—';
   const diagnostico = data.diagnostico || student?.pie_diagnosis || 'NEE en Seguimiento';
-  const estudianteEstablecimiento = data.estudianteEstablecimiento || institution?.name || 'Liceo T.P. Campanario';
-  const profesionalFechaInforme = data.profesionalFechaInforme || data.profesional_data?.fecha || data.evaluation_date || '—';
+  const estudianteEstablecimiento = data.estudianteEstablecimiento || institution?.name || 'Liceo Bicentenario Politécnico de Yungay';
+  const profesionalFechaInformeRaw = data.profesionalFechaInforme || data.profesional_data?.fecha || data.evaluation_date || '';
+  const fechaInforme = profesionalFechaInformeRaw ? formatChileDate(profesionalFechaInformeRaw) : '07/07/2026';
 
   const apoderadoNombre = data.apoderadoNombre || data.apoderado_data?.nombre || student?.guardian_name || 'Apoderado Titular';
   const apoderadoRut = data.apoderadoRut || data.apoderado_data?.rut || student?.guardian_run || '—';
   const apoderadoRelacion = data.apoderadoRelacion || data.apoderado_data?.relacion || student?.guardian_relation || 'Apoderado';
   const profesorJefe = data.profesorJefe || data.profesor_jefe || student?.profesor_jefe || 'Profesor(a) Jefe';
-  const profesionalNombre = data.profesionalNombre || data.profesional_data?.nombre || data.professional_name || 'Educadora Diferencial';
+  const profesionalNombre = data.profesionalNombre || data.profesional_data?.nombre || data.professional_name || 'Docente Especialista PIE';
 
   const reportePsicopedagogico = data.reportePsicopedagogico || data.reportes_area?.psicopedagogico || '';
   const reportePsicologico = data.reportePsicologico || data.reportes_area?.psicologico || '';
@@ -419,72 +541,282 @@ export const FamilyReportSemester: React.FC<{ data: any; student: any; instituti
 
   const sugerenciasApoyo = data.sugerenciasApoyo || data.sugerencias_apoyo || '';
 
-  const firmaUsuarioNombre = data.firmaUsuarioNombre || data.firma_usuario_nombre || data.professional_name || 'Profesional Evaluador';
+  const firmaUsuarioNombre = data.firmaUsuarioNombre || data.firma_usuario_nombre || profesionalNombre;
   const firmaUsuarioCargo = data.firmaUsuarioCargo || data.firma_usuario_cargo || data.professional_role || 'Docente Especialista PIE';
 
+  const activeAreas = [
+    {
+      id: 'psicopedagogico',
+      title: 'ÁREA DE EDUCACIÓN DIFERENCIAL / PSICOPEDAGOGÍA',
+      category: 'Apoyo Pedagógico Especializado',
+      content: reportePsicopedagogico?.trim(),
+      professional: profesionalNombre
+    },
+    {
+      id: 'psicologico',
+      title: 'ÁREA PSICOLÓGICA',
+      category: 'Apoyo Socioemocional y Conductual',
+      content: reportePsicologico?.trim(),
+      professional: 'Psicólogo(a) PIE'
+    },
+    {
+      id: 'fonoaudiologico',
+      title: 'ÁREA FONOAUDIOLÓGICA',
+      category: 'Comunicación, Lenguaje y Habla',
+      content: reporteFonoaudiologico?.trim(),
+      professional: 'Fonoaudiólogo(a) PIE'
+    },
+    {
+      id: 'terapia_ocupacional',
+      title: 'ÁREA DE TERAPIA OCUPACIONAL',
+      category: 'Integración Sensorial y Autonomía',
+      content: reporteTerapiaOcupacional?.trim(),
+      professional: 'Terapeuta Ocupacional PIE'
+    },
+    {
+      id: 'kinesiologico',
+      title: 'ÁREA KINESIOLÓGICA',
+      category: 'Desarrollo y Psicomotricidad',
+      content: reporteKinesiologico?.trim(),
+      professional: 'Kinesiólogo(a) PIE'
+    }
+  ].filter(a => Boolean(a.content));
+
   return (
-    <div className="print-root print-container" style={{ maxWidth: '850px', margin: '0 auto', fontSize: '9pt' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #1e3a8a', paddingBottom: '10px', marginBottom: '15px' }}>
-        <img src="/images/logo_liceo.png" alt="Logo" style={{ height: '65px' }} />
-        <div style={{ textAlign: 'center', flex: 1 }}>
-          <h1 style={{ margin: 0, fontSize: '13pt', fontWeight: 800, color: '#1e3a8a' }}>INFORME PARA LA FAMILIA - 2026</h1>
-          <p style={{ margin: '3px 0 0 0', fontWeight: 600, color: '#475569' }}>{semester}° Semestre</p>
-        </div>
-        <div style={{ fontSize: '8pt', fontWeight: 'bold', border: '1px solid #1e3a8a', color: '#1e3a8a', padding: '4px 8px' }}>
-          FOLIO: {folio}
-        </div>
-      </div>
-
-      <div className="section-title family">I. ANTECEDENTES DEL ESTUDIANTE</div>
-      <div className="grid-table">
-        <div className="grid-cell span-2"><span className="cell-label">Nombre del Estudiante</span><span className="cell-value">{estudianteNombre}</span></div>
-        <div className="grid-cell"><span className="cell-label">RUN</span><span className="cell-value">{estudianteRut}</span></div>
-        <div className="grid-cell"><span className="cell-label">Curso</span><span className="cell-value">{estudianteCurso}</span></div>
-        <div className="grid-cell span-2"><span className="cell-label">Diagnóstico NEE</span><span className="cell-value">{diagnostico}</span></div>
-        <div className="grid-cell span-2"><span className="cell-label">Establecimiento</span><span className="cell-value">{estudianteEstablecimiento}</span></div>
-        <div className="grid-cell"><span className="cell-label">Fecha Informe</span><span className="cell-value">{profesionalFechaInforme}</span></div>
-      </div>
-
-      <div className="section-title family">II. IDENTIFICACIÓN DEL APODERADO Y EQUIPO DE AULA</div>
-      <div className="grid-table">
-        <div className="grid-cell span-2"><span className="cell-label">Nombre Apoderado</span><span className="cell-value">{apoderadoNombre}</span></div>
-        <div className="grid-cell"><span className="cell-label">RUT / Parentesco</span><span className="cell-value">{apoderadoRut} ({apoderadoRelacion})</span></div>
-        <div className="grid-cell span-2"><span className="cell-label">Profesor(a) Jefe</span><span className="cell-value">{profesorJefe}</span></div>
-        <div className="grid-cell"><span className="cell-label">Docente Especialista</span><span className="cell-value">{profesionalNombre}</span></div>
-      </div>
-
-      <div className="section-title family">III. REPORTE DE ÁREAS DE APOYO</div>
-      <table className="table-bordered">
-        <tbody>
-          <tr><th style={{ backgroundColor: '#eff6ff', color: '#1e3a8a' }}>ÁREA PSICOPEDAGÓGICA / EDUCACIÓN DIFERENCIAL</th></tr>
-          <tr><td style={{ minHeight: '75px', verticalAlign: 'top' }}>{reportePsicopedagogico}</td></tr>
-          <tr><th style={{ backgroundColor: '#eff6ff', color: '#1e3a8a' }}>ÁREA PSICOLÓGICA</th></tr>
-          <tr><td style={{ minHeight: '75px', verticalAlign: 'top' }}>{reportePsicologico}</td></tr>
-          <tr><th style={{ backgroundColor: '#eff6ff', color: '#1e3a8a' }}>ÁREA FONOAUDIOLÓGICA</th></tr>
-          <tr><td style={{ minHeight: '75px', verticalAlign: 'top' }}>{reporteFonoaudiologico}</td></tr>
-          <tr><th style={{ backgroundColor: '#eff6ff', color: '#1e3a8a' }}>ÁREA KINESIOLÓGICA</th></tr>
-          <tr><td style={{ minHeight: '75px', verticalAlign: 'top' }}>{reporteKinesiologico}</td></tr>
-          <tr><th style={{ backgroundColor: '#eff6ff', color: '#1e3a8a' }}>ÁREA TERAPIA OCUPACIONAL</th></tr>
-          <tr><td style={{ minHeight: '75px', verticalAlign: 'top' }}>{reporteTerapiaOcupacional}</td></tr>
-        </tbody>
-      </table>
-
-      <div className="avoid-break">
-        <div className="section-title family">IV. SUGERENCIAS DE APOYO EN EL HOGAR</div>
-        <div style={{ border: '1px solid #000', padding: '10px', minHeight: '80px', marginBottom: '25px', fontSize: '9pt', lineHeight: 1.5 }}>
-          {sugerenciasApoyo}
-        </div>
-
-        {/* Firmas */}
-        <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: '40px' }}>
-          <div className="signature-box">
-            <strong>{firmaUsuarioNombre}</strong><br />
-            {firmaUsuarioCargo}
+    <div className="print-root print-container" style={{ maxWidth: '850px', margin: '0 auto', fontSize: '9pt', color: '#0f172a' }}>
+      {/* 1. ENCABEZADO INSTITUCIONAL FORMAL */}
+      <div className="formal-doc-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <img
+            src="/images/logo_liceo.png"
+            alt="Escudo Liceo"
+            style={{ height: '70px', width: 'auto', objectFit: 'contain' }}
+            onError={(e: any) => { e.target.style.display = 'none'; }}
+          />
+          <div>
+            <div style={{ fontSize: '7pt', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              República de Chile • Ministerio de Educación
+            </div>
+            <div style={{ fontSize: '8pt', fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.02em', marginTop: '1px' }}>
+              Programa de Integración Escolar (PIE) — Decreto 170 / 83
+            </div>
+            <div style={{ fontSize: '10.5pt', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+              LICEO BICENTENARIO POLITÉCNICO DE YUNGAY
+            </div>
+            <div style={{ fontSize: '7.5pt', color: '#475569', fontWeight: 600 }}>
+              RBD 3941-1 • Comuna de Yungay • Región de Ñuble
+            </div>
           </div>
-          <div className="signature-box">
-            <strong>{apoderadoNombre}</strong><br />
-            RUT: {apoderadoRut}<br />
-            Firma Apoderado
+        </div>
+
+        <div style={{
+          textAlign: 'right',
+          border: '1.5px solid #1e3a8a',
+          borderRadius: '6px',
+          padding: '6px 12px',
+          backgroundColor: '#f8fafc',
+          minWidth: '170px'
+        }}>
+          <div style={{ fontSize: '7pt', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+            Documento Institucional
+          </div>
+          <div style={{ fontSize: '9pt', fontWeight: 800, color: '#1e3a8a', margin: '2px 0' }}>
+            FOLIO: {folio}
+          </div>
+          <div style={{ fontSize: '7.5pt', fontWeight: 600, color: '#334155' }}>
+            Fecha: {fechaInforme}
+          </div>
+        </div>
+      </div>
+
+      {/* BANNER DE TÍTULO PRINCIPAL */}
+      <div style={{
+        background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)',
+        color: '#ffffff',
+        padding: '8px 14px',
+        borderRadius: '6px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '14px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+      }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '12pt', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            Informe de Avances para la Familia — 2026
+          </h1>
+          <div style={{ fontSize: '7.5pt', opacity: 0.9, marginTop: '2px' }}>
+            Acompañamiento Técnico-Pedagógico y Multidisciplinario
+          </div>
+        </div>
+        <div style={{
+          backgroundColor: '#ffffff',
+          color: '#1e3a8a',
+          padding: '3px 10px',
+          borderRadius: '9999px',
+          fontWeight: 800,
+          fontSize: '8pt',
+          textTransform: 'uppercase',
+          letterSpacing: '0.03em'
+        }}>
+          {semester}° Semestre
+        </div>
+      </div>
+
+      {/* SECCIÓN I: ANTECEDENTES DEL ESTUDIANTE */}
+      <div className="section-title family">I. ANTECEDENTES GENERALES DEL ESTUDIANTE</div>
+      <div className="formal-meta-grid">
+        <div className="formal-meta-cell span-2">
+          <span className="formal-meta-label">Nombre Completo del Estudiante</span>
+          <span className="formal-meta-value" style={{ fontSize: '10pt', textTransform: 'uppercase' }}>{estudianteNombre}</span>
+        </div>
+        <div className="formal-meta-cell">
+          <span className="formal-meta-label">RUN / RUT</span>
+          <span className="formal-meta-value">{estudianteRut}</span>
+        </div>
+        <div className="formal-meta-cell">
+          <span className="formal-meta-label">Curso / Nivel</span>
+          <span className="formal-meta-value">{estudianteCurso}</span>
+        </div>
+        <div className="formal-meta-cell span-2">
+          <span className="formal-meta-label">Diagnóstico de Ingreso / NEE</span>
+          <span className="formal-meta-value" style={{ color: '#1e3a8a' }}>{diagnostico}</span>
+        </div>
+        <div className="formal-meta-cell span-2">
+          <span className="formal-meta-label">Establecimiento Educacional</span>
+          <span className="formal-meta-value">{estudianteEstablecimiento}</span>
+        </div>
+        <div className="formal-meta-cell">
+          <span className="formal-meta-label">Fecha del Informe</span>
+          <span className="formal-meta-value">{fechaInforme}</span>
+        </div>
+      </div>
+
+      {/* SECCIÓN II: APODERADO Y EQUIPO DE AULA */}
+      <div className="section-title family">II. IDENTIFICACIÓN DEL APODERADO Y EQUIPO DE AULA</div>
+      <div className="formal-meta-grid">
+        <div className="formal-meta-cell span-2">
+          <span className="formal-meta-label">Nombre del Apoderado(a) Titular</span>
+          <span className="formal-meta-value">{apoderadoNombre}</span>
+        </div>
+        <div className="formal-meta-cell">
+          <span className="formal-meta-label">RUT / Parentesco</span>
+          <span className="formal-meta-value">{apoderadoRut} ({apoderadoRelacion})</span>
+        </div>
+        <div className="formal-meta-cell span-2">
+          <span className="formal-meta-label">Profesor(a) Jefe de Curso</span>
+          <span className="formal-meta-value">{profesorJefe}</span>
+        </div>
+        <div className="formal-meta-cell">
+          <span className="formal-meta-label">Docente Especialista PIE</span>
+          <span className="formal-meta-value">{profesionalNombre}</span>
+        </div>
+      </div>
+
+      {/* SECCIÓN III: REPORTE DE ÁREAS DE APOYO */}
+      <div className="section-title family" style={{ pageBreakAfter: 'avoid', breakAfter: 'avoid' }}>
+        III. REPORTE DE AVANCES POR ÁREAS DE ESPECIALIDAD
+      </div>
+      
+      {activeAreas.length > 0 ? (
+        activeAreas.map(area => (
+          <div key={area.id} className="formal-area-card">
+            <div className="formal-area-header">
+              <span>{area.title}</span>
+              <span className="formal-badge">{area.category}</span>
+            </div>
+            <div className="formal-area-body">
+              {area.content}
+            </div>
+          </div>
+        ))
+      ) : (
+        <div className="formal-area-card">
+          <div className="formal-area-body" style={{ fontStyle: 'italic', color: '#64748b', textAlign: 'center', padding: '20px' }}>
+            No se han registrado observaciones de áreas especializadas para el presente período.
+          </div>
+        </div>
+      )}
+
+      {/* SECCIÓN IV: SUGERENCIAS DE APOYO EN EL HOGAR */}
+      {sugerenciasApoyo?.trim() && (
+        <div className="avoid-break" style={{ marginTop: '12px' }}>
+          <div className="section-title family" style={{ pageBreakAfter: 'avoid', breakAfter: 'avoid' }}>
+            IV. ORIENTACIONES Y SUGERENCIAS DE APOYO EN EL HOGAR
+          </div>
+          <div className="formal-area-card" style={{ borderColor: '#0f766e' }}>
+            <div className="formal-area-header" style={{ backgroundColor: '#f0fdfa', color: '#0f766e', borderBottomColor: '#99f6e4' }}>
+              <span>PAUTAS Y RECOMENDACIONES PARA EL HOGAR</span>
+              <span className="formal-badge" style={{ background: '#ccfbf1', color: '#0f766e' }}>Compromiso Familiar</span>
+            </div>
+            <div className="formal-area-body" style={{ color: '#0f172a' }}>
+              {sugerenciasApoyo}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECCIÓN V: CONSTANCIA DE RECEPCIÓN Y FIRMAS */}
+      <div className="avoid-break" style={{ marginTop: '22px' }}>
+        <div className="section-title family" style={{ pageBreakAfter: 'avoid', breakAfter: 'avoid' }}>
+          {sugerenciasApoyo?.trim() ? 'V. CONSTANCIA DE RECEPCIÓN Y FIRMAS INSTITUCIONALES' : 'IV. CONSTANCIA DE RECEPCIÓN Y FIRMAS INSTITUCIONALES'}
+        </div>
+        <div style={{
+          fontSize: '7.8pt',
+          color: '#475569',
+          fontStyle: 'italic',
+          lineHeight: 1.45,
+          marginBottom: '20px',
+          background: '#f8fafc',
+          padding: '6px 12px',
+          borderLeft: '3px solid #1e3a8a',
+          borderRadius: '0 4px 4px 0'
+        }}>
+          El/la apoderado(a) toma conocimiento formal de los antecedentes expuestos en el presente informe de avance semestral, comprometiéndose al trabajo colaborativo con los profesionales del establecimiento para el fortalecimiento de los aprendizajes y desarrollo integral del estudiante.
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: '20px',
+          marginTop: '45px',
+          paddingTop: '10px'
+        }}>
+          <div style={{ textAlign: 'center', borderTop: '1px solid #475569', paddingTop: '6px' }}>
+            <div style={{ fontSize: '8.5pt', fontWeight: 800, color: '#0f172a' }}>{firmaUsuarioNombre}</div>
+            <div style={{ fontSize: '7.5pt', color: '#475569', fontWeight: 600 }}>{firmaUsuarioCargo}</div>
+            <div style={{ fontSize: '7pt', color: '#94a3b8' }}>Docente Especialista PIE</div>
+          </div>
+
+          <div style={{ textAlign: 'center', borderTop: '1px solid #475569', paddingTop: '6px' }}>
+            <div style={{ fontSize: '8.5pt', fontWeight: 800, color: '#0f172a' }}>{profesorJefe}</div>
+            <div style={{ fontSize: '7.5pt', color: '#475569', fontWeight: 600 }}>Profesor(a) Jefe</div>
+            <div style={{ fontSize: '7pt', color: '#94a3b8' }}>Liceo Campanario</div>
+          </div>
+
+          <div style={{ textAlign: 'center', borderTop: '1px solid #475569', paddingTop: '6px' }}>
+            <div style={{ fontSize: '8.5pt', fontWeight: 800, color: '#0f172a' }}>{apoderadoNombre}</div>
+            <div style={{ fontSize: '7.5pt', color: '#475569', fontWeight: 600 }}>RUT: {apoderadoRut}</div>
+            <div style={{ fontSize: '7pt', color: '#94a3b8' }}>Firma Apoderado(a) / Recepción</div>
+          </div>
+        </div>
+
+        {/* PIE INSTITUCIONAL DE CONFIDENCIALIDAD */}
+        <div style={{
+          borderTop: '1px solid #e2e8f0',
+          marginTop: '30px',
+          paddingTop: '8px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          fontSize: '6.8pt',
+          color: '#94a3b8'
+        }}>
+          <div>
+            Documento emitido en conformidad al Decreto Supremo N° 170/2009 y Decreto N° 83/2015 del Ministerio de Educación de Chile.
+          </div>
+          <div>
+            Liceo Bicentenario Politécnico de Yungay • RBD 3941-1
           </div>
         </div>
       </div>
