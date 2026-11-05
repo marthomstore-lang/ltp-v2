@@ -14,8 +14,13 @@ interface SubjectGradeDetail {
 interface StudentSubjectPerformance {
   subjectName: string;
   average: number | string;
+  annualAverage?: number | string;
   status: 'APROBADO' | 'REPROBADO' | 'SIN NOTAS';
   grades: SubjectGradeDetail[];
+  sem1?: any;
+  sem2?: any;
+  isConceptual?: boolean;
+  numericAverage?: number;
 }
 
 export interface StudentData {
@@ -1395,7 +1400,10 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
               return {
                 name: sub.name,
                 ...nVals,
-                average: perf?.average || '-'
+                average: perf?.average || '-',
+                annualAverage: perf?.annualAverage || perf?.average || '-',
+                sem1: perf?.sem1,
+                sem2: perf?.sem2
               };
             });
 
@@ -1406,6 +1414,8 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
               run: st.run,
               course: currentCourseData.courseName,
               promedioGeneral: st.promedioGeneral,
+              promedioSem1: (st as any).promedioSem1,
+              promedioSem2: (st as any).promedioSem2,
               azules: st.azules,
               rojas: st.rojas,
               subjectGrades: subjectsList,

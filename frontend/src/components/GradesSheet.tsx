@@ -2626,18 +2626,23 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               run: s.run || '',
               course: currentCourseName || 'Curso',
               promedioGeneral: overviewSt?.promedioGeneral || activeAvg,
+              promedioSem1: (overviewSt as any)?.promedioSem1,
+              promedioSem2: (overviewSt as any)?.promedioSem2,
               azules: overviewSt?.azules ?? azulCount,
               rojas: overviewSt?.rojas ?? rojaCount,
               subjectGrades: (allowedSubjects.length > 0 ? allowedSubjects : allSubjects).map(sub => {
+                const perf = overviewSt?.subjectGrades?.[sub.name] ||
+                  (overviewSt?.subjectGrades ? Object.entries(overviewSt.subjectGrades).find(([k]) => normalizeStr(k) === normalizeStr(sub.name))?.[1] as any : null);
                 if (sub.id === subjectId) {
                   return {
                     name: sub.name,
                     ...nVals,
-                    average: activeAvg
+                    average: activeAvg,
+                    annualAverage: perf?.annualAverage || activeAvg,
+                    sem1: perf?.sem1,
+                    sem2: perf?.sem2
                   };
                 }
-                const perf = overviewSt?.subjectGrades?.[sub.name] ||
-                  (overviewSt?.subjectGrades ? Object.entries(overviewSt.subjectGrades).find(([k]) => normalizeStr(k) === normalizeStr(sub.name))?.[1] as any : null);
                 if (perf && Array.isArray(perf.grades)) {
                   const subNVals: Record<string, number | string> = {};
                   for (let i = 1; i <= 10; i++) {
@@ -2647,13 +2652,19 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                   return {
                     name: sub.name,
                     ...subNVals,
-                    average: perf.average || '-'
+                    average: perf.average || '-',
+                    annualAverage: perf.annualAverage || perf.average || '-',
+                    sem1: perf.sem1,
+                    sem2: perf.sem2
                   };
                 }
                 return {
                   name: sub.name,
                   n1: '-', n2: '-', n3: '-', n4: '-', n5: '-', n6: '-', n7: '-', n8: '-', n9: '-', n10: '-',
-                  average: '-'
+                  average: '-',
+                  annualAverage: '-',
+                  sem1: perf?.sem1,
+                  sem2: perf?.sem2
                 };
               })
             };
