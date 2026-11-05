@@ -2593,14 +2593,14 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
             const overviewSt = printCourseOverview?.students?.find((os: any) => String(os.id) === String(s.id) || (s.run && os.run === s.run));
 
             const nVals: Record<string, number | string> = {};
-            columns.slice(0, 10).forEach((col, cIdx) => {
+            evalColumns.slice(0, 10).forEach((col, cIdx) => {
               const val = gradesMap[`${s.id}_${col.id}`];
-              nVals[`n${cIdx + 1}`] = val !== undefined && val > 0 ? (gradeScaleMode === 'entera' ? Math.round(val * 10) : val.toFixed(1).replace('.', ',')) : '-';
+              nVals[`n${cIdx + 1}`] = val !== undefined && val > 0 ? (gradeScaleMode === 'entera' ? Math.round(val * 10) : Number(val.toFixed(1))) : '-';
             });
 
             let azulCount = 0;
             let rojaCount = 0;
-            columns.forEach(col => {
+            evalColumns.forEach(col => {
               const val = gradesMap[`${s.id}_${col.id}`];
               if (val && val > 0) {
                 if (val >= 4.0) azulCount++;
@@ -2608,7 +2608,15 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               }
             });
 
-            const avg = calculateAverage(s.id);
+            const currentPeriodAvg = period === '1er Semestre'
+              ? getStudentSemester1Avg(s.id)
+              : period === '2do Semestre'
+              ? getStudentSemester2Avg(s.id)
+              : getStudentAnnualAvg(s.id);
+
+            const activeAvg = currentPeriodAvg !== null && currentPeriodAvg !== undefined && !isNaN(currentPeriodAvg) && currentPeriodAvg > 0
+              ? Number(currentPeriodAvg.toFixed(1))
+              : '-';
 
             return {
               id: s.id,
@@ -2616,7 +2624,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               fullName: s.full_name,
               run: s.run || '',
               course: currentCourseName || 'Curso',
-              promedioGeneral: overviewSt?.promedioGeneral || avg,
+              promedioGeneral: overviewSt?.promedioGeneral || activeAvg,
               azules: overviewSt?.azules ?? azulCount,
               rojas: overviewSt?.rojas ?? rojaCount,
               subjectGrades: (allowedSubjects.length > 0 ? allowedSubjects : allSubjects).map(sub => {
@@ -2624,7 +2632,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                   return {
                     name: sub.name,
                     ...nVals,
-                    average: avg
+                    average: activeAvg
                   };
                 }
                 const perf = overviewSt?.subjectGrades?.[sub.name] ||

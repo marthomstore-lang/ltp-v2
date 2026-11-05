@@ -5114,11 +5114,14 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
         `SELECT g.*, 
                 COALESCE(CAST(gc.subject_id AS TEXT), CAST(g.subject_id AS TEXT), '1') as subject_id, 
                 COALESCE(gc.title, g.evaluation_name, 'Nota') as col_title, 
+                COALESCE(gc.period, g.period, '1er Semestre') as effective_period,
+                COALESCE(gc.position, 1) as col_position,
                 COALESCE(s.name, g.subject_name, '') as subject_name
          FROM grades g
          LEFT JOIN grade_columns gc ON g.grade_column_id = gc.id
-         LEFT JOIN subjects s ON (CAST(gc.subject_id AS TEXT) = CAST(s.id AS TEXT) OR CAST(g.subject_id AS TEXT) = CAST(s.id AS TEXT))
-         WHERE (g.academic_year = $1 OR gc.academic_year = $1 OR g.academic_year IS NULL)`,
+         LEFT JOIN subjects s ON CAST(COALESCE(gc.subject_id, g.subject_id) AS TEXT) = CAST(s.id AS TEXT)
+         WHERE (g.academic_year = $1 OR gc.academic_year = $1 OR g.academic_year IS NULL)
+         ORDER BY gc.position ASC, g.id ASC`,
         [selectedYear]
       ).catch(() => ({ rows: [] })),
       query(`SELECT * FROM grade_columns WHERE academic_year = $1`, [selectedYear]).catch(() => ({ rows: [] })),
@@ -5159,7 +5162,10 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
 
       // Filtrar por período si no es 'Anual'
       if (selectedPeriod && selectedPeriod !== 'Anual') {
-        gradesRows = gradesRows.filter((g: any) => !g.period || g.period === selectedPeriod);
+        gradesRows = gradesRows.filter((g: any) => {
+          const p = g.effective_period || g.period || (g.grade_column_id?.includes('S2') ? '2do Semestre' : '1er Semestre');
+          return p === selectedPeriod;
+        });
       }
     }
 
@@ -5295,10 +5301,12 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
       courseSubjects.forEach(sb => {
         const isConceptual = isConceptualSubjectHelper(sb.name);
         const eq = sb._equiv || getEquivalentSubjectKeys(sb.id, sb.name, dbSubjects);
-        const sbGrades = studentGrades.filter(g =>
-          eq.ids.includes(String(g.subject_id)) ||
-          (g.subject_name && eq.normNames.has(normalizeSubjectOrCourseKey(g.subject_name)))
-        );
+        const sbGrades = studentGrades
+          .filter(g =>
+            eq.ids.includes(String(g.subject_id)) ||
+            (g.subject_name && eq.normNames.has(normalizeSubjectOrCourseKey(g.subject_name)))
+          )
+          .sort((a, b) => (Number(a.col_position) || 1) - (Number(b.col_position) || 1));
         if (sbGrades.length > 0) {
           let sbSum = 0;
           let manualFinalConcept = '';

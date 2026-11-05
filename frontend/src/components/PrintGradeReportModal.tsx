@@ -256,10 +256,11 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
     const hasNote = keys.some(k => {
       const val = sub[k];
       if (val === undefined || val === null || val === '' || val === '-') return false;
-      const num = typeof val === 'number' ? val : parseFloat(String(val));
+      const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
       return !isNaN(num) && num > 0;
     });
-    const hasAvg = sub.average && sub.average !== '-' && !isNaN(parseFloat(String(sub.average)));
+    const avgNum = sub.average && sub.average !== '-' ? (typeof sub.average === 'number' ? sub.average : parseFloat(String(sub.average).replace(',', '.'))) : NaN;
+    const hasAvg = !isNaN(avgNum) && avgNum > 0;
     return hasNote || hasAvg;
   };
 
@@ -707,7 +708,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
             </div>
           ) : (
             studentsToPrint.map((st, sIndex) => {
-              const avgNum = typeof st.promedioGeneral === 'number' ? st.promedioGeneral : parseFloat(String(st.promedioGeneral));
+              const avgNum = typeof st.promedioGeneral === 'number' ? st.promedioGeneral : parseFloat(String(st.promedioGeneral).replace(',', '.'));
               const isApproved = isNaN(avgNum) || avgNum >= 4.0;
               const displayCourseName = st.course && st.course !== 'Curso' ? st.course : courseName;
               const activeSubjectGrades = st.subjectGrades ? st.subjectGrades.filter(hasAnyGrade) : [];
@@ -815,8 +816,8 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                             {activeSubjectGrades.length > 0 ? (
                               activeSubjectGrades.map((sub, subIdx) => {
                                 const renderGrade = (val: any) => {
-                                  if (val === undefined || val === null || val === '' || val === 0 || val === '0') return '-';
-                                  const num = typeof val === 'number' ? val : parseFloat(String(val));
+                                  if (val === undefined || val === null || val === '' || val === 0 || val === '0' || val === '-') return '-';
+                                  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
                                   if (isNaN(num) || num <= 0) return '-';
                                   const formatted = num.toFixed(1);
                                   const isRed = num < 4.0;
@@ -829,7 +830,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
 
                                 const avgFormatted = () => {
                                   if (!sub.average || sub.average === '-') return '-';
-                                  const num = typeof sub.average === 'number' ? sub.average : parseFloat(String(sub.average));
+                                  const num = typeof sub.average === 'number' ? sub.average : parseFloat(String(sub.average).replace(',', '.'));
                                   if (isNaN(num) || num <= 0) return '-';
                                   return (
                                     <strong style={{ color: num < 4.0 ? '#dc2626' : '#15803d', fontSize: '0.9rem' }}>
