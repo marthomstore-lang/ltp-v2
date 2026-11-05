@@ -30,6 +30,7 @@ interface Student {
   full_name: string;
   list_number?: number;
   enrollment_number?: string;
+  profesor_jefe?: string;
 }
 
 interface GradesSheetProps {
@@ -2589,9 +2590,11 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           courseName={currentCourseName || 'Curso'}
           academicYear={academicYear}
           period={period}
+          homeroomTeacher={printCourseOverview?.homeroomTeacher || (printCourseOverview as any)?.profesorJefe || (students.find((s: any) => s.profesor_jefe && s.profesor_jefe !== 'Sin Asignar')?.profesor_jefe) || undefined}
           onClose={() => setShowPrintModal(false)}
           students={students.map((s, idx) => {
             const overviewSt = printCourseOverview?.students?.find((os: any) => String(os.id) === String(s.id) || (s.run && os.run === s.run));
+            const stHomeroom = (s as any).profesor_jefe || (overviewSt as any)?.homeroomTeacher || (overviewSt as any)?.profesor_jefe || printCourseOverview?.homeroomTeacher;
 
             const nVals: Record<string, number | string> = {};
             evalColumns.slice(0, 10).forEach((col, cIdx) => {
@@ -2630,6 +2633,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               promedioSem2: (overviewSt as any)?.promedioSem2,
               azules: overviewSt?.azules ?? azulCount,
               rojas: overviewSt?.rojas ?? rojaCount,
+              homeroomTeacher: stHomeroom && stHomeroom !== 'Sin Asignar' ? stHomeroom : undefined,
               subjectGrades: (allowedSubjects.length > 0 ? allowedSubjects : allSubjects).map(sub => {
                 const perf = overviewSt?.subjectGrades?.[sub.name] ||
                   (overviewSt?.subjectGrades ? Object.entries(overviewSt.subjectGrades).find(([k]) => normalizeStr(k) === normalizeStr(sub.name))?.[1] as any : null);

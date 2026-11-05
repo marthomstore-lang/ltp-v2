@@ -1384,6 +1384,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
           courseName={currentCourseData.courseName}
           academicYear={selectedYear}
           period={selectedPeriod}
+          homeroomTeacher={(currentCourseData as any).homeroomTeacher || (currentCourseData as any).profesorJefe || realStudents.find(r => r.profesor_jefe && r.profesor_jefe !== 'Sin Asignar')?.profesor_jefe || undefined}
           initialStudentId={initialPrintStudentId}
           onClose={() => setShowPrintReportsModal(false)}
           students={currentCourseData.students.map(st => {
@@ -1407,6 +1408,8 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
               };
             });
 
+            const stHomeroom = (st as any).homeroomTeacher || (st as any).profesor_jefe || realStudents.find(r => String(r.id) === String(st.id) || (st.run && r.run === st.run))?.profesor_jefe || (currentCourseData as any).homeroomTeacher;
+
             return {
               id: st.id,
               listNumber: st.number,
@@ -1419,7 +1422,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
               azules: st.azules,
               rojas: st.rojas,
               subjectGrades: subjectsList,
-              homeroomTeacher: realStudents.find(r => r.id === st.id)?.profesor_jefe || undefined
+              homeroomTeacher: stHomeroom && stHomeroom !== 'Sin Asignar' ? stHomeroom : undefined
             };
           })}
         />

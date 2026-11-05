@@ -5127,7 +5127,8 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
       dbOrdersRes,
       gradesRes,
       gradeColsRes,
-      lvlRes
+      lvlRes,
+      coursesRes
     ] = await Promise.all([
       query(`SELECT * FROM students ORDER BY list_number ASC, full_name ASC`),
       query(`SELECT * FROM subjects ORDER BY id ASC`),
@@ -5148,10 +5149,24 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
         [selectedYear]
       ).catch(() => ({ rows: [] })),
       query(`SELECT * FROM grade_columns WHERE academic_year = $1`, [selectedYear]).catch(() => ({ rows: [] })),
-      query(`SELECT * FROM levels`).catch(() => ({ rows: [] }))
+      query(`SELECT * FROM levels`).catch(() => ({ rows: [] })),
+      query(`SELECT id, name, teacher FROM courses`).catch(() => ({ rows: [] }))
     ]);
 
     const allDbStudents = allStudentsRes.rows;
+    const allDbCourses = coursesRes?.rows || [];
+
+    // Resolver profesor jefe asignado del curso
+    const matchedCourseObj = allDbCourses.find((c: any) => {
+      const cNorm = normalizeSubjectOrCourseKey(c.name);
+      const reqNorm = normalizeSubjectOrCourseKey(course);
+      return cNorm === reqNorm || cNorm.includes(reqNorm) || reqNorm.includes(cNorm);
+    });
+    const studentWithTeacher = allDbStudents.find((s: any) => {
+      const sCourse = getNormalizedStudentCourse(s);
+      return (sCourse === course || s.desc_grado === course) && s.profesor_jefe && s.profesor_jefe !== 'Sin Asignar' && s.profesor_jefe !== 'Profesor(a) Jefe';
+    });
+    const courseHomeroomTeacher = matchedCourseObj?.teacher || studentWithTeacher?.profesor_jefe || 'Sin Asignar';
 
     const dbStudents = isAllCourses
       ? allDbStudents
@@ -5568,6 +5583,8 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
       const stSem2Average = stSem2Count > 0 ? Math.round((stSem2Sum / stSem2Count) * 10) / 10 : '-';
       const stAnnualAverage = stAnnualCount > 0 ? Math.round((stAnnualSum / stAnnualCount) * 10) / 10 : (stAverage > 0 ? stAverage : '-');
 
+      const studentHomeroom = st.profesor_jefe && st.profesor_jefe !== 'Sin Asignar' ? st.profesor_jefe : courseHomeroomTeacher;
+
       return {
         number: st.list_number || (idx + 1),
         id: st.id,
@@ -5579,6 +5596,8 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
         promedioGeneral: selectedPeriod === 'Anual' && stAnnualAverage !== '-' ? stAnnualAverage : stAverage,
         promedioSem1: stSem1Average,
         promedioSem2: stSem2Average,
+        homeroomTeacher: studentHomeroom,
+        profesor_jefe: studentHomeroom,
         alerts,
         subjectGrades
       };
@@ -5705,6 +5724,8 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
 
     res.json({
       courseName: course,
+      homeroomTeacher: courseHomeroomTeacher,
+      profesorJefe: courseHomeroomTeacher,
       promedioCurso: promedioCursoGeneral,
       alumnosRegistrados: dbStudents.length,
       alumnosActivos: activeStudents.length,

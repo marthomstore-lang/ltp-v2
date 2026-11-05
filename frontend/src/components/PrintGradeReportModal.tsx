@@ -71,7 +71,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
   courseName,
   academicYear = 2026,
   period = '1er Semestre',
-  homeroomTeacher = 'Profesor(a) Jefe',
+  homeroomTeacher,
   directorName = 'Dirección del Establecimiento',
   students = [],
   onClose,
@@ -91,14 +91,62 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
   const [allReportsMap, setAllReportsMap] = useState<Record<string, any>>({});
   const [savingPersonality, setSavingPersonality] = useState<boolean>(false);
 
+  // Obtener profesor jefe inicial válido
+  const resolveInitialHomeroomTeacher = () => {
+    if (homeroomTeacher && homeroomTeacher !== 'Profesor(a) Jefe' && homeroomTeacher !== 'Sin Asignar') {
+      return homeroomTeacher.startsWith('Prof.') || homeroomTeacher.startsWith('Educ.') ? homeroomTeacher : `Prof. ${homeroomTeacher}`;
+    }
+    const foundInStudents = students.find(s => s.homeroomTeacher && s.homeroomTeacher !== 'Profesor(a) Jefe' && s.homeroomTeacher !== 'Sin Asignar');
+    if (foundInStudents && foundInStudents.homeroomTeacher) {
+      const t = foundInStudents.homeroomTeacher;
+      return t.startsWith('Prof.') || t.startsWith('Educ.') ? t : `Prof. ${t}`;
+    }
+    return '';
+  };
+
   // Nombres editables para las firmas
-  const [teacherInput, setTeacherInput] = useState<string>(homeroomTeacher);
+  const [teacherInput, setTeacherInput] = useState<string>(resolveInitialHomeroomTeacher);
   const [directorInput, setDirectorInput] = useState<string>(directorName);
   const [staffList, setStaffList] = useState<any[]>([]);
 
   useEffect(() => {
     setReportLevelKey(detectReportTemplateKey(courseName));
   }, [courseName]);
+
+  // Carga automática y persistente del profesor jefe oficial del curso
+  useEffect(() => {
+    if (homeroomTeacher && homeroomTeacher !== 'Profesor(a) Jefe' && homeroomTeacher !== 'Sin Asignar') {
+      const formatted = homeroomTeacher.startsWith('Prof.') || homeroomTeacher.startsWith('Educ.') ? homeroomTeacher : `Prof. ${homeroomTeacher}`;
+      setTeacherInput(formatted);
+      return;
+    }
+    const foundInStudents = students.find(s => s.homeroomTeacher && s.homeroomTeacher !== 'Profesor(a) Jefe' && s.homeroomTeacher !== 'Sin Asignar');
+    if (foundInStudents && foundInStudents.homeroomTeacher) {
+      const t = foundInStudents.homeroomTeacher;
+      const formatted = t.startsWith('Prof.') || t.startsWith('Educ.') ? t : `Prof. ${t}`;
+      setTeacherInput(formatted);
+      return;
+    }
+
+    // Consulta de respaldo directa a la nómina de cursos de la institución
+    fetch('/api/courses')
+      .then(res => res.json())
+      .then(data => {
+        if (data && Array.isArray(data.courses)) {
+          const normCourse = courseName.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const found = data.courses.find((c: any) => {
+            const nc = (c.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            return nc === normCourse || nc.includes(normCourse) || normCourse.includes(nc);
+          });
+          if (found && found.teacher && found.teacher !== 'Sin Asignar' && found.teacher !== 'Profesor(a) Jefe') {
+            const t = found.teacher.trim();
+            const formatted = t.startsWith('Prof.') || t.startsWith('Educ.') ? t : `Prof. ${t}`;
+            setTeacherInput(formatted);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [homeroomTeacher, courseName, students]);
 
   useEffect(() => {
     fetch('/api/staff')
@@ -261,10 +309,11 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
 
   // Actualizar automáticamente el profesor jefe si el estudiante seleccionado tiene uno asignado
   useEffect(() => {
-    if (selectedStudent && selectedStudent.homeroomTeacher && selectedStudent.homeroomTeacher !== 'Sin Asignar') {
-      const formatted = selectedStudent.homeroomTeacher.startsWith('Prof.')
-        ? selectedStudent.homeroomTeacher
-        : `Prof. ${selectedStudent.homeroomTeacher}`;
+    if (selectedStudent && selectedStudent.homeroomTeacher && selectedStudent.homeroomTeacher !== 'Sin Asignar' && selectedStudent.homeroomTeacher !== 'Profesor(a) Jefe') {
+      const t = selectedStudent.homeroomTeacher.trim();
+      const formatted = t.startsWith('Prof.') || t.startsWith('Educ.')
+        ? t
+        : `Prof. ${t}`;
       setTeacherInput(formatted);
     }
   }, [selectedStudentId, selectedStudent]);
