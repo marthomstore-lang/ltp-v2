@@ -4856,8 +4856,10 @@ router.get('/grade-columns', authMiddleware, async (req: Request, res: Response)
     if (period && period !== 'Anual' && period !== 'Todos' && period !== 'all') {
       sql += ' AND (gc.period = $' + (params.length + 1) + ' OR gc.period IS NULL)';
       params.push(String(period));
+      sql += ' ORDER BY gc.position ASC, gc.id ASC';
+    } else {
+      sql += ` ORDER BY CASE WHEN gc.period = '2do Semestre' THEN 2 ELSE 1 END ASC, gc.position ASC, gc.id ASC`;
     }
-    sql += ' ORDER BY gc.position ASC, gc.id ASC';
     const result = await query(sql, params);
     res.json(result.rows);
   } catch (err) {
@@ -4869,21 +4871,44 @@ router.post('/grade-columns', authMiddleware, checkRoles(['Admin', 'Docente']), 
   const { levelId, subjectId, courseName, subjectName, academicYear, title, weighting, position, is_cumulative, period } = req.body;
   try {
     const ctx = await resolveGradeContext(levelId, subjectId, courseName, subjectName);
-    const colId = `COL-${Date.now()}`;
+    const periodClean = String(period || '1er Semestre').trim();
+    const periodCode = periodClean.includes('2') ? 'S2' : 'S1';
+    const colId = `COL-${ctx.canonicalLevelId}-${ctx.canonicalSubjectId}-${periodCode}-${Date.now()}`;
+
+    let targetPosition = Number(position);
+    if (!targetPosition || targetPosition <= 0) {
+      const posRes = await query(
+        `SELECT COALESCE(MAX(position), 0) as max_pos FROM grade_columns
+         WHERE (CAST(level_id AS TEXT) = ANY($1) OR CAST(level_id AS TEXT) = $2)
+           AND (CAST(subject_id AS TEXT) = ANY($3) OR CAST(subject_id AS TEXT) = $4)
+           AND (period = $5 OR (period IS NULL AND $5 = '1er Semestre'))
+           AND (academic_year = $6 OR academic_year IS NULL)`,
+        [ctx.levelIds, String(ctx.canonicalLevelId), ctx.subjectIds, String(ctx.canonicalSubjectId), periodClean, parseInt(String(academicYear || 2026), 10)]
+      );
+      targetPosition = Number(posRes.rows[0]?.max_pos || 0) + 1;
+    }
+
     await query(
       `INSERT INTO grade_columns (id, level_id, subject_id, academic_year, title, weighting, position, is_cumulative, period) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [colId, ctx.canonicalLevelId, ctx.canonicalSubjectId, academicYear || 2026, title, weighting || 0, position || 1, is_cumulative ? 1 : 0, period || '1er Semestre']
+      [colId, ctx.canonicalLevelId, ctx.canonicalSubjectId, academicYear || 2026, title, weighting || 0, targetPosition, is_cumulative ? 1 : 0, periodClean]
     ).catch(async () => {
       await query(
-        `INSERT INTO grade_columns (id, level_id, subject_id, academic_year, title, weighting, position) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [colId, ctx.canonicalLevelId, ctx.canonicalSubjectId, academicYear || 2026, title, weighting || 0, position || 1]
+        `INSERT INTO grade_columns (id, level_id, subject_id, academic_year, title, weighting, position, period) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [colId, ctx.canonicalLevelId, ctx.canonicalSubjectId, academicYear || 2026, title, weighting || 0, targetPosition, periodClean]
       );
     });
 
-    await logAudit(req, 'CREATE_GRADE_COLUMN', `Columna de evaluación "${title}" creada en BD`, ctx.canonicalLevelId, ctx.canonicalSubjectId);
-    res.json({ success: true, id: colId });
+    await logAudit(req, 'CREATE_GRADE_COLUMN', `Columna de evaluación "${title}" creada en BD (${periodClean}, pos ${targetPosition})`, ctx.canonicalLevelId, ctx.canonicalSubjectId);
+    res.json({
+      success: true,
+      id: colId,
+      period: periodClean,
+      position: targetPosition,
+      title,
+      is_cumulative: is_cumulative ? 1 : 0
+    });
   } catch (err) {
     res.status(500).json({ error: 'Error al crear columna de evaluación en la base de datos.' });
   }

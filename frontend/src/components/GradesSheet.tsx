@@ -69,6 +69,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
   const [students, setStudents] = useState<Student[]>([]);
   const [columns, setColumns] = useState<GradeColumn[]>(defaultSingleColumn);
+  const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
   const [gradesMap, setGradesMap] = useState<Record<string, number>>({});
   const gradesMapRef = React.useRef<Record<string, number>>({});
   const [editingCell, setEditingCell] = useState<{ key: string; text: string; freshFocus?: boolean } | null>(null);
@@ -458,22 +459,31 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
   };
 
   const s1Columns = useMemo(() => {
-    return columns.filter(c => c.period === '1er Semestre' || (!c.period && !c.id.includes('S2')));
+    return columns
+      .filter(c => c.period === '1er Semestre' || (!c.period && !c.id.includes('S2')))
+      .sort((a, b) => (a.position || 0) - (b.position || 0));
   }, [columns]);
 
   const s2Columns = useMemo(() => {
-    return columns.filter(c => c.period === '2do Semestre' || c.id.includes('S2'));
+    return columns
+      .filter(c => c.period === '2do Semestre' || c.id.includes('S2'))
+      .sort((a, b) => (a.position || 0) - (b.position || 0));
   }, [columns]);
 
   // Columnas regulares de evaluación para el período activo
   const evalColumns = useMemo(() => {
     let activeCols: GradeColumn[] = [];
     if (period === '1er Semestre') {
-      activeCols = s1Columns.length > 0 ? s1Columns : columns;
+      activeCols = s1Columns;
     } else if (period === '2do Semestre') {
-      activeCols = s2Columns.length > 0 ? s2Columns : columns;
+      activeCols = s2Columns;
     } else {
-      activeCols = columns; // Anual consolidado
+      activeCols = columns.slice().sort((a, b) => {
+        const pA = a.period === '2do Semestre' || a.id.includes('S2') ? 2 : 1;
+        const pB = b.period === '2do Semestre' || b.id.includes('S2') ? 2 : 1;
+        if (pA !== pB) return pA - pB;
+        return (a.position || 0) - (b.position || 0);
+      });
     }
     if (!isConceptual) return activeCols;
     return activeCols.filter(c => c.title.toLowerCase().trim() !== 'promedio' && !c.id.includes('FINAL'));
@@ -1324,10 +1334,12 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
   // AGREGAR NUEVA COLUMNA DE NOTA / EVALUACIÓN CON PERSISTENCIA EN BD
   const handleAddColumn = async () => {
-    const defaultName = `N${columns.length + 1}`;
+    const currentPeriodCols = period === '2do Semestre' ? s2Columns : s1Columns;
+    const nextIndex = currentPeriodCols.length + 1;
+    const defaultName = `N${nextIndex}`;
     const { value: title } = await Swal.fire({
       title: 'Agregar Nueva Evaluación',
-      text: `Ingresa el nombre de la nueva evaluación (ej: ${defaultName}, Taller 1, Prueba 1):`,
+      text: `Ingresa el nombre de la nueva evaluación para ${period} (ej: ${defaultName}, Taller 1, Prueba 1):`,
       input: 'text',
       inputValue: defaultName,
       showCancelButton: true,
@@ -1337,6 +1349,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
     if (title && title.trim() !== '') {
       const cleanTitle = title.trim();
+      const periodCode = period === '2do Semestre' ? 'S2' : 'S1';
+      const tempId = `COL-${levelId}-${subjectId}-${periodCode}-${Date.now()}`;
       try {
         const res = await fetch('/api/grade-columns', {
           method: 'POST',
@@ -1353,16 +1367,34 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
             period,
             title: cleanTitle,
             weighting: 0,
-            position: columns.length + 1
+            position: nextIndex
           })
         });
         const data = await res.json();
-        const createdId = data.id || `COL-${Date.now()}`;
+        const createdId = data.id || tempId;
         const newCol: GradeColumn = {
           id: createdId,
-          title: cleanTitle
+          title: cleanTitle,
+          period: period,
+          position: data.position || nextIndex,
+          is_cumulative: false
         };
         setColumns(prev => [...prev, newCol]);
+
+        // Auto-scroll horizontal y foco automático para que aparezca visible inmediatamente en la ventana
+        setTimeout(() => {
+          if (tableContainerRef.current) {
+            tableContainerRef.current.scrollTo({
+              left: tableContainerRef.current.scrollWidth,
+              behavior: 'smooth'
+            });
+          }
+          if (students.length > 0) {
+            const firstInput = document.getElementById(`grade-input-0-${currentPeriodCols.length}`) ||
+                               document.querySelector(`input[data-col-id="${createdId}"]`);
+            (firstInput as HTMLInputElement)?.focus();
+          }
+        }, 150);
 
         Swal.fire({
           toast: true,
@@ -1373,7 +1405,13 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           showConfirmButton: false
         });
       } catch (err) {
-        const newCol: GradeColumn = { id: `col-${Date.now()}`, title: cleanTitle };
+        const newCol: GradeColumn = {
+          id: tempId,
+          title: cleanTitle,
+          period: period,
+          position: nextIndex,
+          is_cumulative: false
+        };
         setColumns(prev => [...prev, newCol]);
       }
     }
@@ -1381,7 +1419,9 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
   // AGREGAR NUEVA EVALUACIÓN ACUMULATIVA CON N SUB-NOTAS
   const handleAddCumulativeColumn = async () => {
-    const defaultName = `N${columns.length + 1} (Acumulativa)`;
+    const currentPeriodCols = period === '2do Semestre' ? s2Columns : s1Columns;
+    const nextIndex = currentPeriodCols.length + 1;
+    const defaultName = `N${nextIndex} (Acumulativa)`;
     const { value: title } = await Swal.fire({
       title: 'Crear Evaluación Acumulativa',
       html: `
@@ -1399,6 +1439,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
     if (title && title.trim() !== '') {
       const cleanTitle = title.trim();
+      const periodCode = period === '2do Semestre' ? 'S2' : 'S1';
+      const tempId = `COL-${levelId}-${subjectId}-${periodCode}-${Date.now()}`;
       try {
         const res = await fetch('/api/grade-columns', {
           method: 'POST',
@@ -1415,15 +1457,17 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
             period,
             title: cleanTitle,
             weighting: 0,
-            position: columns.length + 1,
+            position: nextIndex,
             is_cumulative: 1
           })
         });
         const data = await res.json();
-        const createdId = data.id || `COL-${Date.now()}`;
+        const createdId = data.id || tempId;
         const newCol: GradeColumn = {
           id: createdId,
           title: cleanTitle,
+          period: period,
+          position: data.position || nextIndex,
           is_cumulative: true
         };
         setColumns(prev => [...prev, newCol]);
@@ -1457,10 +1501,26 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           })
         }).catch(e => console.warn('Error inicializando sub-evaluaciones:', e));
 
-        // Abrir inmediatamente el modal de notas acumulativas para esta columna
+        // Auto-scroll horizontal para que aparezca visible inmediatamente en la ventana
+        setTimeout(() => {
+          if (tableContainerRef.current) {
+            tableContainerRef.current.scrollTo({
+              left: tableContainerRef.current.scrollWidth,
+              behavior: 'smooth'
+            });
+          }
+        }, 150);
+
+        // Abrir inmediatamente la ventana modal de notas acumulativas para esta columna
         setSelectedCumulativeCol(newCol);
       } catch (err) {
-        const newCol: GradeColumn = { id: `col-${Date.now()}`, title: cleanTitle, is_cumulative: true };
+        const newCol: GradeColumn = {
+          id: tempId,
+          title: cleanTitle,
+          period: period,
+          position: nextIndex,
+          is_cumulative: true
+        };
         setColumns(prev => [...prev, newCol]);
         setSelectedCumulativeCol(newCol);
       }
@@ -2084,7 +2144,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
           </p>
         </div>
       ) : (
-      <div className="table-responsive-wrapper" style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+      <div ref={tableContainerRef} className="table-responsive-wrapper" style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
         <table className="grades-table-mobile" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
             <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -2233,6 +2293,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                         <div style={{ display: 'inline-flex', alignItems: 'center', position: 'relative' }}>
                           <input
                             id={`grade-input-${idx}-${cIdx}`}
+                            data-col-id={col.id}
                             type="text"
                             disabled={isLocked || retired}
                             value={displayVal}
