@@ -3710,18 +3710,24 @@ router.post('/config/institutional-settings', authMiddleware, checkRoles(['Admin
 // ORDEN OFICIAL DE ASIGNATURAS POR CURSO (SUB-VENTANA 6.6)
 router.get('/config/course-subject-order', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const storePath = path.join(__dirname, '../../local_store.json');
+    const storePath = getStorePath();
     let store: any = {};
     if (fs.existsSync(storePath)) {
-      store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+      try {
+        store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+      } catch (_) {}
     }
 
-    // Consultar en MySQL si existe
+    // Consultar en BD si existe (priorizando registro oficial y más reciente)
     let dbOrders: any = null;
     try {
-      const dbRes = await query("SELECT config_value FROM system_settings WHERE config_key = 'course_subject_orders' LIMIT 1");
+      const dbRes = await query(
+        "SELECT config_value FROM system_settings WHERE id = 'SET-COURSE-SUBJ-ORDER' OR config_key = 'course_subject_orders' ORDER BY (CASE WHEN id = 'SET-COURSE-SUBJ-ORDER' THEN 1 ELSE 2 END), updated_at DESC LIMIT 1"
+      );
       if (dbRes.rows && dbRes.rows.length > 0 && dbRes.rows[0].config_value) {
-        dbOrders = JSON.parse(dbRes.rows[0].config_value);
+        dbOrders = typeof dbRes.rows[0].config_value === 'string'
+          ? JSON.parse(dbRes.rows[0].config_value)
+          : dbRes.rows[0].config_value;
       }
     } catch (_) {}
 
@@ -3732,22 +3738,32 @@ router.get('/config/course-subject-order', authMiddleware, async (req: Request, 
   }
 });
 
-router.post('/config/course-subject-order', authMiddleware, checkRoles(['Admin']), async (req: Request, res: Response) => {
+router.post('/config/course-subject-order', authMiddleware, checkRoles(['Admin', 'Director', 'UTP']), async (req: Request, res: Response) => {
   try {
     const { courseName, subjects, orders } = req.body;
-    const storePath = path.join(__dirname, '../../local_store.json');
-    let store: any = {};
-    if (fs.existsSync(storePath)) {
-      store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
-    }
+    let existingOrders: Record<string, any> = {};
 
-    let existingOrders = store.course_subject_orders || {};
-
-    // Obtener de MySQL si existe
+    // 1. Obtener de BD primero
     try {
-      const dbRes = await query("SELECT config_value FROM system_settings WHERE config_key = 'course_subject_orders' LIMIT 1");
+      const dbRes = await query(
+        "SELECT config_value FROM system_settings WHERE id = 'SET-COURSE-SUBJ-ORDER' OR config_key = 'course_subject_orders' ORDER BY (CASE WHEN id = 'SET-COURSE-SUBJ-ORDER' THEN 1 ELSE 2 END), updated_at DESC LIMIT 1"
+      );
       if (dbRes.rows && dbRes.rows.length > 0 && dbRes.rows[0].config_value) {
-        existingOrders = { ...existingOrders, ...JSON.parse(dbRes.rows[0].config_value) };
+        existingOrders = typeof dbRes.rows[0].config_value === 'string'
+          ? JSON.parse(dbRes.rows[0].config_value)
+          : dbRes.rows[0].config_value;
+      }
+    } catch (_) {}
+
+    // Fallback a local_store.json si BD estaba vacía
+    const storePath = getStorePath();
+    let store: any = {};
+    try {
+      if (fs.existsSync(storePath)) {
+        store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+        if (Object.keys(existingOrders).length === 0 && store.course_subject_orders) {
+          existingOrders = store.course_subject_orders;
+        }
       }
     } catch (_) {}
 
@@ -3757,11 +3773,13 @@ router.post('/config/course-subject-order', authMiddleware, checkRoles(['Admin']
       existingOrders[courseName] = subjects;
     }
 
-    // Persistir en local_store.json
-    store.course_subject_orders = existingOrders;
-    fs.writeFileSync(storePath, JSON.stringify(store, null, 2), 'utf-8');
+    // Persistir en local_store.json (si el entorno lo permite; protegido en Vercel)
+    try {
+      store.course_subject_orders = existingOrders;
+      fs.writeFileSync(storePath, JSON.stringify(store, null, 2), 'utf-8');
+    } catch (_) {}
 
-    // Persistir en MySQL system_settings
+    // Persistir en system_settings
     try {
       const serialized = JSON.stringify(existingOrders);
       if (isMysql) {
@@ -3771,7 +3789,12 @@ router.post('/config/course-subject-order', authMiddleware, checkRoles(['Admin']
         );
       } else {
         await query(
-          "INSERT INTO system_settings (id, config_key, config_value, updated_at) VALUES ('SET-COURSE-SUBJ-ORDER', 'course_subject_orders', $1, NOW()) ON CONFLICT (config_key) DO UPDATE SET config_value = $1, updated_at = NOW()",
+          "INSERT INTO system_settings (id, config_key, config_value, updated_at) VALUES ('SET-COURSE-SUBJ-ORDER', 'course_subject_orders', $1, NOW()) ON CONFLICT (id) DO UPDATE SET config_value = $1, config_key = 'course_subject_orders', updated_at = NOW()",
+          [serialized]
+        );
+        // Sincronizar cualquier fila previa con la misma config_key
+        await query(
+          "UPDATE system_settings SET config_value = $1, updated_at = NOW() WHERE config_key = 'course_subject_orders' AND id != 'SET-COURSE-SUBJ-ORDER'",
           [serialized]
         );
       }
@@ -4268,7 +4291,7 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
     const catalogRes = await query('SELECT id, name, mineduc_code, official_name FROM subjects');
 
     // Orden curricular oficial desde course_subject_orders
-    const csoRes = await query("SELECT config_value FROM system_settings WHERE config_key = 'course_subject_orders' LIMIT 1");
+    const csoRes = await query("SELECT config_value FROM system_settings WHERE id = 'SET-COURSE-SUBJ-ORDER' OR config_key = 'course_subject_orders' ORDER BY (CASE WHEN id = 'SET-COURSE-SUBJ-ORDER' THEN 1 ELSE 2 END), updated_at DESC LIMIT 1");
     let preferredSubjects: string[] = [];
     try {
       if (csoRes.rows.length > 0 && csoRes.rows[0].config_value) {
@@ -5109,7 +5132,7 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
       query(`SELECT * FROM students ORDER BY list_number ASC, full_name ASC`),
       query(`SELECT * FROM subjects ORDER BY id ASC`),
       query(`SELECT * FROM teacher_assignments WHERE (academic_year = $1 OR academic_year IS NULL)`, [selectedYear]).catch(() => ({ rows: [] })),
-      query("SELECT config_value FROM system_settings WHERE config_key = 'course_subject_orders' LIMIT 1").catch(() => ({ rows: [] })),
+      query("SELECT config_value FROM system_settings WHERE id = 'SET-COURSE-SUBJ-ORDER' OR config_key = 'course_subject_orders' ORDER BY (CASE WHEN id = 'SET-COURSE-SUBJ-ORDER' THEN 1 ELSE 2 END), updated_at DESC LIMIT 1").catch(() => ({ rows: [] })),
       query(
         `SELECT g.*, 
                 COALESCE(CAST(gc.subject_id AS TEXT), CAST(g.subject_id AS TEXT), '1') as subject_id, 

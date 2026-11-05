@@ -939,7 +939,10 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
         })
       });
 
-      if (!res.ok) throw new Error('Error al guardar el orden en el servidor');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Error al guardar el orden en el servidor');
+      }
 
       Swal.fire({
         icon: 'success',

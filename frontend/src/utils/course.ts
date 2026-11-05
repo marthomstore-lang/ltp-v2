@@ -289,6 +289,24 @@ export const isParvulariaCourse = (courseName: any): boolean => {
 };
 
 /**
+ * Validador oficial de nivel: Determina si un curso pertenece a Educación Básica (1° a 6° Básico).
+ * En estos niveles, la asignatura oficial MINEDUC es "Lenguaje y Comunicación" (ID 105).
+ * A partir de 7° Básico a 4° Medio, la asignatura oficial es "Lengua y Literatura" (ID 116).
+ */
+export const isBasic1To6Course = (courseName: any): boolean => {
+  if (!courseName) return false;
+  const low = String(
+    typeof courseName === 'string'
+      ? courseName
+      : (courseName.name || courseName.course || courseName.desc_grado || courseName.level_name || '')
+  )
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return /\b[1-6](\xba|°|\s)?\s*basico/.test(low) || ['1', '2', '3', '4', '5', '6'].includes(low.trim());
+};
+
+/**
  * Official Chilean MINEDUC Curriculum Subjects by Course Level:
  * - Parvularia: No numeric subjects ([]).
  * - 1° a 6° Básico: 10 subjects (Sin Filosofía).

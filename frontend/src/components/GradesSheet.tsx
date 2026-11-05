@@ -11,6 +11,7 @@ import {
   getStudentWithdrawalDate,
   sortCoursesList,
   isParvulariaCourse,
+  isBasic1To6Course,
   getDefaultSubjectsForCourse
 } from '../utils/course';
 
@@ -249,7 +250,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
     // 1. Obtener las asignaturas oficiales que aplican a este curso específico
     const nCourse = normalizeStr(currentCourseName);
-    const isBasic1To6 = /\b[1-6]\s*basico/.test(nCourse);
+    const isBasic1To6 = isBasic1To6Course(currentCourseName) || /\b[1-6](\xba|°|\s)?\s*basico/.test(nCourse) || ['1', '2', '3', '4', '5', '6'].includes(nCourse);
 
     const getCanonicalSubGroup = (nameOrId: any, idVal?: any): string => {
       const n = normalizeStr(nameOrId);
