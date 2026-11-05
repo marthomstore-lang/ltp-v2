@@ -974,7 +974,7 @@ router.post('/auth/impersonate', authMiddleware, async (req: Request, res: Respo
     }
     if (!userRes || userRes.rows.length === 0) {
       if (targetName) {
-        userRes = await query('SELECT * FROM users WHERE name ILIKE $1 OR full_name ILIKE $1 LIMIT 1', [`%${String(targetName).trim()}%`]);
+        userRes = await query('SELECT * FROM users WHERE name ILIKE $1 LIMIT 1', [`%${String(targetName).trim()}%`]);
       }
     }
 
@@ -9322,7 +9322,7 @@ router.get('/dashboard/executive-overview', authMiddleware, async (req: Request,
       query(`
         SELECT 
           COUNT(*) as total,
-          COUNT(*) FILTER (WHERE pass_date = CURRENT_DATE) as today
+          COUNT(*) FILTER (WHERE pass_date = CURRENT_DATE::text) as today
         FROM student_passes
       `).catch(() => ({ rows: [{ total: '0', today: '0' }] })),
 
@@ -10357,7 +10357,7 @@ router.get('/library/books/:id/copies', authMiddleware, async (req: Request, res
 router.get('/library/reading-plan', authMiddleware, async (req: Request, res: Response) => {
   const { level } = req.query;
   try {
-    const booksRes = await query('SELECT * FROM cra_books WHERE is_reading_plan = TRUE ORDER BY level_suggested ASC, title ASC');
+    const booksRes = await query(`SELECT * FROM cra_books WHERE (is_reading_plan = 1 OR is_reading_plan::text = 'true') ORDER BY level_suggested ASC, title ASC`);
     let rows = booksRes.rows || [];
     if (level && level !== 'Todos') {
       const lv = String(level).toLowerCase();
