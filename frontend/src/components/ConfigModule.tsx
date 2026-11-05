@@ -1060,17 +1060,23 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ links: updatedList })
       });
-      if (res.ok) {
-        Swal.fire({
-          icon: 'success',
-          title: '¡Plataforma Guardada!',
-          text: 'El enlace se ha actualizado exitosamente.',
-          timer: 1500,
-          showConfirmButton: false
-        });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Error al guardar el enlace en el servidor');
       }
-    } catch (_) {
-      Swal.fire('Error', 'No se pudo guardar el enlace en el servidor.', 'error');
+      const data = await res.json().catch(() => ({}));
+      if (Array.isArray(data.links)) {
+        setLinksList(data.links);
+      }
+      Swal.fire({
+        icon: 'success',
+        title: '¡Plataforma Guardada!',
+        text: 'El enlace se ha actualizado exitosamente.',
+        timer: 1500,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      Swal.fire('Error', err.message || 'No se pudo guardar el enlace en el servidor.', 'error');
     }
   };
 
@@ -1079,11 +1085,19 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
       const updatedList = linksList.filter(l => l.id !== linkId);
       setLinksList(updatedList);
       try {
-        await fetch('/api/institutional-links', {
+        const res = await fetch('/api/institutional-links', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ links: updatedList })
         });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Error al eliminar el enlace en el servidor');
+        }
+        const data = await res.json().catch(() => ({}));
+        if (Array.isArray(data.links)) {
+          setLinksList(data.links);
+        }
         Swal.fire({
           icon: 'success',
           title: 'Enlace Eliminado',
@@ -1091,7 +1105,9 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
           timer: 1500,
           showConfirmButton: false
         });
-      } catch (_) {}
+      } catch (err: any) {
+        Swal.fire('Error', err.message || 'No se pudo eliminar el enlace.', 'error');
+      }
     });
   };
 
@@ -1767,11 +1783,6 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
         Swal.fire('Error', 'Error de conexión con el servidor.', 'error');
       }
     });
-  };
-
-  // GUARDAR EDICIÓN DE ENLACES EXTERNOS
-  const handleSaveLinkEdit = (e: React.FormEvent) => {
-    handleSaveLink(e);
   };
 
   const isDocenteUser = (u: any) => u.staff_type === 'Docente' || u.role === 'Docente' || u.role === 'Admin' || u.role === 'Director';
@@ -5795,49 +5806,6 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                 <button type="submit" className="btn btn-primary">
                   <Save size={16} /> Guardar Asignatura
                 </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 4: EDICIÓN DE ENLACES EXTERNOS (SUB-VENTANA 6.9) */}
-      {editingLink && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.75)', zIndex: 3000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem' }}>
-          <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.75rem', width: '100%', maxWidth: '440px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#4f46e5' }}>
-                {editingLink.isNew ? 'Crear Nuevo Enlace' : 'Editar Enlace Externo'}
-              </h3>
-              <button onClick={() => setEditingLink(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
-            </div>
-
-            <form onSubmit={handleSaveLinkEdit}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>Título del Enlace</label>
-                <input
-                  type="text"
-                  value={editingLink.name || ''}
-                  onChange={e => setEditingLink({ ...editingLink, name: e.target.value })}
-                  placeholder="Ej: Lira Mineduc"
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>URL Directa</label>
-                <input
-                  type="url"
-                  value={editingLink.url || ''}
-                  onChange={e => setEditingLink({ ...editingLink, url: e.target.value })}
-                  placeholder="https://ejemplo.cl"
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" onClick={() => setEditingLink(null)} className="btn" style={{ background: '#cbd5e1' }}>Cancelar</button>
-                <button type="submit" className="btn btn-primary"><Save size={16} /> Guardar</button>
               </div>
             </form>
           </div>

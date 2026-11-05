@@ -9652,40 +9652,92 @@ router.get(['/audit', '/audit-logs'], authMiddleware, checkMatrixPermission('aud
 });
 
 // -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // PLATAFORMAS DE INTERÉS Y ENLACES INSTITUCIONALES EN SUPABASE CLOUD
 // -----------------------------------------------------------------------------
 let cachedInstitutionalLinks: any[] | null = null;
 
+const DEFAULT_INSTITUTIONAL_LINKS = [
+  {
+    id: '1',
+    name: 'Uso de Dispositivos Móviles',
+    url: 'https://script.google.com/a/macros/eduvallediguillin.gob.cl/s/AKfycbwArWY-bsNte1xnTtwzxPW43Qn2A84PEllPXE6lJ00NvbqsWrT_Pb-m1Xop38TWVG-aRg/exec',
+    color: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
+    category: 'Herramienta Pedagógica'
+  },
+  {
+    id: '2',
+    name: 'Netcore / Lira Mineduc',
+    url: 'https://lira.mineduc.cl',
+    color: 'linear-gradient(135deg, #4338ca 0%, #312e81 100%)',
+    category: 'Plataforma Institucional'
+  },
+  {
+    id: '3',
+    name: 'Registro de Evaluaciones',
+    url: 'https://classroom.google.com',
+    color: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
+    category: 'Plataforma Institucional'
+  },
+  {
+    id: '4',
+    name: 'Registro de Uso de Sala de Computación',
+    url: 'https://sep.mineduc.cl',
+    color: 'linear-gradient(135deg, #4338ca 0%, #312e81 100%)',
+    category: 'Plataforma Institucional'
+  }
+];
+
 router.get('/institutional-links', authMiddleware, async (req: Request, res: Response) => {
   try {
-    if (cachedInstitutionalLinks && cachedInstitutionalLinks.length > 0) {
-      return res.json(cachedInstitutionalLinks);
+    // Garantizar que la tabla y columna category existan en la BD
+    await query(`
+      CREATE TABLE IF NOT EXISTS institutional_links (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        url TEXT NOT NULL,
+        color VARCHAR(255),
+        category VARCHAR(100) DEFAULT 'Plataforma Institucional'
+      );
+    `).catch(() => {});
+    await query("ALTER TABLE institutional_links ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Plataforma Institucional'").catch(() => {});
+
+    const result = await query('SELECT * FROM institutional_links ORDER BY id ASC').catch(() => ({ rows: [] }));
+    if (result.rows && result.rows.length > 0) {
+      cachedInstitutionalLinks = result.rows;
+      return res.json(result.rows);
     }
 
-    let result = await query('SELECT * FROM institutional_links ORDER BY id ASC').catch(() => ({ rows: [] }));
-    if (result.rows.length === 0) {
-      const defaultLinks = [
-        { id: '1', name: 'Uso de Dispositivos Móviles', url: 'https://mineduc.cl', color: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)', category: 'Plataforma Institucional' },
-        { id: '2', name: 'Netcore / Lira Mineduc', url: 'https://lira.mineduc.cl', color: 'linear-gradient(135deg, #4338ca 0%, #312e81 100%)', category: 'Plataforma Institucional' },
-        { id: '3', name: 'Registro de Evaluaciones', url: 'https://classroom.google.com', color: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)', category: 'Plataforma Institucional' },
-        { id: '4', name: 'Registro de Uso de Sala de Computación', url: 'https://sep.mineduc.cl', color: 'linear-gradient(135deg, #4338ca 0%, #312e81 100%)', category: 'Plataforma Institucional' }
-      ];
-      cachedInstitutionalLinks = defaultLinks;
-      return res.json(defaultLinks);
-    }
-    cachedInstitutionalLinks = result.rows;
-    res.json(result.rows);
+    // Fallback secundario a system_settings si la tabla está vacía
+    try {
+      const sysRes = await query("SELECT config_value FROM system_settings WHERE id = 'SET-INSTITUTIONAL-LINKS' OR config_key = 'institutional_links' LIMIT 1");
+      if (sysRes.rows && sysRes.rows.length > 0 && sysRes.rows[0].config_value) {
+        const parsed = typeof sysRes.rows[0].config_value === 'string' ? JSON.parse(sysRes.rows[0].config_value) : sysRes.rows[0].config_value;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          cachedInstitutionalLinks = parsed;
+          return res.json(parsed);
+        }
+      }
+    } catch (_) {}
+
+    // Sembrar enlaces por defecto en la BD para que nunca vuelva a quedar vacía
+    try {
+      for (const dl of DEFAULT_INSTITUTIONAL_LINKS) {
+        await query(
+          'INSERT INTO institutional_links (id, name, url, color, category) VALUES ($1, $2, $3, $4, $5)',
+          [dl.id, dl.name, dl.url, dl.color, dl.category]
+        );
+      }
+    } catch (_) {}
+
+    cachedInstitutionalLinks = DEFAULT_INSTITUTIONAL_LINKS;
+    res.json(DEFAULT_INSTITUTIONAL_LINKS);
   } catch (err) {
-    res.json([
-      { id: '1', name: 'Uso de Dispositivos Móviles', url: 'https://mineduc.cl', color: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)', category: 'Plataforma Institucional' },
-      { id: '2', name: 'Netcore / Lira Mineduc', url: 'https://lira.mineduc.cl', color: 'linear-gradient(135deg, #4338ca 0%, #312e81 100%)', category: 'Plataforma Institucional' },
-      { id: '3', name: 'Registro de Evaluaciones', url: 'https://classroom.google.com', color: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)', category: 'Plataforma Institucional' },
-      { id: '4', name: 'Registro de Uso de Sala de Computación', url: 'https://sep.mineduc.cl', color: 'linear-gradient(135deg, #4338ca 0%, #312e81 100%)', category: 'Plataforma Institucional' }
-    ]);
+    res.json(cachedInstitutionalLinks || DEFAULT_INSTITUTIONAL_LINKS);
   }
 });
 
-router.put('/institutional-links', authMiddleware, checkRoles(['Admin']), async (req: Request, res: Response) => {
+router.put('/institutional-links', authMiddleware, checkRoles(['Admin', 'Director', 'UTP']), async (req: Request, res: Response) => {
   const { links } = req.body;
   if (!Array.isArray(links)) {
     return res.status(400).json({ error: 'La lista de enlaces debe ser un arreglo.' });
@@ -9700,9 +9752,10 @@ router.put('/institutional-links', authMiddleware, checkRoles(['Admin']), async 
         color VARCHAR(255),
         category VARCHAR(100) DEFAULT 'Plataforma Institucional'
       );
-    `).catch(() => { });
+    `).catch(() => {});
+    await query("ALTER TABLE institutional_links ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Plataforma Institucional'").catch(() => {});
 
-    await query('DELETE FROM institutional_links').catch(() => {});
+    await query('DELETE FROM institutional_links');
 
     for (let i = 0; i < links.length; i++) {
       const l = links[i];
@@ -9712,16 +9765,32 @@ router.put('/institutional-links', authMiddleware, checkRoles(['Admin']), async 
       await query(
         'INSERT INTO institutional_links (id, name, url, color, category) VALUES ($1, $2, $3, $4, $5)',
         [id, (l.name || '').trim(), (l.url || '').trim(), color, category]
-      ).catch(() => {});
+      );
     }
+
+    // Persistir respaldo seguro en system_settings
+    try {
+      const serialized = JSON.stringify(links);
+      if (isMysql) {
+        await query(
+          "INSERT INTO system_settings (id, config_key, config_value, updated_at) VALUES ('SET-INSTITUTIONAL-LINKS', 'institutional_links', ?, NOW()) ON DUPLICATE KEY UPDATE config_value = ?, updated_at = NOW()",
+          [serialized, serialized]
+        );
+      } else {
+        await query(
+          "INSERT INTO system_settings (id, config_key, config_value, updated_at) VALUES ('SET-INSTITUTIONAL-LINKS', 'institutional_links', $1, NOW()) ON CONFLICT (id) DO UPDATE SET config_value = $1, config_key = 'institutional_links', updated_at = NOW()",
+          [serialized]
+        );
+      }
+    } catch (_) {}
 
     await logAudit(req, 'UPDATE_INSTITUTIONAL_LINKS', `Enlaces de plataformas de interés actualizados (${links.length} registros)`);
     const finalRows = await query('SELECT * FROM institutional_links ORDER BY id ASC');
     cachedInstitutionalLinks = finalRows.rows;
     res.json({ success: true, links: finalRows.rows });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Error al guardar enlaces institucionales:', err);
-    res.status(500).json({ error: 'Error al guardar plataformas de interés.' });
+    res.status(500).json({ error: err.message || 'Error al guardar plataformas de interés.' });
   }
 });
 
