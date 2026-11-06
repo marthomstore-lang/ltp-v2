@@ -3,6 +3,7 @@ import { LayoutGrid, List, BookOpen, Star, AlertTriangle, ArrowRight, Calendar, 
 import { useAuth } from '../context/AuthContext';
 import { getStudentCourse, sortCoursesList } from '../utils/course';
 import { roundGrade } from '../utils/gradeCalculations';
+import { isUserDirective } from '../utils/roles';
 import { CourseMessageModal } from './CourseMessageModal';
 import { CourseSupportModal } from './CourseSupportModal';
 import { CardSkeletonGrid, EmptyState, Badge } from './ui';
@@ -70,7 +71,8 @@ const getSubjectImage = (subjectName: string, isHomeroom: boolean): string => {
 
 export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelectCourse }) => {
   const { user, token } = useAuth();
-  const isAdmin = user?.role === 'Admin';
+  const isAdminOrDirective = user?.role === 'Admin' || user?.role === 'Director' || isUserDirective(user);
+  const isAdmin = isAdminOrDirective;
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchTerm, setSearchTerm] = useState<string>('');

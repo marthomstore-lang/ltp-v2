@@ -6480,6 +6480,14 @@ export const checkMatrixPermission = (functionId: string) => {
           }
         }
 
+        const cleanUserRun = String(req.user?.run || '').replace(/[^0-9kK]/g, '').toUpperCase();
+        const directiveRuns = ['142308517', '93981049', '172465560', '198229555', '93968824', '80954786', '72532902', '171529069', '192510996', '188037356'];
+        const userJob = String((req.user as any)?.job_function || '').toLowerCase();
+        const isDirectiveJob = ['director', 'directiv', 'utp', 'tecnico-pedagogic', 'técnico-pedagógic', 'orientad', 'orientac', 'convivencia', 'inspector general', 'inspectora general', 'planta directiva', 'coordinador pie', 'coordinadora pie', 'jefe utp', 'jefa utp'].some(k => userJob.includes(k));
+        if (directiveRuns.includes(cleanUserRun) || isDirectiveJob) {
+          userRoles.push('Director');
+        }
+
         const mapCol = (uRole: string): string => {
           const r = String(uRole || '').trim();
           if (['Admin', 'Administrador'].includes(r)) return 'Admin';

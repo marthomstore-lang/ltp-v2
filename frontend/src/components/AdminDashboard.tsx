@@ -7,6 +7,7 @@ import { ExecutiveOverviewSection } from './ExecutiveOverviewSection';
 import { SubmitStatementModal, PendingStatementItem } from './SubmitStatementModal';
 import { getStudentCourse, isStudentRetired, getStudentWithdrawalDate, sortCoursesList, sortStudentsList, getStudentYear } from '../utils/course';
 import { AdminTabId, getAdminTabFromUrl, syncAdminUrl, AccessLevel, normalizeAccessLevel } from '../utils/urlRouter';
+import { isUserDirective } from '../utils/roles';
 
 const StudentWindow = lazy(() => import('./StudentWindow').then(m => ({ default: m.StudentWindow })));
 const GradesSheet = lazy(() => import('./GradesSheet').then(m => ({ default: m.GradesSheet })));
@@ -224,7 +225,7 @@ export const AdminDashboard: React.FC = () => {
   const mapRoleToCol = (roleName: string): string => {
     const raw = String(roleName || '').trim();
     if (['Admin', 'Administrador'].includes(raw)) return 'Admin';
-    if (['Director', 'Directivo', 'UTP', 'Directivo / UTP', 'Inspectoría General'].includes(raw)) return 'Director';
+    if (['Director', 'Directivo', 'UTP', 'Directivo / UTP', 'Inspectoría General', 'Inspector General', 'Orientador', 'Orientadora', 'Orientación', 'Convivencia', 'Convivencia Escolar', 'Planta Directiva', 'Planta Técnico-Pedagógica', 'Jefe UTP', 'Jefa UTP'].includes(raw)) return 'Director';
     if (['Docente', 'Profesor', 'Docente de Aula', 'Docente Jefatura'].includes(raw)) return 'Docente';
     if (['Administrativo', 'Inspector', 'Inspector/a', 'Secretario/a'].includes(raw)) return 'Administrativo';
     if (['EncargadoCRA', 'Encargado CRA', 'Bibliotecario'].includes(raw)) return 'EncargadoCRA';
@@ -249,8 +250,12 @@ export const AdminDashboard: React.FC = () => {
         list = [...list, ...(user.roles as string).split(',')];
       }
     }
+    // Si el usuario es parte del Equipo Directivo (Dirección, UTP, Inspectoría General, Orientación, Convivencia Escolar), asegurar perfil Director
+    if (isUserDirective(user)) {
+      list.push('Director');
+    }
     return Array.from(new Set(list.map(r => String(r || '').trim()).filter(Boolean)));
-  }, [currentRole, user?.roles]);
+  }, [currentRole, user]);
 
   const getAccessLevel = (tab: string): AccessLevel => {
     // Si está simulando un rol específico (impersonating o superadmin cambiando perfil), evaluar solo ese rol
@@ -2537,7 +2542,7 @@ export const AdminDashboard: React.FC = () => {
                   overflow: 'hidden'
                 }}>
                   {/* CAMBIADOR RÁPIDO DE PERFIL (SUPERADMIN O USUARIO CON MULTI-ROL) */}
-                  {(isSuperAdmin || user?.run === '18803735-6' || (user?.roles && user.roles.length > 1)) && (
+                  {(isSuperAdmin || user?.run === '18803735-6' || userRolesList.length > 1) && (
                     <div style={{ padding: '0.65rem 0.85rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                       <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#4338ca', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
                         🔀 {isSuperAdmin ? 'Cambiar Perfil (Simular):' : 'Mis Perfiles Asignados:'}
@@ -2566,7 +2571,7 @@ export const AdminDashboard: React.FC = () => {
                             <option value="Visita">👁️ Visita (Solo Lectura)</option>
                           </>
                         ) : (
-                          (user?.roles || [user?.role || 'Docente']).map(r => (
+                          userRolesList.map(r => (
                             <option key={r} value={r}>
                               {r === 'Docente' ? '👨‍🏫 Docente de Aula / Jefatura' :
                                r === 'Director' ? '🎓 Directivo / UTP / Inspectoría' :

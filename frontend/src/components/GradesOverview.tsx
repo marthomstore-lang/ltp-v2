@@ -6,6 +6,7 @@ import { FinalActaModal } from './FinalActaModal';
 import { PrintPanoramaReportModal } from './PrintPanoramaReportModal';
 import { isStudentRetired, getStudentWithdrawalDate, sortCoursesList, getStudentCourse } from '../utils/course';
 import { roundGrade } from '../utils/gradeCalculations';
+import { isUserDirective } from '../utils/roles';
 
 interface SubjectGradeDetail {
   label: string;
@@ -103,7 +104,8 @@ interface GradesOverviewProps {
 
 export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
   const { user, token: authCtxToken } = useAuth();
-  const isAdmin = user?.role === 'Admin';
+  const isAdminOrDirective = user?.role === 'Admin' || user?.role === 'Director' || isUserDirective(user);
+  const isAdmin = isAdminOrDirective;
   const authToken = token || authCtxToken || (typeof window !== 'undefined' ? (sessionStorage.getItem('ltp_token') || localStorage.getItem('ltp_token')) : '') || '';
 
   // FILTROS PRINCIPALES DE ENCABEZADO

@@ -15,6 +15,7 @@ import {
   getDefaultSubjectsForCourse
 } from '../utils/course';
 import { roundGrade, formatGrade } from '../utils/gradeCalculations';
+import { isUserDirective } from '../utils/roles';
 
 interface GradeColumn {
   id: string;
@@ -53,7 +54,8 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
   onBackToGrid
 }) => {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'Admin';
+  const isAdminOrDirective = user?.role === 'Admin' || user?.role === 'Director' || isUserDirective(user);
+  const isAdmin = isAdminOrDirective;
 
   const [levelId, setLevelId] = useState<number>(1);
   const [subjectId, setSubjectId] = useState<number>(1);
