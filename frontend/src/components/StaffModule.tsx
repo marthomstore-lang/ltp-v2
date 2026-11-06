@@ -24,11 +24,16 @@ const normalizeProfileRoleId = (val?: string): string => {
   if (!r) return 'Docente';
   const u = r.toUpperCase();
   if (u === 'ADMIN' || u === 'ADMINISTRADOR') return 'Admin';
-  if (u === 'DIRECTOR' || u === 'DIRECTIVO') return 'Director';
-  if (u === 'DOCENTE' || u === 'PROFESOR') return 'Docente';
-  if (u === 'ENTREVISTADOR' || u === 'ASISTENTE DE LA EDUCACIÓN' || u === 'ASISTENTE') return 'Entrevistador';
-  if (u === 'ADMINISTRATIVO') return 'Administrativo';
+  if (u === 'DIRECTOR' || u === 'DIRECTIVO' || u === 'DIRECTIVO / UTP' || u === 'UTP') return 'Director';
+  if (u === 'DOCENTE' || u === 'PROFESOR' || u === 'DOCENTE DE AULA') return 'Docente';
+  if (u === 'ENTREVISTADOR' || u === 'CONVIVENCIA') return 'Entrevistador';
+  if (u === 'ASISTENTE DE LA EDUCACIÓN' || u === 'ASISTENTE DE LA EDUCACION' || u === 'ASISTENTE' || u === 'ASISTENTE ED.') return 'Asistente';
+  if (u === 'ADMINISTRATIVO' || u === 'INSPECTOR' || u === 'INSPECTOR/A' || u === 'SECRETARIO/A') return 'Administrativo';
+  if (u === 'PROFESIONALES' || u === 'PROFESIONAL PIE' || u === 'PIE') return 'Profesionales';
+  if (u === 'COMUNICACIONES' || u === 'ENCARGADO DE COMUNICACIONES' || u === 'MENSAJERÍA') return 'Comunicaciones';
+  if (u === 'ENCARGADO CRA' || u === 'ENCARGADOCRA' || u === 'CRA' || u === 'BIBLIOTECARIO') return 'EncargadoCRA';
   if (u === 'APODERADO') return 'Apoderado';
+  if (u === 'ESTUDIANTE' || u === 'ALUMNO') return 'Estudiante';
   if (u === 'VISITA') return 'Visita';
   return r;
 };
@@ -484,7 +489,7 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ token }) => {
                   <button
                     type="button"
                     onClick={() => {
-                      const allRoleIds = ['Admin', 'Director', 'Docente', 'Entrevistador', 'Administrativo', 'Apoderado', 'Visita'];
+                      const allRoleIds = ['Admin', 'Director', 'Docente', 'Entrevistador', 'Asistente', 'Administrativo', 'Profesionales', 'Comunicaciones', 'EncargadoCRA', 'Apoderado', 'Visita'];
                       setAssignedRoles(allRoleIds);
                     }}
                     style={{ background: '#ede9fe', color: '#5b21b6', border: '1px solid #c4b5fd', borderRadius: '6px', padding: '0.2rem 0.55rem', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer' }}
@@ -497,8 +502,12 @@ export const StaffModule: React.FC<StaffModuleProps> = ({ token }) => {
                     { id: 'Admin', label: '👑 Administrador (Control Total)' },
                     { id: 'Director', label: '🎓 Directivo / UTP / Inspectoría' },
                     { id: 'Docente', label: '👨‍🏫 Docente de Aula' },
-                    { id: 'Entrevistador', label: '🗣️ Entrevistador (Convivencia / PIE)' },
+                    { id: 'Entrevistador', label: '🗣️ Entrevistador (Convivencia)' },
+                    { id: 'Asistente', label: '🤝 Asistente de la Educación' },
                     { id: 'Administrativo', label: '📋 Administrativo (Matrícula)' },
+                    { id: 'Profesionales', label: '🧠 Profesional PIE / Salud' },
+                    { id: 'Comunicaciones', label: '📢 Comunicaciones' },
+                    { id: 'EncargadoCRA', label: '📚 Encargado CRA' },
                     { id: 'Apoderado', label: '👨‍👩‍👧 Apoderado' },
                     { id: 'Visita', label: '👁️ Visita (Solo Lectura)' }
                   ].map(opt => {

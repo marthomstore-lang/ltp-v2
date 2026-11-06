@@ -221,47 +221,85 @@ export const AdminDashboard: React.FC = () => {
 
   const currentRole = user?.role || 'Admin';
 
-  const getAccessLevel = (tab: string): AccessLevel => {
-    // Protección vital: Todo usuario autenticado siempre tiene acceso a 'home' (Dashboard / Portal Apoderado / Portal Estudiante)
-    if (tab === 'home') {
-      return (currentRole === 'Apoderado' || currentRole === 'Estudiante' || currentRole === 'Visita') ? 'view' : 'edit';
-    }
+  const mapRoleToCol = (roleName: string): string => {
+    const raw = String(roleName || '').trim();
+    if (['Admin', 'Administrador'].includes(raw)) return 'Admin';
+    if (['Director', 'Directivo', 'UTP', 'Directivo / UTP', 'Inspectoría General'].includes(raw)) return 'Director';
+    if (['Docente', 'Profesor', 'Docente de Aula', 'Docente Jefatura'].includes(raw)) return 'Docente';
+    if (['Administrativo', 'Inspector', 'Inspector/a', 'Secretario/a'].includes(raw)) return 'Administrativo';
+    if (['EncargadoCRA', 'Encargado CRA', 'Bibliotecario'].includes(raw)) return 'EncargadoCRA';
+    if (['Asistente', 'Asistente de la Educación', 'Asistente Ed.'].includes(raw)) return 'Asistente';
+    if (['Profesionales', 'Convivencia Escolar', 'Entrevistador', 'Psicólogo', 'Profesional PIE', 'PIE'].includes(raw)) return 'Profesionales';
+    if (['Comunicaciones', 'Encargado de Comunicaciones', 'Mensajería'].includes(raw)) return 'Comunicaciones';
+    if (raw === 'Estudiante') return 'Estudiante';
+    if (raw === 'Apoderado') return 'Apoderado';
+    return raw;
+  };
 
-    // Protección vital: El Administrador siempre tiene Edición en la Matriz de Permisos
-    if (tab === 'permissions' && (currentRole === 'Admin' || isSuperAdmin)) {
-      return 'edit';
-    }
-
-    // Protección vital: Apoderado y Estudiante nunca pueden acceder a gestión de permisos, configuración ni auditoría
-    if ((currentRole === 'Apoderado' || currentRole === 'Estudiante') && ['permissions', 'config', 'audit'].includes(tab)) {
-      return 'none';
-    }
-
-    if (dynamicMatrix && dynamicMatrix.length > 0) {
-      const funcId = TAB_TO_FUNCTION[tab] || tab;
-      const row = dynamicMatrix.find(r => r.functionId === funcId);
-      if (row) {
-        let roleCol: string = currentRole;
-        if (['Admin', 'Administrador'].includes(currentRole)) roleCol = 'Admin';
-        else if (['Director', 'Directivo', 'UTP', 'Inspectoría General'].includes(currentRole)) roleCol = 'Director';
-        else if (['Docente', 'Profesor', 'Docente de Aula', 'Docente Jefatura'].includes(currentRole)) roleCol = 'Docente';
-        else if (['Asistente', 'Asistente de la Educación', 'PIE', 'Administrativo', 'Bibliotecario'].includes(currentRole)) roleCol = 'Asistente';
-        else if (['Profesionales', 'Convivencia Escolar', 'Entrevistador', 'Psicólogo'].includes(currentRole)) roleCol = 'Profesionales';
-        else if (['Comunicaciones', 'Encargado de Comunicaciones'].includes(currentRole)) roleCol = 'Comunicaciones';
-        else if ((currentRole as string) === 'Estudiante') roleCol = 'Estudiante';
-        else if ((currentRole as string) === 'Apoderado') roleCol = 'Apoderado';
-
-        if (row[roleCol] !== undefined) return normalizeAccessLevel(row[roleCol], 'none');
-        if (row[currentRole] !== undefined) return normalizeAccessLevel(row[currentRole], 'none');
+  const userRolesList = useMemo(() => {
+    let list: string[] = [currentRole];
+    if (Array.isArray(user?.roles)) {
+      list = [...list, ...user.roles];
+    } else if (typeof user?.roles === 'string' && (user.roles as string).trim()) {
+      try {
+        const parsed = JSON.parse(user.roles as string);
+        if (Array.isArray(parsed)) list = [...list, ...parsed];
+        else list = [...list, ...(user.roles as string).split(',')];
+      } catch {
+        list = [...list, ...(user.roles as string).split(',')];
       }
     }
+    return Array.from(new Set(list.map(r => String(r || '').trim()).filter(Boolean)));
+  }, [currentRole, user?.roles]);
 
-    const fallbackList = rolePermissions[currentRole] || rolePermissions['Admin'];
-    if (!fallbackList.includes(tab)) return 'none';
-    if (tab === 'students' && ['Asistente', 'Asistente de la Educación', 'Docente', 'Profesionales', 'Comunicaciones'].includes(currentRole)) {
-      return 'view';
+  const getAccessLevel = (tab: string): AccessLevel => {
+    // Si está simulando un rol específico (impersonating o superadmin cambiando perfil), evaluar solo ese rol
+    const rolesToEvaluate = (isImpersonating || (isSuperAdmin && currentRole !== 'Admin'))
+      ? [currentRole]
+      : userRolesList;
+
+    const calcLevelForRole = (r: string): AccessLevel => {
+      // Protección vital: Todo usuario autenticado siempre tiene acceso a 'home' (Dashboard / Portal Apoderado / Portal Estudiante)
+      if (tab === 'home') {
+        return (['Apoderado', 'Estudiante', 'Visita'].includes(r)) ? 'view' : 'edit';
+      }
+
+      // Protección vital: El Administrador siempre tiene Edición en la Matriz de Permisos
+      if (tab === 'permissions' && (['Admin', 'Administrador'].includes(r) || isSuperAdmin)) {
+        return 'edit';
+      }
+
+      // Protección vital: Apoderado y Estudiante nunca pueden acceder a gestión de permisos, configuración ni auditoría
+      if (['Apoderado', 'Estudiante'].includes(r) && ['permissions', 'config', 'audit'].includes(tab)) {
+        return 'none';
+      }
+
+      if (dynamicMatrix && dynamicMatrix.length > 0) {
+        const funcId = TAB_TO_FUNCTION[tab] || tab;
+        const row = dynamicMatrix.find(item => item.functionId === funcId);
+        if (row) {
+          const roleCol = mapRoleToCol(r);
+          if (row[roleCol] !== undefined) return normalizeAccessLevel(row[roleCol], 'none');
+          if (row[r] !== undefined) return normalizeAccessLevel(row[r], 'none');
+        }
+      }
+
+      const roleKey = mapRoleToCol(r);
+      const fallbackList = rolePermissions[r] || rolePermissions[roleKey] || rolePermissions['Docente'] || [];
+      if (!fallbackList.includes(tab)) return 'none';
+      if (tab === 'students' && ['Asistente', 'Docente', 'Profesionales', 'Comunicaciones'].includes(roleKey)) {
+        return 'view';
+      }
+      return 'edit';
+    };
+
+    let highestLevel: AccessLevel = 'none';
+    for (const r of rolesToEvaluate) {
+      const lvl = calcLevelForRole(r);
+      if (lvl === 'edit') return 'edit';
+      if (lvl === 'view') highestLevel = 'view';
     }
-    return 'edit';
+    return highestLevel;
   };
 
   const canAccess = (tab: string) => getAccessLevel(tab) !== 'none';
@@ -412,7 +450,7 @@ export const AdminDashboard: React.FC = () => {
     if (typeof window !== 'undefined') {
       (window as any).__ltpCurrentModuleAccess = getAccessLevel(activeTab);
     }
-  }, [activeTab, user?.role, dynamicMatrix]);
+  }, [activeTab, user?.role, userRolesList, dynamicMatrix]);
   const [students, setStudents] = useState<any[]>([]);
   const [dbDisconnected, setDbDisconnected] = useState<boolean>(false);
   const [interviews, setInterviews] = useState<any[]>([]);
@@ -2518,6 +2556,7 @@ export const AdminDashboard: React.FC = () => {
                             <option value="Director">🎓 Directivo / UTP / Inspectoría</option>
                             <option value="Docente">👨‍🏫 Docente de Aula / Jefatura</option>
                             <option value="Comunicaciones">📢 Comunicaciones (Mensajería y Registro Oficial)</option>
+                            <option value="EncargadoCRA">📚 Encargado CRA / Biblioteca</option>
                             <option value="Entrevistador">🗣️ Convivencia Escolar / Entrevistas</option>
                             <option value="Asistente">🤝 Asistente de la Educación / PIE</option>
                             <option value="Administrativo">📋 Administrativo / Matrícula</option>
@@ -2532,11 +2571,14 @@ export const AdminDashboard: React.FC = () => {
                               {r === 'Docente' ? '👨‍🏫 Docente de Aula / Jefatura' :
                                r === 'Director' ? '🎓 Directivo / UTP / Inspectoría' :
                                r === 'Comunicaciones' ? '📢 Comunicaciones (Mensajería y Registro Oficial)' :
+                               r === 'EncargadoCRA' ? '📚 Encargado CRA / Biblioteca' :
                                r === 'Entrevistador' ? '🗣️ Convivencia Escolar / Entrevistas' :
                                r === 'Asistente' ? '🤝 Asistente de la Educación' :
                                r === 'Administrativo' ? '📋 Administrativo / Matrícula' :
                                r === 'Profesionales' ? '🧠 Profesional PIE / Salud' :
                                r === 'Apoderado' ? '👨‍👩‍👧 Portal Apoderado' :
+                               r === 'Estudiante' ? '🎓 Portal Estudiantil' :
+                               r === 'Visita' ? '👁️ Visita (Solo Lectura)' :
                                r === 'Admin' ? '👑 Administrador' : r}
                             </option>
                           ))

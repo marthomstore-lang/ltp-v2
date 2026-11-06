@@ -101,14 +101,18 @@ export const InstitutionalPlatformsSection: React.FC<Props> = ({ token, userName
           const defaultRef = DEFAULT_LINKS[idx % Math.max(1, DEFAULT_LINKS.length)];
           const bgGradient = item.color || defaultRef?.color || 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)';
           const imgUrl = item.image || defaultRef?.image || '/platform_images/mobile_devices.jpg';
-          const lowerName = (item.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-          const isInternalEval = lowerName.includes('evaluacion') || item.url === '/evaluaciones-pie';
-          const isInternalLab = lowerName.includes('computacion') || lowerName.includes('sala de comput') || item.url === '/sala-computacion';
+          const isExternal = Boolean(item.url && (item.url.startsWith('http://') || item.url.startsWith('https://')));
+          const isInternalEval = !isExternal && item.url === '/evaluaciones-pie';
+          const isInternalLab = !isExternal && item.url === '/sala-computacion';
 
           return (
             <div
               key={item.id || idx}
               onClick={() => {
+                if (isExternal) {
+                  window.open(item.url, '_blank', 'noopener,noreferrer');
+                  return;
+                }
                 if (isInternalEval) {
                   window.dispatchEvent(new CustomEvent('ltp_navigate_tab', { detail: 'evaluations_pie' }));
                   return;
@@ -117,7 +121,9 @@ export const InstitutionalPlatformsSection: React.FC<Props> = ({ token, userName
                   window.dispatchEvent(new CustomEvent('ltp_navigate_tab', { detail: 'computer_lab' }));
                   return;
                 }
-                window.open(item.url, '_blank');
+                if (item.url) {
+                  window.open(item.url, '_blank', 'noopener,noreferrer');
+                }
               }}
               style={{
                 borderRadius: '16px',
@@ -163,7 +169,7 @@ export const InstitutionalPlatformsSection: React.FC<Props> = ({ token, userName
                   fontSize: '0.7rem',
                   fontWeight: 700
                 }}>
-                  {isInternalEval || isInternalLab ? 'Módulo Interno Integrado' : (item.category || defaultRef?.category || 'Plataforma Institucional')}
+                  {item.category || defaultRef?.category || (isInternalEval || isInternalLab ? 'Módulo Interno Integrado' : 'Plataforma Institucional')}
                 </div>
               </div>
 

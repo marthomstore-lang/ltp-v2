@@ -5453,7 +5453,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                     <button
                       type="button"
                       onClick={() => {
-                        const allRoleIds = ['Docente', 'Director', 'Entrevistador', 'Asistente', 'Administrativo', 'Profesionales', 'Comunicaciones', 'Admin', 'Apoderado'];
+                        const allRoleIds = ['Docente', 'Director', 'Entrevistador', 'Asistente', 'Administrativo', 'Profesionales', 'Comunicaciones', 'EncargadoCRA', 'Admin', 'Apoderado'];
                         setEditingUser((prev: any) => ({
                           ...prev,
                           roles: allRoleIds,
@@ -5483,6 +5483,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                     { id: 'Administrativo', label: 'Administrativo', icon: '📋' },
                     { id: 'Profesionales', label: 'Profesional PIE', icon: '🧠' },
                     { id: 'Comunicaciones', label: 'Comunicaciones', icon: '📢' },
+                    { id: 'EncargadoCRA', label: 'Encargado CRA', icon: '📚' },
                     { id: 'Admin', label: 'Administrador', icon: '👑' },
                     { id: 'Apoderado', label: 'Apoderado', icon: '👨‍👩‍👧' }
                   ].map(r => {

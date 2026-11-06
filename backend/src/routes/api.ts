@@ -627,10 +627,14 @@ const loginHandler = async (req: Request, res: Response) => {
     const normalizeRole = (r: string): string => {
       const trimmed = (r || '').trim();
       const lower = trimmed.toLowerCase();
-      if (lower === 'asistente de la educación' || lower === 'asistente de la educacion') return 'Asistente';
+      if (lower === 'asistente de la educación' || lower === 'asistente de la educacion' || lower === 'asistente ed.') return 'Asistente';
       if (lower === 'profesor') return 'Docente';
       if (lower === 'alumno') return 'Estudiante';
-      if (lower === 'directivo') return 'Director';
+      if (lower === 'directivo' || lower === 'directivo / utp' || lower === 'utp') return 'Director';
+      if (lower === 'administrador') return 'Admin';
+      if (lower === 'administrativo' || lower === 'inspector' || lower === 'inspector/a' || lower === 'secretario/a') return 'Administrativo';
+      if (lower === 'profesional pie' || lower === 'pie') return 'Profesionales';
+      if (lower === 'encargado cra' || lower === 'encargadocra' || lower === 'cra' || lower === 'bibliotecario') return 'EncargadoCRA';
       if (lower === 'comunicaciones' || lower === 'encargado de comunicaciones' || lower === 'encargada de comunicaciones') return 'Comunicaciones';
       return trimmed;
     };
@@ -6260,29 +6264,29 @@ const OBSOLETE_PERMISSION_IDS = new Set([
 export type AccessLevel = 'edit' | 'view' | 'none';
 
 const DEFAULT_SYSTEM_PERMISSIONS = [
-  { functionId: 'dashboard', functionName: 'Dashboard General & KPIs / Portal', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'view', Asistente: 'view', Profesionales: 'view', Estudiante: 'view', Apoderado: 'view' },
-  { functionId: 'communications', functionName: 'Centro de Comunicaciones y Registro de Envíos', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'edit', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'enrollment', functionName: 'Matrícula Completa MINEDUC/FIDE (Ficha, Checklists y Salud/PIE)', Admin: 'edit', Director: 'edit', Docente: 'view', Comunicaciones: 'view', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'apoderados', functionName: 'Nómina & Registro Institucional de Apoderados', Admin: 'edit', Director: 'edit', Docente: 'view', Comunicaciones: 'view', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'grades', functionName: 'Libro de Calificaciones Ponderadas', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'none', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'overview', functionName: 'Panorama de Notas & Reporte de Jefatura', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'computer_lab', functionName: 'Reserva Sala de Computación & Horarios', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'view', Asistente: 'edit', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'evaluations_pie', functionName: 'Portal de Evaluaciones & Integración PIE', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'mineduc_reports', functionName: 'Informes y Formularios Únicos MINEDUC (Dec. 170)', Admin: 'edit', Director: 'view', Docente: 'view', Comunicaciones: 'none', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'interviews', functionName: 'Actas de Entrevistas & Compromisos', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'observations', functionName: 'Hoja de Vida & Anotaciones RICE', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'edit', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'inspector_passes', functionName: 'Control de Atrasos & Pases de Inspectoría', Admin: 'edit', Director: 'edit', Docente: 'view', Comunicaciones: 'view', Asistente: 'edit', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'pedagogical_trips', functionName: 'Salidas Pedagógicas & Autorizaciones', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'view', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'hr_staff', functionName: 'Recursos Humanos & Idoneidad', Admin: 'edit', Director: 'view', Docente: 'none', Comunicaciones: 'none', Asistente: 'none', Profesionales: 'none', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'admin_docs', functionName: 'Documentos & Protocolos Institucionales', Admin: 'edit', Director: 'edit', Docente: 'view', Comunicaciones: 'view', Asistente: 'view', Profesionales: 'view', Estudiante: 'view', Apoderado: 'view' },
-  { functionId: 'library', functionName: 'Biblioteca CRA', Admin: 'edit', Director: 'edit', Docente: 'view', Comunicaciones: 'none', Asistente: 'edit', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'permissions', functionName: 'Matriz de Permisos RBAC', Admin: 'edit', Director: 'none', Docente: 'none', Comunicaciones: 'none', Asistente: 'none', Profesionales: 'none', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'config', functionName: 'Ajustes y Configuración del Sistema (13 Sub-ventanas)', Admin: 'edit', Director: 'none', Docente: 'none', Comunicaciones: 'none', Asistente: 'none', Profesionales: 'none', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'audit_logs', functionName: 'Auditoría Silent-Watch', Admin: 'view', Director: 'none', Docente: 'none', Comunicaciones: 'none', Asistente: 'none', Profesionales: 'none', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'course_messaging', functionName: 'Herramienta Superior: Comunicar a Curso (Mensajería Docente)', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'edit', Asistente: 'none', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'guardian_calls', functionName: 'Registro y Marcador de Llamadas a Apoderados (Bitácora Telefónica)', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'edit', Asistente: 'edit', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'personality_reports', functionName: 'Informes al Hogar y Personalidad (PK a 4°M)', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'view', Profesionales: 'view', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'curriculum_plans', functionName: 'Planificaciones Curriculares & Asistente IA', Admin: 'edit', Director: 'edit', Docente: 'edit', Comunicaciones: 'none', Asistente: 'view', Profesionales: 'edit', Estudiante: 'none', Apoderado: 'none' }
+  { functionId: 'dashboard', functionName: 'Dashboard General & KPIs / Portal', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'edit', Asistente: 'view', Profesionales: 'view', Comunicaciones: 'view', EncargadoCRA: 'edit', Estudiante: 'view', Apoderado: 'view' },
+  { functionId: 'communications', functionName: 'Centro de Comunicaciones y Registro de Envíos', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'view', Asistente: 'view', Profesionales: 'edit', Comunicaciones: 'edit', EncargadoCRA: 'edit', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'enrollment', functionName: 'Matrícula Completa MINEDUC/FIDE (Ficha, Checklists y Salud/PIE)', Admin: 'edit', Director: 'edit', Docente: 'view', Administrativo: 'edit', Asistente: 'view', Profesionales: 'view', Comunicaciones: 'view', EncargadoCRA: 'view', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'apoderados', functionName: 'Nómina & Registro Institucional de Apoderados', Admin: 'edit', Director: 'edit', Docente: 'view', Administrativo: 'edit', Asistente: 'view', Profesionales: 'view', Comunicaciones: 'view', EncargadoCRA: 'view', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'grades', functionName: 'Libro de Calificaciones Ponderadas', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'none', Asistente: 'none', Profesionales: 'view', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'overview', functionName: 'Panorama de Notas & Reporte de Jefatura', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'view', Asistente: 'view', Profesionales: 'view', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'computer_lab', functionName: 'Reserva Sala de Computación & Horarios', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'edit', Asistente: 'edit', Profesionales: 'edit', Comunicaciones: 'view', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'evaluations_pie', functionName: 'Portal de Evaluaciones & Integración PIE', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'view', Asistente: 'view', Profesionales: 'edit', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'mineduc_reports', functionName: 'Informes y Formularios Únicos MINEDUC (Dec. 170)', Admin: 'edit', Director: 'view', Docente: 'view', Administrativo: 'view', Asistente: 'view', Profesionales: 'edit', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'interviews', functionName: 'Actas de Entrevistas & Compromisos', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'view', Asistente: 'view', Profesionales: 'edit', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'observations', functionName: 'Hoja de Vida & Anotaciones RICE', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'edit', Asistente: 'edit', Profesionales: 'edit', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'inspector_passes', functionName: 'Control de Atrasos & Pases de Inspectoría', Admin: 'edit', Director: 'edit', Docente: 'view', Administrativo: 'edit', Asistente: 'edit', Profesionales: 'view', Comunicaciones: 'none', EncargadoCRA: 'view', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'pedagogical_trips', functionName: 'Salidas Pedagógicas & Autorizaciones', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'view', Asistente: 'view', Profesionales: 'edit', Comunicaciones: 'view', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'hr_staff', functionName: 'Recursos Humanos & Idoneidad', Admin: 'edit', Director: 'view', Docente: 'none', Administrativo: 'none', Asistente: 'none', Profesionales: 'none', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'admin_docs', functionName: 'Documentos & Protocolos Institucionales', Admin: 'edit', Director: 'edit', Docente: 'view', Administrativo: 'view', Asistente: 'view', Profesionales: 'view', Comunicaciones: 'view', EncargadoCRA: 'edit', Estudiante: 'view', Apoderado: 'view' },
+  { functionId: 'library', functionName: 'Biblioteca CRA', Admin: 'edit', Director: 'edit', Docente: 'view', Administrativo: 'view', Asistente: 'edit', Profesionales: 'view', Comunicaciones: 'none', EncargadoCRA: 'edit', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'permissions', functionName: 'Matriz de Permisos RBAC', Admin: 'edit', Director: 'none', Docente: 'none', Administrativo: 'none', Asistente: 'none', Profesionales: 'none', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'config', functionName: 'Ajustes y Configuración del Sistema (13 Sub-ventanas)', Admin: 'edit', Director: 'none', Docente: 'none', Administrativo: 'none', Asistente: 'none', Profesionales: 'none', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'audit_logs', functionName: 'Auditoría Silent-Watch', Admin: 'view', Director: 'none', Docente: 'none', Administrativo: 'none', Asistente: 'none', Profesionales: 'none', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'course_messaging', functionName: 'Herramienta Superior: Comunicar a Curso (Mensajería Docente)', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'none', Asistente: 'none', Profesionales: 'edit', Comunicaciones: 'edit', EncargadoCRA: 'edit', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'guardian_calls', functionName: 'Registro y Marcador de Llamadas a Apoderados (Bitácora Telefónica)', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'edit', Asistente: 'edit', Profesionales: 'edit', Comunicaciones: 'edit', EncargadoCRA: 'view', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'personality_reports', functionName: 'Informes al Hogar y Personalidad (PK a 4°M)', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'view', Asistente: 'view', Profesionales: 'view', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'curriculum_plans', functionName: 'Planificaciones Curriculares & Asistente IA', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'none', Asistente: 'view', Profesionales: 'edit', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' }
 ];
 
 function toAccessLevel(val: any, defLevel: AccessLevel, isLegacyBooleanRow: boolean): AccessLevel {
@@ -6334,7 +6338,7 @@ function normalizePermissionsMatrix(rawMatrix: any[]): { normalized: any[]; hadO
       hadObsoleteOrMissing = true;
       return { ...def };
     }
-    if (saved.Comunicaciones === undefined) {
+    if (saved.Comunicaciones === undefined || saved.Administrativo === undefined || saved.EncargadoCRA === undefined) {
       hadObsoleteOrMissing = true;
     }
     return {
@@ -6343,9 +6347,11 @@ function normalizePermissionsMatrix(rawMatrix: any[]): { normalized: any[]; hadO
       Admin: def.functionId === 'permissions' ? 'edit' : toAccessLevel(saved.Admin, def.Admin, isLegacyBooleanMatrix),
       Director: toAccessLevel(saved.Director, def.Director, isLegacyBooleanMatrix),
       Docente: toAccessLevel(saved.Docente, def.Docente, isLegacyBooleanMatrix),
-      Comunicaciones: toAccessLevel(saved.Comunicaciones, def.Comunicaciones, isLegacyBooleanMatrix),
+      Administrativo: toAccessLevel(saved.Administrativo, def.Administrativo, isLegacyBooleanMatrix),
       Asistente: toAccessLevel(saved.Asistente, def.Asistente, isLegacyBooleanMatrix),
       Profesionales: toAccessLevel(saved.Profesionales, def.Profesionales, isLegacyBooleanMatrix),
+      Comunicaciones: toAccessLevel(saved.Comunicaciones, def.Comunicaciones, isLegacyBooleanMatrix),
+      EncargadoCRA: toAccessLevel(saved.EncargadoCRA, def.EncargadoCRA, isLegacyBooleanMatrix),
       Estudiante: def.functionId === 'permissions' ? 'none' : toAccessLevel(saved.Estudiante, def.Estudiante, isLegacyBooleanMatrix),
       Apoderado: def.functionId === 'permissions' ? 'none' : toAccessLevel(saved.Apoderado, def.Apoderado, isLegacyBooleanMatrix),
     };
@@ -6359,9 +6365,11 @@ function normalizePermissionsMatrix(rawMatrix: any[]): { normalized: any[]; hadO
         Admin: toAccessLevel(row.Admin, 'edit', false),
         Director: toAccessLevel(row.Director, 'none', false),
         Docente: toAccessLevel(row.Docente, 'none', false),
-        Comunicaciones: toAccessLevel(row.Comunicaciones, 'none', false),
+        Administrativo: toAccessLevel(row.Administrativo, 'none', false),
         Asistente: toAccessLevel(row.Asistente, 'none', false),
         Profesionales: toAccessLevel(row.Profesionales, 'none', false),
+        Comunicaciones: toAccessLevel(row.Comunicaciones, 'none', false),
+        EncargadoCRA: toAccessLevel(row.EncargadoCRA, 'none', false),
         Estudiante: toAccessLevel(row.Estudiante, 'none', false),
         Apoderado: toAccessLevel(row.Apoderado, 'none', false),
       });
@@ -6458,36 +6466,65 @@ export const checkMatrixPermission = (functionId: string) => {
 
       const row = matrix.find((r: any) => r.functionId === functionId);
       if (row) {
-        const userRole = (req.user?.role || 'Docente') as string;
-        let roleCol: string = userRole;
-        if (['Admin', 'Administrador'].includes(userRole)) roleCol = 'Admin';
-        else if (['Director', 'Directivo', 'UTP', 'Inspectoría General'].includes(userRole)) roleCol = 'Director';
-        else if (['Docente', 'Docente de Aula', 'Docente Jefatura'].includes(userRole)) roleCol = 'Docente';
-        else if (['Comunicaciones', 'Encargado de Comunicaciones', 'Encargada de Comunicaciones'].includes(userRole)) roleCol = 'Comunicaciones';
-        else if (['Asistente', 'Asistente de la Educación', 'PIE', 'Administrativo'].includes(userRole)) roleCol = 'Asistente';
-        else if (['Profesionales', 'Convivencia Escolar', 'Entrevistador', 'Psicólogo'].includes(userRole)) roleCol = 'Profesionales';
-        else if (userRole === 'Estudiante') roleCol = 'Estudiante';
-        else if (userRole === 'Apoderado') roleCol = 'Apoderado';
+        const userRoles: string[] = [req.user?.role || 'Docente'];
+        const rawRoles = (req.user as any)?.roles;
+        if (Array.isArray(rawRoles)) {
+          userRoles.push(...rawRoles);
+        } else if (typeof rawRoles === 'string' && rawRoles.trim()) {
+          try {
+            const p = JSON.parse(rawRoles);
+            if (Array.isArray(p)) userRoles.push(...p);
+            else userRoles.push(...rawRoles.split(','));
+          } catch {
+            userRoles.push(...rawRoles.split(','));
+          }
+        }
 
-        // Administrador siempre tiene acceso total asegurado
-        if (roleCol === 'Admin') {
+        const mapCol = (uRole: string): string => {
+          const r = String(uRole || '').trim();
+          if (['Admin', 'Administrador'].includes(r)) return 'Admin';
+          if (['Director', 'Directivo', 'UTP', 'Directivo / UTP', 'Inspectoría General'].includes(r)) return 'Director';
+          if (['Docente', 'Profesor', 'Docente de Aula', 'Docente Jefatura'].includes(r)) return 'Docente';
+          if (['Administrativo', 'Inspector', 'Inspector/a', 'Secretario/a'].includes(r)) return 'Administrativo';
+          if (['EncargadoCRA', 'Encargado CRA', 'Bibliotecario'].includes(r)) return 'EncargadoCRA';
+          if (['Asistente', 'Asistente de la Educación', 'Asistente Ed.'].includes(r)) return 'Asistente';
+          if (['Profesionales', 'Convivencia Escolar', 'Entrevistador', 'Psicólogo', 'Profesional PIE', 'PIE'].includes(r)) return 'Profesionales';
+          if (['Comunicaciones', 'Encargado de Comunicaciones', 'Encargada de Comunicaciones', 'Mensajería'].includes(r)) return 'Comunicaciones';
+          if (r === 'Estudiante') return 'Estudiante';
+          if (r === 'Apoderado') return 'Apoderado';
+          return r;
+        };
+
+        // Si tiene rol Admin asignado, acceso total asegurado
+        if (userRoles.some(r => mapCol(r) === 'Admin')) {
           return next();
         }
 
-        const rawPerm = row[roleCol] !== undefined ? row[roleCol] : row[userRole];
-        const level: AccessLevel = rawPerm === 'edit' || rawPerm === true ? 'edit' : rawPerm === 'view' ? 'view' : 'none';
+        let highestLevel: AccessLevel = 'none';
+        for (const uRole of userRoles) {
+          const roleCol = mapCol(uRole);
+          const rawPerm = row[roleCol] !== undefined ? row[roleCol] : row[uRole];
+          const level: AccessLevel = rawPerm === 'edit' || rawPerm === true ? 'edit' : rawPerm === 'view' ? 'view' : 'none';
+          if (level === 'edit') {
+            highestLevel = 'edit';
+            break;
+          }
+          if (level === 'view') {
+            highestLevel = 'view';
+          }
+        }
 
-        if (level === 'none') {
+        if (highestLevel === 'none') {
           return res.status(403).json({
-            error: `No tienes el permiso para abrir o ver este módulo. Acceso establecido como BLOQUEADO en la Matriz de Permisos para el rol "${userRole}".`,
+            error: `No tienes el permiso para abrir o ver este módulo. Acceso establecido como BLOQUEADO en la Matriz de Permisos para tus perfiles (${userRoles.join(', ')}).`,
             functionId,
             functionName: row.functionName
           });
         }
 
-        if (level === 'view' && req.method !== 'GET') {
+        if (highestLevel === 'view' && req.method !== 'GET') {
           return res.status(403).json({
-            error: `Modo Solo Vista: Tu perfil ("${userRole}") tiene permiso de consulta en "${row.functionName}", pero no de creación ni edición.`,
+            error: `Modo Solo Vista: Tu perfil tiene permiso de consulta en "${row.functionName}", pero no de creación ni edición.`,
             functionId,
             functionName: row.functionName,
             accessLevel: 'view'
@@ -9842,14 +9879,14 @@ const DEFAULT_INSTITUTIONAL_LINKS = [
   {
     id: '3',
     name: 'Registro de Evaluaciones',
-    url: 'https://classroom.google.com',
+    url: 'https://script.google.com/a/macros/eduvallediguillin.gob.cl/s/AKfycbwQBTQgaPnNpJRgCCG7g2EN6t4hcSj2_4qc8lQdwlZgpZ26srwAklNk05VIIQ3v3Ai0/exec',
     color: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
     category: 'Plataforma Institucional'
   },
   {
     id: '4',
     name: 'Registro de Uso de Sala de Computación',
-    url: 'https://sep.mineduc.cl',
+    url: 'https://script.google.com/a/macros/eduvallediguillin.gob.cl/s/AKfycbzY13K6zAubU1jAv-8QC8KZoDsMkm-tMGUMgsce3irMksdQQAYMo84Is130bounPeFI9A/exec',
     color: 'linear-gradient(135deg, #4338ca 0%, #312e81 100%)',
     category: 'Plataforma Institucional'
   }
