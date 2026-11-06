@@ -14,6 +14,7 @@ import {
   isBasic1To6Course,
   getDefaultSubjectsForCourse
 } from '../utils/course';
+import { roundGrade, formatGrade } from '../utils/gradeCalculations';
 
 interface GradeColumn {
   id: string;
@@ -499,16 +500,12 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
     return `COL-${levelId}-${subjectId}-${periodCode}-FINAL`;
   }, [columns, levelId, subjectId, period]);
 
-  // Helper para formatear notas según la escala (decimal o entera)
+  // Helper para formatear notas según la escala (decimal o entera) con aproximación oficial MINEDUC
   const formatGradeValue = (val: number | null | undefined): string => {
-    if (val === null || val === undefined || isNaN(val) || val <= 0) return '—';
-    if (gradeScaleMode === 'entera') {
-      return Math.round(val * 10).toString();
-    }
-    return val.toFixed(1).replace('.', ',');
+    return formatGrade(val, gradeScaleMode);
   };
 
-  // Promedio de 1er Semestre para un estudiante
+  // Promedio de 1er Semestre para un estudiante (Aproximación oficial MINEDUC: >= .05 sube a décima superior)
   const getStudentSemester1Avg = (studentId: string): number | null => {
     const cols = s1Columns.filter(c => !c.id.includes('FINAL') && c.title.toLowerCase().trim() !== 'promedio');
     if (cols.length === 0) return null;
@@ -522,10 +519,10 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       }
     });
     if (count === 0) return null;
-    return Number((sum / count).toFixed(1));
+    return roundGrade(sum / count);
   };
 
-  // Promedio de 2do Semestre para un estudiante
+  // Promedio de 2do Semestre para un estudiante (Aproximación oficial MINEDUC: >= .05 sube a décima superior)
   const getStudentSemester2Avg = (studentId: string): number | null => {
     const cols = s2Columns.filter(c => !c.id.includes('FINAL') && c.title.toLowerCase().trim() !== 'promedio');
     if (cols.length === 0) return null;
@@ -539,15 +536,15 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       }
     });
     if (count === 0) return null;
-    return Number((sum / count).toFixed(1));
+    return roundGrade(sum / count);
   };
 
-  // Promedio Anual para un estudiante (Regla oficial MINEDUC: media aritmética P1 y P2)
+  // Promedio Anual para un estudiante (Regla oficial MINEDUC Decreto 67: media aritmética P1 y P2)
   const getStudentAnnualAvg = (studentId: string): number | null => {
     const p1 = getStudentSemester1Avg(studentId);
     const p2 = getStudentSemester2Avg(studentId);
     if (p1 !== null && p2 !== null) {
-      return Number(((p1 + p2) / 2).toFixed(1));
+      return roundGrade((p1 + p2) / 2);
     }
     if (p1 !== null) return p1;
     if (p2 !== null) return p2;
@@ -567,7 +564,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       }
     });
     if (count === 0) return null;
-    return Number((sum / count).toFixed(1));
+    return roundGrade(sum / count);
   };
 
   // Resumen de promedios del curso en esta asignatura
@@ -597,9 +594,9 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
       }
     });
 
-    const avgS1 = s1List.length > 0 ? Number((s1List.reduce((a, b) => a + b, 0) / s1List.length).toFixed(1)) : null;
-    const avgS2 = s2List.length > 0 ? Number((s2List.reduce((a, b) => a + b, 0) / s2List.length).toFixed(1)) : null;
-    const avgAnual = anList.length > 0 ? Number((anList.reduce((a, b) => a + b, 0) / anList.length).toFixed(1)) : null;
+    const avgS1 = s1List.length > 0 ? roundGrade(s1List.reduce((a, b) => a + b, 0) / s1List.length) : null;
+    const avgS2 = s2List.length > 0 ? roundGrade(s2List.reduce((a, b) => a + b, 0) / s2List.length) : null;
+    const avgAnual = anList.length > 0 ? roundGrade(anList.reduce((a, b) => a + b, 0) / anList.length) : null;
 
     return {
       avgS1,
@@ -848,7 +845,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
 
     // Normalizar escala enteros (ej: 54 -> 5.4, 65 -> 6.5)
     if (val > 7.0 && val <= 70.0) {
-      val = Math.round((val / 10.0) * 10) / 10;
+      val = roundGrade(val / 10.0);
     } else if (val > 70.0) {
       val = 7.0;
     }
@@ -893,7 +890,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
     if (isNaN(val) || val <= 0) return 0;
     if (val > 7.0 && val <= 70.0) val = val / 10.0;
     if (val > 7.0) val = 7.0;
-    return Math.round(val * 10) / 10;
+    return roundGrade(val);
   };
 
   // PEGAR DIRECTO DESDE EXCEL EN LAS CELDAS DE CALIFICACIONES (CTRL + V)
@@ -1148,12 +1145,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
     if (isNaN(num) || num <= 0) return '';
 
     if (num > 7.0 && num <= 70.0) num = num / 10.0;
-
-    if (gradeScaleMode === 'entera') {
-      return Math.round(num * 10).toString();
-    } else {
-      return num.toFixed(1).replace('.', ',');
-    }
+    return formatGrade(num, gradeScaleMode, '');
   };
 
   // NAVEGACIÓN TIPO EXCEL POR TECLADO (ENTER, FLECHAS ARRIBA, ABAJO, IZQUIERDA, DERECHA)
@@ -2599,7 +2591,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
             const nVals: Record<string, number | string> = {};
             evalColumns.slice(0, 10).forEach((col, cIdx) => {
               const val = gradesMap[`${s.id}_${col.id}`];
-              nVals[`n${cIdx + 1}`] = val !== undefined && val > 0 ? (gradeScaleMode === 'entera' ? Math.round(val * 10) : Number(val.toFixed(1))) : '-';
+              nVals[`n${cIdx + 1}`] = val !== undefined && val > 0 ? (gradeScaleMode === 'entera' ? Math.round(roundGrade(val) * 10) : roundGrade(val)) : '-';
             });
 
             let azulCount = 0;
@@ -2619,7 +2611,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               : getStudentAnnualAvg(s.id);
 
             const activeAvg = currentPeriodAvg !== null && currentPeriodAvg !== undefined && !isNaN(currentPeriodAvg) && currentPeriodAvg > 0
-              ? Number(currentPeriodAvg.toFixed(1))
+              ? roundGrade(currentPeriodAvg)
               : '-';
 
             return {

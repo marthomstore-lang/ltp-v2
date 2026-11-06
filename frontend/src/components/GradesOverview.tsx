@@ -5,6 +5,7 @@ import { PrintGradeReportModal } from './PrintGradeReportModal';
 import { FinalActaModal } from './FinalActaModal';
 import { PrintPanoramaReportModal } from './PrintPanoramaReportModal';
 import { isStudentRetired, getStudentWithdrawalDate, sortCoursesList, getStudentCourse } from '../utils/course';
+import { roundGrade } from '../utils/gradeCalculations';
 
 interface SubjectGradeDetail {
   label: string;
@@ -393,7 +394,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
                     pendingSubjects.push(sbName);
                   }
                 });
-                csvContent += `"${st.number}","${st.fullName}","${st.run}","${st.course}","${pendingSubjects.length > 0 ? pendingSubjects.join('; ') : 'Al día'}","${st.promedioGeneral > 0 ? st.promedioGeneral.toFixed(1) : '-'}"\n`;
+                csvContent += `"${st.number}","${st.fullName}","${st.run}","${st.course}","${pendingSubjects.length > 0 ? pendingSubjects.join('; ') : 'Al día'}","${st.promedioGeneral > 0 ? roundGrade(st.promedioGeneral).toFixed(1) : '-'}"\n`;
               });
               const encodedUri = encodeURI(csvContent);
               const link = document.createElement('a');
@@ -446,7 +447,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
           <div>
             <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>PROMEDIO DEL CURSO</div>
             <div style={{ fontSize: '1.75rem', fontWeight: 800, color: currentCourseData.promedioCurso > 0 ? '#2563eb' : '#64748b', lineHeight: '1.1' }}>
-              {currentCourseData.promedioCurso > 0 ? currentCourseData.promedioCurso.toFixed(1) : '-'}
+              {currentCourseData.promedioCurso > 0 ? roundGrade(currentCourseData.promedioCurso).toFixed(1) : '-'}
             </div>
           </div>
         </div>
@@ -575,7 +576,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
                         );
                       })() : (
                         <span style={{ color: sub.courseAverage >= 6.0 ? '#16a34a' : sub.courseAverage >= 5.0 ? '#2563eb' : sub.courseAverage > 0 ? '#dc2626' : '#64748b' }}>
-                          {sub.courseAverage > 0 ? sub.courseAverage.toFixed(1) : '-'}
+                          {sub.courseAverage > 0 ? roundGrade(sub.courseAverage).toFixed(1) : '-'}
                         </span>
                       )}
                     </td>
@@ -619,7 +620,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
                     <td style={{ padding: '0.75rem 0.4rem', textAlign: 'center', fontWeight: 800, color: '#2563eb' }}>{st.azules}</td>
                     <td style={{ padding: '0.75rem 0.4rem', textAlign: 'center', fontWeight: 800, color: '#dc2626' }}>{st.rojas}</td>
                     <td style={{ padding: '0.75rem 0.4rem', textAlign: 'center', fontWeight: 800, fontSize: '0.95rem', color: st.promedioGeneral >= 5.5 ? '#16a34a' : st.promedioGeneral >= 4.0 ? '#2563eb' : st.promedioGeneral > 0 ? '#dc2626' : '#64748b' }}>
-                      {st.promedioGeneral > 0 ? st.promedioGeneral.toFixed(1) : '-'}
+                      {st.promedioGeneral > 0 ? roundGrade(st.promedioGeneral).toFixed(1) : '-'}
                     </td>
                     <td style={{ padding: '0.75rem 0.5rem' }}>
                       {st.azules === 0 && st.rojas === 0 ? (
@@ -704,7 +705,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
               </div>
               <div style={{ marginTop: '0.65rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem' }}>
                 <span style={{ fontWeight: 700, color: (sub.isConceptual || isConceptualSubject(sub.name)) ? '#4f46e5' : (sub.courseAverage >= 5.5 ? '#16a34a' : sub.courseAverage >= 4.0 ? '#2563eb' : sub.courseAverage > 0 ? '#dc2626' : '#94a3b8') }}>
-                  Promedio: {(sub.isConceptual || isConceptualSubject(sub.name)) ? (sub.conceptAverage || (sub.courseAverage > 0 ? numberToConcept(sub.courseAverage) : '-')) : (sub.courseAverage > 0 ? sub.courseAverage.toFixed(1) : '-')}
+                  Promedio: {(sub.isConceptual || isConceptualSubject(sub.name)) ? (sub.conceptAverage || (sub.courseAverage > 0 ? numberToConcept(sub.courseAverage) : '-')) : (sub.courseAverage > 0 ? roundGrade(sub.courseAverage).toFixed(1) : '-')}
                 </span>
                 <span style={{ color: '#4f46e5', fontWeight: 800, fontSize: '0.72rem' }}>
                   Ver Detalle ➔
@@ -791,12 +792,12 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
                       const isRed = !isNaN(numAvg) && numAvg < 4.0;
                       return (
                         <td key={sIdx} style={{ padding: '0.7rem 0.4rem', textAlign: 'center', fontWeight: 700, color: isRed || retired ? '#dc2626' : '#1e293b', textDecoration: retired ? 'line-through' : 'none' }}>
-                          {typeof avgVal === 'number' ? avgVal.toFixed(1) : avgVal}
+                          {typeof avgVal === 'number' ? roundGrade(avgVal).toFixed(1) : avgVal}
                         </td>
                       );
                     })}
                     <td style={{ padding: '0.7rem 0.5rem', textAlign: 'center', fontWeight: 800, fontSize: '0.95rem', background: retired ? '#fee2e2' : '#f8fafc', color: retired ? '#dc2626' : (st.promedioGeneral >= 6.0 ? '#16a34a' : st.promedioGeneral >= 4.0 ? '#2563eb' : st.promedioGeneral > 0 ? '#dc2626' : '#64748b'), textDecoration: retired ? 'line-through' : 'none' }}>
-                      {st.promedioGeneral > 0 ? st.promedioGeneral.toFixed(1) : '-'}
+                      {st.promedioGeneral > 0 ? roundGrade(st.promedioGeneral).toFixed(1) : '-'}
                     </td>
                   </tr>
                 );
@@ -836,7 +837,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-around', alignItems: 'center', marginBottom: '1.5rem' }}>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>PROMEDIO GENERAL</div>
-                <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#2563eb' }}>{selectedStudentModal.promedioGeneral.toFixed(1)}</div>
+                <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#2563eb' }}>{roundGrade(selectedStudentModal.promedioGeneral).toFixed(1)}</div>
               </div>
 
               <div style={{ textAlign: 'center' }}>
@@ -908,7 +909,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
                               )
                             ) : (
                               <span style={{ color: isReprobado ? '#dc2626' : isSinNotas ? '#94a3b8' : '#0f172a' }}>
-                                {typeof sg.average === 'number' ? sg.average.toFixed(1) : sg.average}
+                                {typeof sg.average === 'number' ? roundGrade(sg.average).toFixed(1) : sg.average}
                               </span>
                             )}
                           </td>
@@ -1150,7 +1151,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
                       );
                     })() : (
                       <div style={{ fontSize: '1.75rem', fontWeight: 800, color: selectedSubjectModal.courseAverage >= 5.5 ? '#16a34a' : selectedSubjectModal.courseAverage >= 4.0 ? '#2563eb' : selectedSubjectModal.courseAverage > 0 ? '#dc2626' : '#64748b', marginTop: '0.2rem' }}>
-                        {selectedSubjectModal.courseAverage > 0 ? selectedSubjectModal.courseAverage.toFixed(1) : '-'}
+                        {selectedSubjectModal.courseAverage > 0 ? roundGrade(selectedSubjectModal.courseAverage).toFixed(1) : '-'}
                       </div>
                     )}
                     <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem' }}>
@@ -1302,7 +1303,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
                                 )
                               ) : (
                                 <span style={{ color: avgColor }}>
-                                  {typeof st.average === 'number' ? st.average.toFixed(1) : st.average}
+                                  {typeof st.average === 'number' ? roundGrade(st.average).toFixed(1) : st.average}
                                 </span>
                               )}
                             </td>

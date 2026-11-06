@@ -5,6 +5,7 @@ import { UserProfileModal } from './UserProfileModal';
 import { SubmitStatementModal, PendingStatementItem } from './SubmitStatementModal';
 import { ThermalReceiptPreviewModal, ThermalPassData } from './ThermalPassReceipt';
 import { PERSONALITY_REPORT_TEMPLATES, detectReportTemplateKey, getQualifierStyle } from '../utils/personalityIndicators';
+import { roundGrade } from '../utils/gradeCalculations';
 
 interface ApoderadoViewProps {
   token: string;
@@ -740,7 +741,7 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
             <div>
               <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Promedio General</div>
               <div style={{ fontSize: '1.75rem', fontWeight: 800, color: currentPupilo.promedioGeneral >= 5.5 ? '#16a34a' : (currentPupilo.promedioGeneral > 0 ? '#2563eb' : '#64748b') }}>
-                {currentPupilo.promedioGeneral > 0 ? currentPupilo.promedioGeneral.toFixed(1) : '-'}
+                {currentPupilo.promedioGeneral > 0 ? roundGrade(currentPupilo.promedioGeneral).toFixed(1) : '-'}
               </div>
             </div>
 
@@ -961,9 +962,9 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                             selectedSemester === 'all' ? true : (gr.semester || 1) === selectedSemester
                           );
                           const displayAvg = selectedSemester === 1
-                            ? (sub.sem1Average ?? (visibleGrades.length > 0 ? Number((visibleGrades.reduce((s, g) => s + g.value, 0) / visibleGrades.length).toFixed(1)) : 0))
+                            ? (sub.sem1Average ?? (visibleGrades.length > 0 ? roundGrade(visibleGrades.reduce((s, g) => s + g.value, 0) / visibleGrades.length) : 0))
                             : selectedSemester === 2
-                              ? (sub.sem2Average ?? (visibleGrades.length > 0 ? Number((visibleGrades.reduce((s, g) => s + g.value, 0) / visibleGrades.length).toFixed(1)) : 0))
+                              ? (sub.sem2Average ?? (visibleGrades.length > 0 ? roundGrade(visibleGrades.reduce((s, g) => s + g.value, 0) / visibleGrades.length) : 0))
                               : sub.average;
                           const displayStatus = visibleGrades.length === 0
                             ? 'SIN NOTAS'
@@ -1024,7 +1025,7 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                                 </td>
                                 <td style={{ padding: '0.8rem 1rem', textAlign: 'center', fontWeight: 800, fontSize: '1.05rem', color: isRed ? '#dc2626' : (displayAvg > 0 ? '#16a34a' : '#64748b') }}>
                                   {displayAvg > 0
-                                    ? (sub.isConceptual && sub.conceptAverage ? `${sub.conceptAverage} (${displayAvg.toFixed(1)})` : displayAvg.toFixed(1))
+                                    ? (sub.isConceptual && sub.conceptAverage ? `${sub.conceptAverage} (${roundGrade(displayAvg).toFixed(1)})` : roundGrade(displayAvg).toFixed(1))
                                     : '-'}
                                 </td>
                                 <td style={{ padding: '0.8rem 1rem', textAlign: 'right' }}>

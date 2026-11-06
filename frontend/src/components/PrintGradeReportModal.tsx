@@ -7,6 +7,7 @@ import {
   detectReportTemplateKey,
   getQualifierStyle
 } from '../utils/personalityIndicators';
+import { roundGrade } from '../utils/gradeCalculations';
 
 export interface SubjectSemesterBreakdown {
   n1?: number | string;
@@ -890,8 +891,9 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                           }
                           const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
                           if (isNaN(num) || num <= 0) return '-';
-                          const formatted = num.toFixed(1);
-                          const isRed = num < 4.0;
+                          const rounded = roundGrade(num);
+                          const formatted = rounded.toFixed(1);
+                          const isRed = rounded < 4.0;
                           return (
                             <span style={{ color: isRed ? '#dc2626' : '#1d4ed8', fontWeight: isRed ? 800 : 700 }}>
                               {formatted}
@@ -912,9 +914,10 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                           }
                           const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
                           if (isNaN(num) || num <= 0) return '-';
+                          const rounded = roundGrade(num);
                           return (
-                            <strong style={{ color: num < 4.0 ? '#dc2626' : '#1e40af', fontSize: '0.88rem', fontWeight: 900 }}>
-                              {num.toFixed(1)}
+                            <strong style={{ color: rounded < 4.0 ? '#dc2626' : '#1e40af', fontSize: '0.88rem', fontWeight: 900 }}>
+                              {rounded.toFixed(1)}
                             </strong>
                           );
                         };
@@ -932,9 +935,10 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                           }
                           const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
                           if (isNaN(num) || num <= 0) return '-';
+                          const rounded = roundGrade(num);
                           return (
-                            <strong style={{ color: num < 4.0 ? '#dc2626' : '#15803d', fontSize: '0.95rem', fontWeight: 900 }}>
-                              {num.toFixed(1)}
+                            <strong style={{ color: rounded < 4.0 ? '#dc2626' : '#15803d', fontSize: '0.95rem', fontWeight: 900 }}>
+                              {rounded.toFixed(1)}
                             </strong>
                           );
                         };
@@ -1121,7 +1125,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                                     borderRadius: '8px',
                                     border: '2px solid #b45309'
                                   }}>
-                                    {typeof st.promedioGeneral === 'number' ? st.promedioGeneral.toFixed(1) : st.promedioGeneral}
+                                    {typeof st.promedioGeneral === 'number' ? roundGrade(st.promedioGeneral).toFixed(1) : st.promedioGeneral}
                                   </div>
                                 </div>
                               </div>
@@ -1150,7 +1154,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                                     borderRadius: '8px',
                                     border: '2px solid #94a3b8'
                                   }}>
-                                    {typeof st.promedioGeneral === 'number' ? st.promedioGeneral.toFixed(1) : st.promedioGeneral}
+                                    {typeof st.promedioGeneral === 'number' ? roundGrade(st.promedioGeneral).toFixed(1) : st.promedioGeneral}
                                   </div>
                                 </div>
                               </div>

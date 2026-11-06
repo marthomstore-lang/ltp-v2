@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Printer, Settings, BarChart3, AlertTriangle, Users, Award, BookOpen, CheckCircle2, Type } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import type { CourseData, CourseSubject, StudentData } from './GradesOverview';
+import { roundGrade } from '../utils/gradeCalculations';
 
 interface PrintPanoramaReportModalProps {
   courseName: string;
@@ -551,7 +552,7 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
             <div style={{ border: '1px solid #000', padding: typography.boxPadding, textAlign: 'center', backgroundColor: '#f8fafc' }}>
               <div style={{ fontSize: typography.kpiTitle, fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>PROMEDIO GENERAL CURSO</div>
               <div style={{ fontSize: typography.kpiNumber, fontWeight: 900, color: courseData.promedioCurso >= 4.0 ? '#047857' : '#b91c1c', fontFamily: 'monospace' }}>
-                {courseData.promedioCurso > 0 ? courseData.promedioCurso.toFixed(1) : '-'}
+                {courseData.promedioCurso > 0 ? roundGrade(courseData.promedioCurso).toFixed(1) : '-'}
               </div>
               <div style={{ fontSize: typography.kpiSub, color: '#64748b' }}>Escala 1.0 a 7.0</div>
             </div>
@@ -620,7 +621,7 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
                       {sub.registeredCount} {sub.registeredCount === 1 ? 'nota' : 'notas'}
                     </td>
                     <td style={{ border: '1px solid #000', padding: typography.matrixRowPadding, textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: sub.courseAverage >= 4.0 ? '#047857' : '#b91c1c' }}>
-                      {sub.courseAverage > 0 ? sub.courseAverage.toFixed(1) : '-'}
+                      {sub.courseAverage > 0 ? roundGrade(sub.courseAverage).toFixed(1) : '-'}
                     </td>
                     <td style={{ border: '1px solid #000', padding: typography.matrixRowPadding, textAlign: 'center', fontWeight: 700, color: sub.status === 'CON NOTAS' ? '#047857' : '#d97706' }}>
                       {sub.status === 'CON NOTAS' ? 'CON NOTAS' : 'PENDIENTE'}
@@ -715,7 +716,7 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
                               color: isRed ? '#b91c1c' : '#000000'
                             }}
                           >
-                            {typeof avgVal === 'number' ? avgVal.toFixed(1).replace('.', ',') : avgVal}
+                            {typeof avgVal === 'number' ? roundGrade(avgVal).toFixed(1).replace('.', ',') : avgVal}
                           </td>
                         );
                       })}
@@ -736,7 +737,7 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
                         backgroundColor: '#f1f5f9',
                         color: st.promedioGeneral >= 4.0 ? '#047857' : '#b91c1c'
                       }}>
-                        {st.promedioGeneral > 0 ? st.promedioGeneral.toFixed(1).replace('.', ',') : '-'}
+                        {st.promedioGeneral > 0 ? roundGrade(st.promedioGeneral).toFixed(1).replace('.', ',') : '-'}
                       </td>
                       <td style={{
                         border: '1px solid #000',
@@ -813,7 +814,7 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
                   <div key={st.id} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dotted #fecdd3', paddingBottom: '1px' }}>
                     <span><strong>#{st.number} {st.fullName}</strong> ({st.run})</span>
                     <span style={{ fontWeight: 800, color: '#b91c1c', fontFamily: 'monospace' }}>
-                      Prom: {st.promedioGeneral.toFixed(1)} | {st.rojas} rojas
+                      Prom: {roundGrade(st.promedioGeneral).toFixed(1)} | {st.rojas} rojas
                     </span>
                   </div>
                 ))}

@@ -41,6 +41,17 @@ const getStorePath = () => {
   return p1;
 };
 
+/**
+ * Regla de Aproximación Oficial MINEDUC (Decreto 67/2018):
+ * Aproximación estándar a 1 decimal (half-up). Todo valor >= .05 sube a la décima superior.
+ * El término +1e-9 previene el fallo nativo de punto flotante binario IEEE-754 en JS (ej. 6.85 -> 6.9).
+ */
+const roundGradeBackend = (val: any): number => {
+  const num = Number(val);
+  if (val === null || val === undefined || isNaN(num) || num <= 0) return 0;
+  return Math.round((num + 1e-9) * 10) / 10;
+};
+
 // Garantizar existencia de tablas dinámicas para notificaciones y recuperación de claves
 async function ensureTablesExist() {
   try {
@@ -4410,7 +4421,7 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
           subjectGrades[String(col.colNumber)] = '-';
         } else {
           const sum = vals.reduce((acc, v) => acc + v, 0);
-          const avg = Math.round((sum / vals.length) * 10) / 10;
+          const avg = roundGradeBackend(sum / vals.length);
           subjectGrades[String(col.colNumber)] = avg.toFixed(1).replace('.', ',');
           numericAverages.push(avg);
         }
@@ -4441,7 +4452,7 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
       let generalAvgNum = 0;
       if (!isRet && numericAverages.length > 0) {
         const total = numericAverages.reduce((acc, v) => acc + v, 0);
-        generalAvgNum = Math.round((total / numericAverages.length) * 10) / 10;
+        generalAvgNum = roundGradeBackend(total / numericAverages.length);
         generalAvgStr = generalAvgNum.toFixed(1).replace('.', ',');
       }
 
@@ -5407,7 +5418,7 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
               const evalGrades = details.filter(d => !d.label.toLowerCase().includes('promedio'));
               const avgNum = evalGrades.length > 0 ? (sum / evalGrades.length) : (details.length > 0 ? details[0].value : 0);
               finalConcept = numberToConceptHelper(avgNum);
-              numAvg = Math.round(avgNum * 10) / 10;
+              numAvg = roundGradeBackend(avgNum);
             }
             return {
               grades: details,
@@ -5417,7 +5428,7 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
             };
           } else {
             const evalCount = details.length;
-            const avg = evalCount > 0 ? Math.round((sum / evalCount) * 10) / 10 : null;
+            const avg = evalCount > 0 ? roundGradeBackend(sum / evalCount) : null;
             return {
               grades: details,
               average: avg !== null ? avg : '-',
@@ -5445,7 +5456,7 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
           annualAvg = annualConcept;
         } else {
           if (sem1Data.numericAverage !== null && sem2Data.numericAverage !== null) {
-            annualAvg = Math.round(((sem1Data.numericAverage + sem2Data.numericAverage) / 2) * 10) / 10;
+            annualAvg = roundGradeBackend((sem1Data.numericAverage + sem2Data.numericAverage) / 2);
           } else if (sem1Data.numericAverage !== null) {
             annualAvg = sem1Data.numericAverage;
           } else if (sem2Data.numericAverage !== null) {
@@ -5525,7 +5536,7 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
               const evalGrades = gradeDetails.filter(g => !g.label.toLowerCase().includes('promedio'));
               const avgNum = evalGrades.length > 0 ? (sbSum / evalGrades.length) : (gradeDetails.length > 0 ? gradeDetails[0].value : 0);
               finalConcept = numberToConceptHelper(avgNum);
-              sbAvg = Math.round(avgNum * 10) / 10;
+              sbAvg = roundGradeBackend(avgNum);
             }
 
             const status = finalConcept === 'I' ? 'REPROBADO' : (finalConcept !== '-' ? 'APROBADO' : 'SIN NOTAS');
@@ -5545,7 +5556,7 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
               sem2: sem2Data
             };
           } else {
-            const sbAvg = Math.round((sbSum / sbGrades.length) * 10) / 10;
+            const sbAvg = roundGradeBackend(sbSum / sbGrades.length);
             const effectiveSubjAvg = selectedPeriod === 'Anual' && typeof annualAvg === 'number' ? annualAvg : sbAvg;
             const status = effectiveSubjAvg >= 4.0 ? 'APROBADO' : 'REPROBADO';
 
@@ -5578,10 +5589,10 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
         }
       });
 
-      const stAverage = stCount > 0 ? Math.round((stSum / stCount) * 10) / 10 : 0;
-      const stSem1Average = stSem1Count > 0 ? Math.round((stSem1Sum / stSem1Count) * 10) / 10 : '-';
-      const stSem2Average = stSem2Count > 0 ? Math.round((stSem2Sum / stSem2Count) * 10) / 10 : '-';
-      const stAnnualAverage = stAnnualCount > 0 ? Math.round((stAnnualSum / stAnnualCount) * 10) / 10 : (stAverage > 0 ? stAverage : '-');
+      const stAverage = stCount > 0 ? roundGradeBackend(stSum / stCount) : 0;
+      const stSem1Average = stSem1Count > 0 ? roundGradeBackend(stSem1Sum / stSem1Count) : '-';
+      const stSem2Average = stSem2Count > 0 ? roundGradeBackend(stSem2Sum / stSem2Count) : '-';
+      const stAnnualAverage = stAnnualCount > 0 ? roundGradeBackend(stAnnualSum / stAnnualCount) : (stAverage > 0 ? stAverage : '-');
 
       const studentHomeroom = st.profesor_jefe && st.profesor_jefe !== 'Sin Asignar' ? st.profesor_jefe : courseHomeroomTeacher;
 
@@ -5648,7 +5659,7 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
       });
 
       const effectiveCount = (isConceptual && nonFinalCount > 0) ? nonFinalCount : regCount;
-      const courseAvg = effectiveCount > 0 ? Math.round((sbSumTotal / effectiveCount) * 10) / 10 : 0;
+      const courseAvg = effectiveCount > 0 ? roundGradeBackend(sbSumTotal / effectiveCount) : 0;
       const conceptAvg = isConceptual ? (effectiveCount > 0 ? numberToConceptHelper(courseAvg) : '-') : undefined;
       const status = regCount > 0 ? 'CON NOTAS' : 'SIN NOTAS';
 
@@ -5718,7 +5729,7 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
     });
 
     const totalCalificaciones = totalAzules + totalRojas;
-    const promedioCursoGeneral = countGradedValues > 0 ? Math.round((sumGradedValues / countGradedValues) * 10) / 10 : 0;
+    const promedioCursoGeneral = countGradedValues > 0 ? roundGradeBackend(sumGradedValues / countGradedValues) : 0;
     const alumnosRiesgoCount = mappedStudents.filter(st => st.promedioGeneral > 0 && (st.promedioGeneral < 4.0 || st.rojas > 0)).length;
     const alumnosBajoCuatroCount = mappedStudents.filter(st => st.promedioGeneral > 0 && st.promedioGeneral < 4.0).length;
 
@@ -5853,7 +5864,7 @@ router.post('/grades', authMiddleware, checkRoles(['Admin', 'Docente']), async (
       valNum = conceptToNumberHelper(gradeValue);
     }
     if (valNum > 7.0 && valNum <= 70.0) {
-      valNum = Math.round((valNum / 10.0) * 10) / 10;
+      valNum = roundGradeBackend(valNum / 10.0);
     }
 
     if (isNaN(valNum) || valNum <= 0) {
@@ -6144,7 +6155,7 @@ router.post('/grades/cumulative', authMiddleware, checkRoles(['Admin', 'Docente'
 
     for (const [studentId, stats] of Object.entries(studentGradesSum)) {
       if (stats.count > 0) {
-        const avg = Math.round((stats.sum / stats.count) * 10) / 10;
+        const avg = roundGradeBackend(stats.sum / stats.count);
         calculatedAverages[studentId] = avg;
 
         const mainGradeId = `GRD-${studentId}-${gradeColumnId}`;
@@ -6912,7 +6923,7 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
           const val = parseFloat(g.grade_value);
           if (!isNaN(val) && val > 0) {
             const colObj = colsById.get(String(g.grade_column_id)) || subColsAll.find((c: any) => String(c.id) === String(g.grade_column_id));
-            const normVal = val > 7.0 ? Math.round((val / 10.0) * 10) / 10 : val;
+            const normVal = val > 7.0 ? roundGradeBackend(val / 10.0) : val;
             const periodStr = String(colObj?.period || g.period || (String(g.grade_column_id || '').includes('-S2-') ? '2do Semestre' : '1er Semestre'));
             const semNum = colObj?.semester ? Number(colObj.semester) : (periodStr.includes('2') ? 2 : 1);
             const posMatch = String(g.grade_column_id || '').match(/[-_](?:P|N)(\d+)$/i);
@@ -6939,9 +6950,9 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
 
         const sem1Grades = subGradesList.filter(g => g.semester === 1);
         const sem2Grades = subGradesList.filter(g => g.semester === 2);
-        const sem1Average = sem1Grades.length > 0 ? Number((sem1Grades.reduce((acc, x) => acc + x.value, 0) / sem1Grades.length).toFixed(1)) : 0;
-        const sem2Average = sem2Grades.length > 0 ? Number((sem2Grades.reduce((acc, x) => acc + x.value, 0) / sem2Grades.length).toFixed(1)) : 0;
-        const average = count > 0 ? Number((sum / count).toFixed(1)) : 0;
+        const sem1Average = sem1Grades.length > 0 ? roundGradeBackend(sem1Grades.reduce((acc, x) => acc + x.value, 0) / sem1Grades.length) : 0;
+        const sem2Average = sem2Grades.length > 0 ? roundGradeBackend(sem2Grades.reduce((acc, x) => acc + x.value, 0) / sem2Grades.length) : 0;
+        const average = count > 0 ? roundGradeBackend(sum / count) : 0;
         const conceptAverage = isConceptual && count > 0 ? numberToConceptHelper(average) : undefined;
         const status = count === 0
           ? 'SIN NOTAS'
@@ -6989,9 +7000,9 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
           }
         }
       });
-      const overallAvg = overallCount > 0 ? Number((overallSum / overallCount).toFixed(1)) : 0;
-      const sem1OverallAvg = sem1Count > 0 ? Number((sem1Sum / sem1Count).toFixed(1)) : 0;
-      const sem2OverallAvg = sem2Count > 0 ? Number((sem2Sum / sem2Count).toFixed(1)) : 0;
+      const overallAvg = overallCount > 0 ? roundGradeBackend(overallSum / overallCount) : 0;
+      const sem1OverallAvg = sem1Count > 0 ? roundGradeBackend(sem1Sum / sem1Count) : 0;
+      const sem2OverallAvg = sem2Count > 0 ? roundGradeBackend(sem2Sum / sem2Count) : 0;
 
       const studentObs = allObs
         .filter((o: any) => String(o.student_id) === String(st.id) || String(o.student_run) === String(st.run))

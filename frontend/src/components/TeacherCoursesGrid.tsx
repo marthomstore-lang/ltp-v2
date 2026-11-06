@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { LayoutGrid, List, BookOpen, Star, AlertTriangle, ArrowRight, Calendar, UserCheck, Search, Filter, MessageSquare, Users, CalendarDays, Award, TrendingUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getStudentCourse, sortCoursesList } from '../utils/course';
+import { roundGrade } from '../utils/gradeCalculations';
 import { CourseMessageModal } from './CourseMessageModal';
 import { CourseSupportModal } from './CourseSupportModal';
 import { CardSkeletonGrid, EmptyState, Badge } from './ui';
@@ -255,9 +256,9 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
       const s2Vals = courseRows.map(r => parseFloat(r.avg_s2)).filter(v => !isNaN(v) && v > 0);
       const anVals = courseRows.map(r => parseFloat(r.avg_anual)).filter(v => !isNaN(v) && v > 0);
 
-      const avgS1 = s1Vals.length > 0 ? Number((s1Vals.reduce((a, b) => a + b, 0) / s1Vals.length).toFixed(1)) : null;
-      const avgS2 = s2Vals.length > 0 ? Number((s2Vals.reduce((a, b) => a + b, 0) / s2Vals.length).toFixed(1)) : null;
-      const avgAnual = anVals.length > 0 ? Number((anVals.reduce((a, b) => a + b, 0) / anVals.length).toFixed(1)) : null;
+      const avgS1 = s1Vals.length > 0 ? roundGrade(s1Vals.reduce((a, b) => a + b, 0) / s1Vals.length) : null;
+      const avgS2 = s2Vals.length > 0 ? roundGrade(s2Vals.reduce((a, b) => a + b, 0) / s2Vals.length) : null;
+      const avgAnual = anVals.length > 0 ? roundGrade(anVals.reduce((a, b) => a + b, 0) / anVals.length) : null;
       return { avgS1, avgS2, avgAnual, totalStudents: courseRows[0]?.total_students || 0 };
     }
 
@@ -300,9 +301,9 @@ export const TeacherCoursesGrid: React.FC<TeacherCoursesGridProps> = ({ onSelect
       }
     });
 
-    const teacherS1 = s1List.length > 0 ? (s1List.reduce((a, b) => a + b, 0) / s1List.length).toFixed(1) : null;
-    const teacherS2 = s2List.length > 0 ? (s2List.reduce((a, b) => a + b, 0) / s2List.length).toFixed(1) : null;
-    const teacherAnual = anList.length > 0 ? (anList.reduce((a, b) => a + b, 0) / anList.length).toFixed(1) : null;
+    const teacherS1 = s1List.length > 0 ? roundGrade(s1List.reduce((a, b) => a + b, 0) / s1List.length).toFixed(1) : null;
+    const teacherS2 = s2List.length > 0 ? roundGrade(s2List.reduce((a, b) => a + b, 0) / s2List.length).toFixed(1) : null;
+    const teacherAnual = anList.length > 0 ? roundGrade(anList.reduce((a, b) => a + b, 0) / anList.length).toFixed(1) : null;
 
     return {
       teacherS1,

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, Edit2, Trash2, Save, BarChart2, CheckCircle2, Clipboard, Zap, Sparkles, HelpCircle, FileSpreadsheet } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { isStudentRetired, getStudentWithdrawalDate } from '../utils/course';
+import { roundGrade, formatGrade } from '../utils/gradeCalculations';
 
 export interface SubEvaluation {
   id: string;
@@ -81,7 +82,7 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
     if (isNaN(val) || val <= 0) return 0;
     if (val > 7.0 && val <= 70.0) val = val / 10.0;
     if (val > 7.0) val = 7.0;
-    return Math.round(val * 10) / 10;
+    return roundGrade(val);
   };
 
   // Cargar sub-evaluaciones y sub-notas existentes desde el backend
@@ -168,12 +169,7 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
     if (isNaN(num) || num <= 0) return '';
 
     if (num > 7.0 && num <= 70.0) num = num / 10.0;
-
-    if (gradeScaleMode === 'entera') {
-      return Math.round(num * 10).toString();
-    } else {
-      return num.toFixed(1).replace('.', ',');
-    }
+    return formatGrade(num, gradeScaleMode, '');
   };
 
   const persistSubEvaluationsConfig = async (evals: SubEvaluation[], currentGrades?: Record<string, number>) => {
@@ -302,13 +298,14 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
     if (count === 0) return { formatted: '-', raw: 0, isRed: false };
 
     const rawAvg = sum / count;
-    const isRed = rawAvg < 4.0;
+    const roundedAvg = roundGrade(rawAvg);
+    const isRed = roundedAvg < 4.0;
 
-    if (gradeScaleMode === 'entera') {
-      return { formatted: Math.round(rawAvg * 10).toString(), raw: rawAvg, isRed };
-    } else {
-      return { formatted: rawAvg.toFixed(1).replace('.', ','), raw: rawAvg, isRed };
-    }
+    return {
+      formatted: formatGrade(roundedAvg, gradeScaleMode, '-'),
+      raw: roundedAvg,
+      isRed
+    };
   };
 
   // PEGAR CALIFICACIONES DIRECTO DESDE EXCEL EN LAS CELDAS (CTRL + V)

@@ -522,10 +522,10 @@ router.get('/student-context/:run', authMiddleware, async (req: Request, res: Re
           }
         });
 
-        const overall = count > 0 ? parseFloat((sum / count).toFixed(1)) : null;
-        const top = rows.slice(0, 3).map((r: any) => `${r.subject_name} (${parseFloat(r.avg_score).toFixed(1)})`);
+        const overall = count > 0 ? Math.round(((sum / count) + 1e-9) * 10) / 10 : null;
+        const top = rows.slice(0, 3).map((r: any) => `${r.subject_name} (${(Math.round((parseFloat(r.avg_score) + 1e-9) * 10) / 10).toFixed(1)})`);
         const bottom = rows.length > 3 
-          ? rows.slice(-3).reverse().map((r: any) => `${r.subject_name} (${parseFloat(r.avg_score).toFixed(1)})`)
+          ? rows.slice(-3).reverse().map((r: any) => `${r.subject_name} (${(Math.round((parseFloat(r.avg_score) + 1e-9) * 10) / 10).toFixed(1)})`)
           : [];
 
         gradesSummary = {
