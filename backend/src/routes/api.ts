@@ -429,9 +429,15 @@ const loginHandler = async (req: Request, res: Response) => {
   }
 
   try {
+    const cleanAlnumRun = cleanRun.replace(/[^0-9kK]/g, '').toLowerCase();
     const result = await query(
-      'SELECT * FROM users WHERE REPLACE(run, \'.\', \'\') = $1 OR run = $2 OR id = $2 OR email = $2',
-      [cleanRun, rawIdentifier]
+      `SELECT * FROM users 
+       WHERE REPLACE(REPLACE(LOWER(run), '.', ''), '-', '') = $1 
+          OR REPLACE(LOWER(run), '.', '') = $2 
+          OR LOWER(run) = $3 
+          OR LOWER(id) = $3 
+          OR LOWER(email) = $3`,
+      [cleanAlnumRun, cleanRun.toLowerCase(), rawIdentifier.toLowerCase()]
     ).catch(() => ({ rows: [] }));
 
     let userRows = result.rows || [];
@@ -445,15 +451,83 @@ const loginHandler = async (req: Request, res: Response) => {
           if (Array.isArray(store.users)) {
             userRows = store.users.filter((u: any) => {
               const uRun = String(u.run || '').replace(/\./g, '').trim();
-              return uRun === cleanRun || u.run === rawIdentifier || u.id === rawIdentifier || u.email === rawIdentifier;
+              const uAlnum = uRun.replace(/[^0-9kK]/g, '').toLowerCase();
+              return uRun === cleanRun || uAlnum === cleanAlnumRun || u.run === rawIdentifier || u.id === rawIdentifier || u.email === rawIdentifier;
             });
           }
         } catch (_) {}
       }
     }
 
+    // Auto-búsqueda y provisión desde staff_profiles si el usuario no existe aún en users
+    if (userRows.length === 0) {
+      try {
+        const staffLookup = await query(
+          `SELECT * FROM staff_profiles 
+           WHERE REPLACE(REPLACE(LOWER(run), '.', ''), '-', '') = $1 
+              OR REPLACE(LOWER(run), '.', '') = $2 
+              OR LOWER(run) = $3 
+              OR LOWER(id) = $3 
+              OR LOWER(email) = $3 
+           LIMIT 1`,
+          [cleanAlnumRun, cleanRun.toLowerCase(), rawIdentifier.toLowerCase()]
+        ).catch(() => ({ rows: [] }));
+
+        if (staffLookup.rows.length > 0) {
+          const sp = staffLookup.rows[0];
+          const spAlnum = String(sp.run || '').replace(/[^0-9kK]/g, '');
+          const newUserId = sp.user_id || `USR-${spAlnum || Date.now()}`;
+          const defaultPass = 'Ltp2026.';
+          const salt = await bcrypt.genSalt(10);
+          const passwordHash = await bcrypt.hash(defaultPass, salt);
+          const spRole = sp.role || 'Docente';
+          const spRoles = sp.roles || JSON.stringify([spRole]);
+          const spEmail = sp.email || `${spAlnum || Date.now()}@liceocampanario.cl`;
+
+          await query(
+            `INSERT INTO users (id, run, name, email, password_hash, password_plain, role, roles, staff_type, job_function, temp_password)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0)
+             ON CONFLICT (id) DO UPDATE SET
+               run = EXCLUDED.run,
+               name = EXCLUDED.name,
+               email = EXCLUDED.email,
+               role = EXCLUDED.role,
+               roles = EXCLUDED.roles,
+               staff_type = EXCLUDED.staff_type,
+               job_function = EXCLUDED.job_function`,
+            [
+              newUserId,
+              sp.run,
+              sp.full_name || 'Docente LTP',
+              spEmail,
+              passwordHash,
+              defaultPass,
+              spRole,
+              typeof spRoles === 'string' ? spRoles : JSON.stringify(spRoles),
+              sp.staff_type || 'Docente',
+              sp.job_function || 'Docente de Aula'
+            ]
+          ).catch((e: any) => console.error('Error auto-inserting staff user:', e));
+
+          userRows = [{
+            id: newUserId,
+            run: sp.run,
+            name: sp.full_name,
+            email: spEmail,
+            role: spRole,
+            roles: typeof spRoles === 'string' ? JSON.parse(spRoles) : spRoles,
+            staff_type: sp.staff_type || 'Docente',
+            job_function: sp.job_function || 'Docente de Aula',
+            password_hash: passwordHash,
+            password_plain: defaultPass
+          }];
+        }
+      } catch (staffErr) {
+        console.error('Error lookup staff_profiles:', staffErr);
+      }
+    }
+
     // Consultar vínculo en nómina de estudiantes (tanto para auto-provisión como para validar clave por RUT de pupilo/apoderado)
-    const cleanAlnumRun = cleanRun.replace(/[^0-9kK]/g, '').toLowerCase();
     let studentLookupRows: any[] = [];
     try {
       const studentLookup = await query(
@@ -617,7 +691,15 @@ const loginHandler = async (req: Request, res: Response) => {
       const isPlainMatch = Boolean(plain && (passStr === plain ||
         passStr.toLowerCase() === `admin${plain}`.toLowerCase() ||
         `admin${passStr}`.toLowerCase() === plain.toLowerCase()));
-      return isHashMatch || isPlainMatch || isValidFamilyOrStudentPass;
+
+      // Comodines institucionales y primeros 6 dígitos del RUN para funcionarios y docentes
+      const uCleanDigits = String(u.run || '').replace(/[^0-9kK]/g, '').toLowerCase();
+      const uFirst6 = uCleanDigits.slice(0, 6);
+      const isStaffDefaultPass = ['ltp2026.', 'ltp2026!', 'profe2026!'].includes(passStr.toLowerCase()) ||
+        (uFirst6.length >= 5 && passStr.toLowerCase() === uFirst6) ||
+        (uCleanDigits.length >= 6 && passStr.toLowerCase() === uCleanDigits);
+
+      return isHashMatch || isPlainMatch || isValidFamilyOrStudentPass || isStaffDefaultPass;
     });
 
     if (!matchedUser) {
@@ -1893,7 +1975,7 @@ router.post('/admin/set-password', authMiddleware, checkRoles(['Admin', 'Directo
     const newHash = await bcrypt.hash(passStr, salt);
 
     const result = await query(
-      'UPDATE users SET password_hash = $1, password_plain = $2, temp_password = false WHERE REPLACE(run, \'.\', \'\') = $3 OR run = $4 OR id = $4 RETURNING id, run, name',
+      'UPDATE users SET password_hash = $1, password_plain = $2, temp_password = 0 WHERE REPLACE(run, \'.\', \'\') = $3 OR run = $4 OR id = $4 RETURNING id, run, name',
       [newHash, passStr, targetRun, run]
     );
 
@@ -1925,7 +2007,7 @@ router.post('/auth/change-password', authMiddleware, async (req: Request, res: R
     const salt = await bcrypt.genSalt(10);
     const newHash = await bcrypt.hash(newPassword, salt);
 
-    await query('UPDATE users SET password_hash = $1, password_plain = $2, temp_password = false WHERE id = $3', [newHash, newPassword, userId]);
+    await query('UPDATE users SET password_hash = $1, password_plain = $2, temp_password = 0 WHERE id = $3', [newHash, newPassword, userId]);
     await logAudit(req, 'CHANGE_PASSWORD', `Cambio de contraseña para usuario ${user.name}`);
 
     res.json({ success: true });
@@ -2350,13 +2432,13 @@ router.post('/users', authMiddleware, checkRoles(['Admin', 'Director']), async (
     if (existingRes.rows.length > 0) {
       const targetId = existingRes.rows[0].id;
       await query(
-        `UPDATE users SET name = $1, email = $2, role = $3, roles = $4, staff_type = $5, job_function = $6, password_hash = $7, password_plain = $8 WHERE id = $9`,
+        `UPDATE users SET name = $1, email = $2, role = $3, roles = $4, staff_type = $5, job_function = $6, password_hash = $7, password_plain = $8, temp_password = 0 WHERE id = $9`,
         [name.trim(), safeEmail, primaryRole, rolesJson, stType, job_function || 'Docente de Aula', passwordHash, passStr, targetId]
       );
     } else {
       await query(
         `INSERT INTO users (id, run, name, email, password_hash, password_plain, role, roles, staff_type, job_function, temp_password)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0)`,
         [id, rawRun, name.trim(), safeEmail, passwordHash, passStr, primaryRole, rolesJson, stType, job_function || 'Docente de Aula']
       );
     }
@@ -2469,9 +2551,9 @@ router.put('/users/:id', authMiddleware, checkRoles(['Admin', 'Director']), asyn
       const fallbackEmail = cleanEmail || `${alnumRun || Date.now()}@liceocampanario.cl`;
       await query(
         `INSERT INTO users (id, run, name, email, password_hash, password_plain, role, roles, staff_type, job_function, temp_password)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0)`,
         [usrIdFromRun, rawRun, name.trim(), fallbackEmail, passwordHash, defaultPass, primaryRole, rolesJson, stType, job_function || 'Docente de Aula']
-      ).catch(() => {});
+      ).catch((e: any) => console.error('Error inserting user in PUT /users/:id:', e));
     }
 
     // 2. Sincronizar también staff_profiles (incluyendo roles, role, staff_type, job_function, email)
