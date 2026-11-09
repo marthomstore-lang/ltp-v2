@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Printer, X, User, Users, Save, FileSpreadsheet, Award, Layers } from 'lucide-react';
 import Swal from 'sweetalert2';
 import {
@@ -178,8 +179,25 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   const handleTriggerPrint = () => {
-    window.print();
+    setTimeout(() => {
+      window.print();
+    }, 100);
   };
 
   const selectedStudent = students.find(s => s.id === selectedStudentId) || students[0];
@@ -349,8 +367,8 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
 
   const currentTemplate = PERSONALITY_REPORT_TEMPLATES[reportLevelKey];
 
-  return (
-    <div className="print-modal-overlay" style={{
+  const modalContent = (
+    <div className="print-grade-modal-portal print-modal-overlay" style={{
       position: 'fixed',
       top: 0,
       left: 0,
@@ -361,47 +379,140 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 9999,
+      zIndex: 999999,
       padding: '1rem',
       fontFamily: 'Inter, sans-serif'
     }}>
       {/* IMPRESION CSS OBLIGATORIA EN PANTALLA Y EN IMPRESORA */}
       <style>{`
         @media print {
-          body * {
-            visibility: hidden !important;
+          @page {
+            size: portrait;
+            margin: 6mm 6mm 6mm 6mm;
           }
-          .print-modal-overlay,
-          .print-modal-overlay * {
-            visibility: visible !important;
-          }
-          .print-modal-overlay {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+
+          html, body {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            margin: 0 !important;
+            padding: 0 !important;
             width: 100% !important;
             height: auto !important;
+            min-height: 100% !important;
+            overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          /* Ocultar aplicación principal (#root) y todo lo ajeno al modal */
+          #root,
+          #root * {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            max-height: 0 !important;
+            overflow: hidden !important;
+          }
+
+          body > *:not(.print-grade-modal-portal) {
+            display: none !important;
+            visibility: hidden !important;
+          }
+
+          .print-grade-modal-portal,
+          .print-grade-modal-portal * {
+            visibility: visible !important;
+          }
+
+          .print-grade-modal-portal {
+            display: block !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            width: 100% !important;
+            min-height: 100% !important;
             background: #ffffff !important;
             padding: 0 !important;
             margin: 0 !important;
+            z-index: 99999999 !important;
+            overflow: visible !important;
           }
-          .no-print {
+
+          .no-print,
+          .no-print * {
             display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
           }
+
+          .print-only {
+            display: block !important;
+          }
+
+          .print-modal-dialog {
+            max-width: 100% !important;
+            width: 100% !important;
+            max-height: none !important;
+            height: auto !important;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+            background: #ffffff !important;
+            overflow: visible !important;
+            display: block !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+
+          .print-modal-scroll-area {
+            padding: 0 !important;
+            margin: 0 !important;
+            background: #ffffff !important;
+            overflow: visible !important;
+            height: auto !important;
+            display: block !important;
+          }
+
           .printable-report-page {
             page-break-after: always !important;
             break-after: page !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
             box-shadow: none !important;
             border: none !important;
-            margin: 0 !important;
-            padding: 1.2cm !important;
+            margin: 0 auto 0 auto !important;
+            padding: 0.5cm !important;
             width: 100% !important;
             max-width: 100% !important;
+            background: #ffffff !important;
           }
+
+          .printable-report-page:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
+          }
+
+          table {
+            page-break-inside: auto;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          tr, td, th {
+            page-break-inside: avoid;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+        }
+        .print-only {
+          display: none;
         }
       `}</style>
 
-      <div style={{
+      <div className="print-modal-dialog" style={{
         background: '#ffffff',
         borderRadius: '16px',
         maxWidth: '1020px',
@@ -784,7 +895,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
         </div>
 
         {/* VISTA PREVIA / DOCUMENTOS IMPRIMIBLES */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', background: '#525659' }}>
+        <div className="print-modal-scroll-area" style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', background: '#525659' }}>
           {studentsToPrint.length === 0 ? (
             <div style={{ background: '#ffffff', padding: '3rem', borderRadius: '12px', textAlign: 'center', color: '#64748b' }}>
               No se encontraron alumnos para este curso.
@@ -1332,50 +1443,60 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                                           {ind.text}
                                         </td>
                                         <td style={{ padding: '0.2rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>
-                                          <select
-                                            value={val1}
-                                            onChange={e => handleUpdateIndicator(st, 'sem1', ind.id, e.target.value)}
-                                            style={{
-                                              width: '100%',
-                                              textAlign: 'center',
-                                              fontWeight: 800,
-                                              fontSize: '0.72rem',
-                                              padding: '1px 3px',
-                                              borderRadius: '4px',
-                                              border: '1px solid #cbd5e1',
-                                              background: style1.bgColor,
-                                              color: style1.color,
-                                              cursor: 'pointer'
-                                            }}
-                                          >
-                                            {currentTemplate.scale.map(sc => (
-                                              <option key={sc.code} value={sc.code}>{sc.code}</option>
-                                            ))}
-                                            <option value="-">-</option>
-                                          </select>
+                                          <div className="no-print">
+                                            <select
+                                              value={val1}
+                                              onChange={e => handleUpdateIndicator(st, 'sem1', ind.id, e.target.value)}
+                                              style={{
+                                                width: '100%',
+                                                textAlign: 'center',
+                                                fontWeight: 800,
+                                                fontSize: '0.72rem',
+                                                padding: '1px 3px',
+                                                borderRadius: '4px',
+                                                border: '1px solid #cbd5e1',
+                                                background: style1.bgColor,
+                                                color: style1.color,
+                                                cursor: 'pointer'
+                                              }}
+                                            >
+                                              {currentTemplate.scale.map(sc => (
+                                                <option key={sc.code} value={sc.code}>{sc.code}</option>
+                                              ))}
+                                              <option value="-">-</option>
+                                            </select>
+                                          </div>
+                                          <div className="print-only" style={{ fontWeight: 800, fontSize: '0.76rem', color: style1.color, background: style1.bgColor, padding: '1px 4px', borderRadius: '3px' }}>
+                                            {val1}
+                                          </div>
                                         </td>
                                         <td style={{ padding: '0.2rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>
-                                          <select
-                                            value={val2}
-                                            onChange={e => handleUpdateIndicator(st, 'sem2', ind.id, e.target.value)}
-                                            style={{
-                                              width: '100%',
-                                              textAlign: 'center',
-                                              fontWeight: 800,
-                                              fontSize: '0.72rem',
-                                              padding: '1px 3px',
-                                              borderRadius: '4px',
-                                              border: '1px solid #cbd5e1',
-                                              background: style2.bgColor,
-                                              color: style2.color,
-                                              cursor: 'pointer'
-                                            }}
-                                          >
-                                            <option value="-">-</option>
-                                            {currentTemplate.scale.map(sc => (
-                                              <option key={sc.code} value={sc.code}>{sc.code}</option>
-                                            ))}
-                                          </select>
+                                          <div className="no-print">
+                                            <select
+                                              value={val2}
+                                              onChange={e => handleUpdateIndicator(st, 'sem2', ind.id, e.target.value)}
+                                              style={{
+                                                width: '100%',
+                                                textAlign: 'center',
+                                                fontWeight: 800,
+                                                fontSize: '0.72rem',
+                                                padding: '1px 3px',
+                                                borderRadius: '4px',
+                                                border: '1px solid #cbd5e1',
+                                                background: style2.bgColor,
+                                                color: style2.color,
+                                                cursor: 'pointer'
+                                              }}
+                                            >
+                                              <option value="-">-</option>
+                                              {currentTemplate.scale.map(sc => (
+                                                <option key={sc.code} value={sc.code}>{sc.code}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                          <div className="print-only" style={{ fontWeight: 800, fontSize: '0.76rem', color: style2.color, background: style2.bgColor, padding: '1px 4px', borderRadius: '3px' }}>
+                                            {val2}
+                                          </div>
                                         </td>
                                       </tr>
                                     );
@@ -1392,21 +1513,26 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                         <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.2rem', textTransform: 'uppercase' }}>
                           Observaciones y Sugerencias al Hogar:
                         </div>
-                        <textarea
-                          value={studentEval.observations || ''}
-                          onChange={e => handleUpdateObservations(st, e.target.value)}
-                          placeholder="Observaciones pedagógicas o formativas del semestre..."
-                          rows={2}
-                          style={{
-                            width: '100%',
-                            padding: '0.45rem',
-                            borderRadius: '6px',
-                            border: '1px solid #cbd5e1',
-                            fontSize: '0.75rem',
-                            fontFamily: 'inherit',
-                            boxSizing: 'border-box'
-                          }}
-                        />
+                        <div className="no-print">
+                          <textarea
+                            value={studentEval.observations || ''}
+                            onChange={e => handleUpdateObservations(st, e.target.value)}
+                            placeholder="Observaciones pedagógicas o formativas del semestre..."
+                            rows={2}
+                            style={{
+                              width: '100%',
+                              padding: '0.45rem',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '0.75rem',
+                              fontFamily: 'inherit',
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                        </div>
+                        <div className="print-only" style={{ minHeight: '36px', padding: '0.45rem', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.75rem', color: '#0f172a', background: '#f8fafc' }}>
+                          {studentEval.observations || 'Sin observaciones registradas.'}
+                        </div>
                       </div>
 
                       {/* FIRMAS OFICIALES */}
@@ -1437,6 +1563,12 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(modalContent, document.body);
 };
 
 export default PrintGradeReportModal;
