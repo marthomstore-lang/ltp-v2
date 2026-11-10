@@ -1924,19 +1924,20 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
         bottom: 0,
         background: 'rgba(15, 23, 42, 0.75)',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
         zIndex: 999999,
-        padding: '1rem',
+        padding: '1.25rem 1rem',
         overflowY: 'auto'
       }}
     >
-      {/* ESTILOS DE IMPRESIÓN OFICIALES */}
+      {/* ESTILOS DE IMPRESIÓN OFICIALES (1 HOJA EXACTA) */}
       <style>{`
         @media print {
           @page {
             size: portrait;
-            margin: 8mm 8mm 8mm 8mm;
+            margin: 6mm 8mm 6mm 8mm;
           }
 
           html, body {
@@ -1945,8 +1946,8 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
             margin: 0 !important;
             padding: 0 !important;
             width: 100% !important;
-            height: auto !important;
-            overflow: visible !important;
+            height: 100% !important;
+            overflow: hidden !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
@@ -1972,17 +1973,16 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
 
           .print-internship-modal-portal {
             display: block !important;
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
+            position: static !important;
             width: 100% !important;
-            min-height: 100% !important;
+            height: 100% !important;
             background: #ffffff !important;
             padding: 0 !important;
             margin: 0 !important;
             z-index: 99999999 !important;
             overflow: visible !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
 
           .no-print,
@@ -1997,8 +1997,19 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
             box-shadow: none !important;
             border: none !important;
             padding: 0 !important;
+            margin: 0 !important;
             width: 100% !important;
             max-width: 100% !important;
+            overflow: visible !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+
+          .official-border-box {
+            border: 2px solid #0f172a !important;
+            padding: 0.65rem 0.85rem !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
         }
       `}</style>
@@ -2007,13 +2018,11 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
         className="printable-card-sheet"
         style={{
           background: '#ffffff',
-          borderRadius: '10px',
-          maxWidth: '820px',
+          borderRadius: '8px',
+          maxWidth: '780px',
           width: '100%',
-          maxHeight: '94vh',
-          overflowY: 'auto',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-          padding: '1.75rem',
+          padding: '1rem 1.25rem',
           boxSizing: 'border-box',
           fontFamily: "'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
         }}
@@ -2025,14 +2034,14 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '1.25rem',
-            paddingBottom: '0.75rem',
+            marginBottom: '0.85rem',
+            paddingBottom: '0.65rem',
             borderBottom: '1.5px solid #e2e8f0'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <FileText size={20} color="#4f46e5" />
-            <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>
+            <FileText size={19} color="#4f46e5" />
+            <span style={{ fontWeight: 700, fontSize: '0.925rem', color: '#0f172a' }}>
               Vista Previa Ficha de Matrícula de Práctica
             </span>
           </div>
@@ -2050,7 +2059,7 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
                 border: 'none',
                 borderRadius: '6px',
                 fontWeight: 600,
-                fontSize: '0.85rem',
+                fontSize: '0.825rem',
                 cursor: 'pointer'
               }}
             >
@@ -2070,7 +2079,7 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
                 border: '1px solid #cbd5e1',
                 borderRadius: '6px',
                 fontWeight: 600,
-                fontSize: '0.85rem',
+                fontSize: '0.825rem',
                 cursor: 'pointer'
               }}
             >
@@ -2080,73 +2089,90 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
           </div>
         </div>
 
-        {/* DOCUMENTO OFICIAL A IMPRIMIR */}
-        <div style={{ border: '2px solid #0f172a', padding: '1.25rem', borderRadius: '4px' }}>
+        {/* DOCUMENTO OFICIAL A IMPRIMIR (FORMATO COMPACTO 1 PÁGINA) */}
+        <div
+          className="official-border-box"
+          style={{
+            border: '2px solid #0f172a',
+            padding: '0.75rem 0.9rem',
+            borderRadius: '4px',
+            boxSizing: 'border-box'
+          }}
+        >
           {/* MEMBRETE OFICIAL DINÁMICO */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #0f172a', paddingBottom: '0.75rem', marginBottom: '0.85rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              borderBottom: '2px solid #0f172a',
+              paddingBottom: '0.45rem',
+              marginBottom: '0.5rem'
+            }}
+          >
             <div>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#1e293b' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: '#1e293b', letterSpacing: '0.3px' }}>
                 {institution?.dependence ? `${institution.dependence.toUpperCase()} · ` : 'REPÚBLICA DE CHILE · '}MINISTERIO DE EDUCACIÓN
               </div>
-              <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#0f172a', marginTop: '0.15rem', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 900, color: '#0f172a', marginTop: '0.1rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
                 {institution?.schoolName || 'LICEO TÉCNICO PROFESIONAL'}
               </div>
-              <div style={{ fontSize: '0.725rem', color: '#475569' }}>
+              <div style={{ fontSize: '0.7rem', color: '#475569', marginTop: '0.1rem' }}>
                 RBD: {institution?.rbd || '3941-1'} · Comuna de {institution?.commune || institution?.locality || 'Yungay'}{institution?.region ? ` · ${institution.region}` : ''}
               </div>
-              <div style={{ fontSize: '0.725rem', color: '#475569' }}>
+              <div style={{ fontSize: '0.68rem', color: '#475569' }}>
                 Área Técnico-Profesional · Formación por Alternancia y Centros de Práctica
               </div>
             </div>
 
-            <div style={{ textAlign: 'right', border: '1.5px solid #0f172a', padding: '0.35rem 0.65rem', borderRadius: '4px', background: '#f8fafc' }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b' }}>FOLIO MATRÍCULA</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#4f46e5' }}>
+            <div style={{ textAlign: 'right', border: '1.5px solid #0f172a', padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#f8fafc', minWidth: '135px' }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b' }}>FOLIO MATRÍCULA</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#4f46e5', lineHeight: '1.2' }}>
                 {enrollment.enrollment_number || 'PRAC-26-S/N'}
               </div>
-              <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#0f172a' }}>
+              <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#0f172a' }}>
                 PERÍODO: {enrollment.period || '2026 - 2027'}
               </div>
             </div>
           </div>
 
           {/* TÍTULO PRINCIPAL */}
-          <div style={{ textAlign: 'center', marginBottom: '1rem', background: '#0f172a', color: '#ffffff', padding: '0.35rem', borderRadius: '2px' }}>
-            <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+          <div style={{ textAlign: 'center', marginBottom: '0.5rem', background: '#0f172a', color: '#ffffff', padding: '0.25rem 0.5rem', borderRadius: '2px' }}>
+            <h2 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
               FICHA DE MATRÍCULA Y REGISTRO OFICIAL DE PRÁCTICA PROFESIONAL TP
             </h2>
           </div>
 
           {/* I. ANTECEDENTES DEL ESTUDIANTE */}
-          <div style={{ marginBottom: '0.85rem' }}>
-            <div style={{ background: '#f1f5f9', padding: '0.25rem 0.5rem', fontWeight: 700, fontSize: '0.775rem', borderLeft: '4px solid #4f46e5', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
+          <div style={{ marginBottom: '0.45rem' }}>
+            <div style={{ background: '#f1f5f9', padding: '0.15rem 0.45rem', fontWeight: 700, fontSize: '0.72rem', borderLeft: '4px solid #4f46e5', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
               I. Antecedentes del Estudiante
             </div>
-            <table style={{ width: '100%', fontSize: '0.75rem', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: '0.72rem', borderCollapse: 'collapse', lineHeight: '1.25' }}>
               <tbody>
                 <tr>
-                  <td style={{ padding: '0.25rem', width: '20%', fontWeight: 700 }}>Nombre Completo:</td>
-                  <td style={{ padding: '0.25rem', width: '45%' }}>{enrollment.student_name}</td>
-                  <td style={{ padding: '0.25rem', width: '15%', fontWeight: 700 }}>RUN:</td>
-                  <td style={{ padding: '0.25rem', width: '20%' }}>{enrollment.student_run}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '18%', fontWeight: 700, color: '#334155' }}>Nombre Completo:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '47%', fontWeight: 600, color: '#0f172a' }}>{enrollment.student_name}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '12%', fontWeight: 700, color: '#334155' }}>RUN:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '23%', fontWeight: 600, color: '#0f172a' }}>{enrollment.student_run}</td>
                 </tr>
                 <tr>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Especialidad TP:</td>
-                  <td style={{ padding: '0.25rem', fontWeight: 700, color: '#1e40af' }}>{enrollment.specialty}</td>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Curso:</td>
-                  <td style={{ padding: '0.25rem' }}>{enrollment.course_name}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Especialidad TP:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#1e40af' }}>{enrollment.specialty}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Curso:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.course_name}</td>
                 </tr>
                 <tr>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Teléfono / Celular:</td>
-                  <td style={{ padding: '0.25rem' }}>{enrollment.student_phone || 'No registrado'}</td>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Email:</td>
-                  <td style={{ padding: '0.25rem' }}>{enrollment.student_email || 'No registrado'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Teléfono / Celular:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.student_phone || 'No registrado'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Email:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a', wordBreak: 'break-all' }}>{enrollment.student_email || 'No registrado'}</td>
                 </tr>
                 <tr>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Domicilio Alumno:</td>
-                  <td style={{ padding: '0.25rem' }}>{enrollment.student_address || 'Comuna de Yungay'}</td>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Apoderado(a):</td>
-                  <td style={{ padding: '0.25rem' }}>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Domicilio Alumno:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.student_address || 'Comuna de Yungay'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Apoderado(a):</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>
                     {enrollment.guardian_name || 'No informado'} {enrollment.guardian_phone ? `(${enrollment.guardian_phone})` : ''}
                   </td>
                 </tr>
@@ -2155,35 +2181,36 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
           </div>
 
           {/* II. ANTECEDENTES DE LA EMPRESA O CENTRO DE PRÁCTICA */}
-          <div style={{ marginBottom: '0.85rem' }}>
-            <div style={{ background: '#f1f5f9', padding: '0.25rem 0.5rem', fontWeight: 700, fontSize: '0.775rem', borderLeft: '4px solid #059669', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
+          <div style={{ marginBottom: '0.45rem' }}>
+            <div style={{ background: '#f1f5f9', padding: '0.15rem 0.45rem', fontWeight: 700, fontSize: '0.72rem', borderLeft: '4px solid #059669', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
               II. Antecedentes del Centro de Práctica / Empresa Formadora
             </div>
-            <table style={{ width: '100%', fontSize: '0.75rem', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: '0.72rem', borderCollapse: 'collapse', lineHeight: '1.25' }}>
               <tbody>
                 <tr>
-                  <td style={{ padding: '0.25rem', width: '20%', fontWeight: 700 }}>Razón Social:</td>
-                  <td style={{ padding: '0.25rem', width: '45%' }}>{enrollment.company_name || 'Por definir'}</td>
-                  <td style={{ padding: '0.25rem', width: '15%', fontWeight: 700 }}>RUT Empresa:</td>
-                  <td style={{ padding: '0.25rem', width: '20%' }}>{enrollment.company_rut || '—'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '18%', fontWeight: 700, color: '#334155' }}>Razón Social:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '47%', fontWeight: 600, color: '#0f172a' }}>{enrollment.company_name || 'Por definir'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '12%', fontWeight: 700, color: '#334155' }}>RUT Empresa:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '23%', color: '#0f172a' }}>{enrollment.company_rut || '—'}</td>
                 </tr>
                 <tr>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Dirección y Comuna:</td>
-                  <td style={{ padding: '0.25rem' }}>{enrollment.company_address || '—'} {enrollment.company_commune ? `(${enrollment.company_commune})` : ''}</td>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Teléfono:</td>
-                  <td style={{ padding: '0.25rem' }}>{enrollment.company_phone || '—'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Dirección y Comuna:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.company_address || '—'} {enrollment.company_commune ? `(${enrollment.company_commune})` : ''}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Teléfono:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.company_phone || '—'}</td>
                 </tr>
                 <tr>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Maestro Guía:</td>
-                  <td style={{ padding: '0.25rem' }}>{enrollment.company_mentor_name || 'Por asignar'}</td>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Cargo Guía:</td>
-                  <td style={{ padding: '0.25rem' }}>{enrollment.company_mentor_position || '—'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Maestro Guía:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.company_mentor_name || 'Por asignar'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Cargo Guía:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.company_mentor_position || '—'}</td>
                 </tr>
                 <tr>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Contacto Guía:</td>
-                  <td style={{ padding: '0.25rem' }} colSpan={3}>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Contacto Guía:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }} colSpan={3}>
                     {enrollment.company_mentor_phone ? `Fono: ${enrollment.company_mentor_phone}` : ''}
                     {enrollment.company_mentor_email ? ` · Email: ${enrollment.company_mentor_email}` : ''}
+                    {!enrollment.company_mentor_phone && !enrollment.company_mentor_email ? '—' : ''}
                   </td>
                 </tr>
               </tbody>
@@ -2191,35 +2218,35 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
           </div>
 
           {/* III. CONDICIONES TÉCNICAS Y CRONOGRAMA */}
-          <div style={{ marginBottom: '0.85rem' }}>
-            <div style={{ background: '#f1f5f9', padding: '0.25rem 0.5rem', fontWeight: 700, fontSize: '0.775rem', borderLeft: '4px solid #d97706', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
+          <div style={{ marginBottom: '0.45rem' }}>
+            <div style={{ background: '#f1f5f9', padding: '0.15rem 0.45rem', fontWeight: 700, fontSize: '0.72rem', borderLeft: '4px solid #d97706', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
               III. Condiciones de la Práctica & Seguro Escolar
             </div>
-            <table style={{ width: '100%', fontSize: '0.75rem', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: '0.72rem', borderCollapse: 'collapse', lineHeight: '1.25' }}>
               <tbody>
                 <tr>
-                  <td style={{ padding: '0.25rem', width: '20%', fontWeight: 700 }}>Total Horas Exigidas:</td>
-                  <td style={{ padding: '0.25rem', width: '30%', fontWeight: 700 }}>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '20%', fontWeight: 700, color: '#334155' }}>Total Horas Exigidas:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '30%', fontWeight: 700, color: '#0f172a' }}>
                     {enrollment.required_hours || 360} Horas Cronológicas
                   </td>
-                  <td style={{ padding: '0.25rem', width: '20%', fontWeight: 700 }}>Modalidad:</td>
-                  <td style={{ padding: '0.25rem', width: '30%' }}>{enrollment.modality || 'Regular / Estival'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '20%', fontWeight: 700, color: '#334155' }}>Modalidad:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '30%', color: '#0f172a' }}>{enrollment.modality || 'Regular / Estival'}</td>
                 </tr>
                 <tr>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Fecha de Inicio:</td>
-                  <td style={{ padding: '0.25rem' }}>{enrollment.start_date ? enrollment.start_date.split('T')[0] : 'A convenir'}</td>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Fecha de Término:</td>
-                  <td style={{ padding: '0.25rem' }}>{enrollment.end_date ? enrollment.end_date.split('T')[0] : 'A convenir'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Fecha de Inicio:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.start_date ? enrollment.start_date.split('T')[0] : 'A convenir'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Fecha de Término:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.end_date ? enrollment.end_date.split('T')[0] : 'A convenir'}</td>
                 </tr>
                 <tr>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Jornada / Horario:</td>
-                  <td style={{ padding: '0.25rem' }}>{enrollment.schedule_shift || 'Jornada Completa'}</td>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Profesor Tutor Liceo:</td>
-                  <td style={{ padding: '0.25rem' }}>{enrollment.school_tutor_teacher || 'Equipo Técnico Profesional LTP'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Jornada / Horario:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.schedule_shift || 'Jornada Completa'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Profesor Tutor Liceo:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.school_tutor_teacher || 'Equipo Técnico Profesional LTP'}</td>
                 </tr>
                 <tr>
-                  <td style={{ padding: '0.25rem', fontWeight: 700 }}>Seguro Escolar:</td>
-                  <td style={{ padding: '0.25rem', color: '#0369a1', fontWeight: 700 }} colSpan={3}>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Seguro Escolar:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0369a1', fontWeight: 600, fontSize: '0.69rem' }} colSpan={3}>
                     Amparado bajo el Decreto Supremo N° 313 de la Ley N° 16.744 sobre Accidentes Escolares (trayecto directo y permanencia en la empresa).
                   </td>
                 </tr>
@@ -2228,32 +2255,32 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
           </div>
 
           {/* IV. CONTROL DOCUMENTAL */}
-          <div style={{ marginBottom: '0.85rem' }}>
-            <div style={{ background: '#f1f5f9', padding: '0.25rem 0.5rem', fontWeight: 700, fontSize: '0.775rem', borderLeft: '4px solid #0284c7', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
+          <div style={{ marginBottom: '0.45rem' }}>
+            <div style={{ background: '#f1f5f9', padding: '0.15rem 0.45rem', fontWeight: 700, fontSize: '0.72rem', borderLeft: '4px solid #0284c7', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
               IV. Registro de Requisitos y Documentación
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem', fontSize: '0.725rem' }}>
-              <div style={{ border: '1px solid #cbd5e1', padding: '0.35rem', borderRadius: '3px', textAlign: 'center' }}>
-                <div style={{ fontWeight: 700 }}>Convenio Tripartito</div>
-                <div style={{ color: enrollment.has_signed_agreement ? '#15803d' : '#64748b', fontWeight: 800 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.35rem', fontSize: '0.7rem' }}>
+              <div style={{ border: '1px solid #cbd5e1', padding: '0.25rem', borderRadius: '3px', textAlign: 'center' }}>
+                <div style={{ fontWeight: 600, color: '#334155' }}>Convenio Tripartito</div>
+                <div style={{ color: enrollment.has_signed_agreement ? '#15803d' : '#64748b', fontWeight: 800, marginTop: '0.1rem' }}>
                   {enrollment.has_signed_agreement ? '✓ SUSCRITO' : 'PENDIENTE'}
                 </div>
               </div>
-              <div style={{ border: '1px solid #cbd5e1', padding: '0.35rem', borderRadius: '3px', textAlign: 'center' }}>
-                <div style={{ fontWeight: 700 }}>Plan de Práctica</div>
-                <div style={{ color: enrollment.has_practice_plan ? '#15803d' : '#64748b', fontWeight: 800 }}>
+              <div style={{ border: '1px solid #cbd5e1', padding: '0.25rem', borderRadius: '3px', textAlign: 'center' }}>
+                <div style={{ fontWeight: 600, color: '#334155' }}>Plan de Práctica</div>
+                <div style={{ color: enrollment.has_practice_plan ? '#15803d' : '#64748b', fontWeight: 800, marginTop: '0.1rem' }}>
                   {enrollment.has_practice_plan ? '✓ APROBADO' : 'PENDIENTE'}
                 </div>
               </div>
-              <div style={{ border: '1px solid #cbd5e1', padding: '0.35rem', borderRadius: '3px', textAlign: 'center' }}>
-                <div style={{ fontWeight: 700 }}>Evaluación Empresa</div>
-                <div style={{ color: enrollment.has_final_evaluation ? '#15803d' : '#64748b', fontWeight: 800 }}>
+              <div style={{ border: '1px solid #cbd5e1', padding: '0.25rem', borderRadius: '3px', textAlign: 'center' }}>
+                <div style={{ fontWeight: 600, color: '#334155' }}>Evaluación Empresa</div>
+                <div style={{ color: enrollment.has_final_evaluation ? '#15803d' : '#64748b', fontWeight: 800, marginTop: '0.1rem' }}>
                   {enrollment.has_final_evaluation ? '✓ ENTREGADA' : 'PENDIENTE'}
                 </div>
               </div>
-              <div style={{ border: '1px solid #cbd5e1', padding: '0.35rem', borderRadius: '3px', textAlign: 'center' }}>
-                <div style={{ fontWeight: 700 }}>Nota Final Práctica</div>
-                <div style={{ color: enrollment.final_grade ? '#15803d' : '#64748b', fontWeight: 800 }}>
+              <div style={{ border: '1px solid #cbd5e1', padding: '0.25rem', borderRadius: '3px', textAlign: 'center' }}>
+                <div style={{ fontWeight: 600, color: '#334155' }}>Nota Final Práctica</div>
+                <div style={{ color: enrollment.final_grade ? '#15803d' : '#64748b', fontWeight: 800, marginTop: '0.1rem' }}>
                   {enrollment.final_grade ? `${enrollment.final_grade} / 7.0` : 'PENDIENTE'}
                 </div>
               </div>
@@ -2262,31 +2289,31 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
 
           {/* OBSERVACIONES */}
           {enrollment.observations && (
-            <div style={{ fontSize: '0.725rem', color: '#334155', background: '#f8fafc', padding: '0.45rem', border: '1px solid #e2e8f0', borderRadius: '3px', marginBottom: '1.25rem' }}>
+            <div style={{ fontSize: '0.68rem', color: '#334155', background: '#f8fafc', padding: '0.3rem 0.45rem', border: '1px solid #e2e8f0', borderRadius: '3px', marginBottom: '0.45rem' }}>
               <strong>Observaciones:</strong> {enrollment.observations}
             </div>
           )}
 
           {/* V. FIRMAS OFICIALES: PROFESOR GUÍA Y APODERADO DEL ESTUDIANTE */}
-          <div style={{ marginTop: '2.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', textAlign: 'center', fontSize: '0.75rem', color: '#1e293b' }}>
+          <div style={{ marginTop: '1.25rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', textAlign: 'center', fontSize: '0.72rem', color: '#1e293b' }}>
             <div>
-              <div style={{ borderBottom: '1.5px solid #0f172a', height: '48px', marginBottom: '0.45rem' }} />
-              <strong style={{ display: 'block', fontSize: '0.85rem' }}>
+              <div style={{ borderBottom: '1.5px solid #0f172a', height: '36px', marginBottom: '0.35rem' }} />
+              <strong style={{ display: 'block', fontSize: '0.8rem', color: '#0f172a' }}>
                 {enrollment.school_tutor_teacher || enrollment.profesor_jefe || 'Profesor(a) Guía TP'}
               </strong>
-              <div style={{ color: '#475569', fontWeight: 600, fontSize: '0.75rem' }}>Profesor(a) Guía TP</div>
-              <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
+              <div style={{ color: '#475569', fontWeight: 600, fontSize: '0.72rem' }}>Profesor(a) Guía TP</div>
+              <div style={{ color: '#64748b', fontSize: '0.66rem' }}>
                 {institution?.schoolName || 'Establecimiento Educacional'}
               </div>
             </div>
 
             <div>
-              <div style={{ borderBottom: '1.5px solid #0f172a', height: '48px', marginBottom: '0.45rem' }} />
-              <strong style={{ display: 'block', fontSize: '0.85rem' }}>
+              <div style={{ borderBottom: '1.5px solid #0f172a', height: '36px', marginBottom: '0.35rem' }} />
+              <strong style={{ display: 'block', fontSize: '0.8rem', color: '#0f172a' }}>
                 {enrollment.guardian_name || 'Apoderado(a) del Estudiante'}
               </strong>
-              <div style={{ color: '#475569', fontWeight: 600, fontSize: '0.75rem' }}>Firma Apoderado(a)</div>
-              <div style={{ color: '#64748b', fontSize: '0.7rem' }}>Toma de Conocimiento y Autorización</div>
+              <div style={{ color: '#475569', fontWeight: 600, fontSize: '0.72rem' }}>Firma Apoderado(a)</div>
+              <div style={{ color: '#64748b', fontSize: '0.66rem' }}>Toma de Conocimiento y Autorización</div>
             </div>
           </div>
         </div>
