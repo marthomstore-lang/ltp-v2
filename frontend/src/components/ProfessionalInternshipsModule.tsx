@@ -634,7 +634,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
             <Users size={18} color="#6366f1" />
           </div>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>
-            {stats ? stats.total_4medio : 38} <span style={{ fontSize: '0.85rem', fontWeight: 500, color: '#64748b' }}>alumnos</span>
+            {stats?.total_4medio ?? candidates.length ?? 38} <span style={{ fontSize: '0.85rem', fontWeight: 500, color: '#64748b' }}>alumnos</span>
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
             23 Mecánica · 15 Párvulos
@@ -647,9 +647,9 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
             <UserCheck size={18} color="#059669" />
           </div>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#059669' }}>
-            {stats ? stats.total_enrolled : enrollments.length}
+            {stats?.total_enrolled ?? enrollments.length}
             <span style={{ fontSize: '0.85rem', fontWeight: 500, color: '#64748b', marginLeft: '0.4rem' }}>
-              ({stats && stats.total_4medio > 0 ? Math.round((stats.total_enrolled / stats.total_4medio) * 100) : 0}%)
+              ({(stats?.total_4medio || candidates.length || 38) > 0 ? Math.round(((stats?.total_enrolled ?? enrollments.length) / (stats?.total_4medio || candidates.length || 38)) * 100) : 0}%)
             </span>
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
@@ -663,7 +663,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
             <Clock size={18} color="#d97706" />
           </div>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#d97706' }}>
-            {stats ? (stats.by_status['En Curso'] || 0) : 0}
+            {stats?.by_status?.['En Curso'] ?? enrollments.filter(e => e.status === 'En Curso').length}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
             Cumpliendo 360 horas
@@ -676,7 +676,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
             <Award size={18} color="#4338ca" />
           </div>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#4338ca' }}>
-            {stats ? (stats.by_status['Aprobada'] || 0) + (stats.by_status['Finalizada'] || 0) : 0}
+            {((stats?.by_status?.['Aprobada'] ?? 0) + (stats?.by_status?.['Finalizada'] ?? 0)) || enrollments.filter(e => e.status === 'Aprobada' || e.status === 'Finalizada').length}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
             Listos para titulación
@@ -689,7 +689,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
             <ShieldCheck size={18} color="#0284c7" />
           </div>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0284c7' }}>
-            {stats ? stats.with_school_insurance : enrollments.length}
+            {stats?.with_school_insurance ?? enrollments.filter(e => e.has_school_insurance).length}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
             Cobertura Legal MINEDUC

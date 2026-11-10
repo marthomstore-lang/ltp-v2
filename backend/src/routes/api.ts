@@ -14424,6 +14424,23 @@ router.get('/tp-internships/stats', authMiddleware, async (req: Request, res: Re
 
     res.json({
       period,
+      total_4medio: parseInt(total4to.total || '0', 10),
+      total_mecanica: parseInt(total4to.total_mecanica || '0', 10),
+      total_parvulos: parseInt(total4to.total_parvulos || '0', 10),
+      total_enrolled: parseInt(enrollStats.total_enrolled || '0', 10),
+      by_specialty: {
+        mecanica: parseInt(enrollStats.enrolled_mecanica || '0', 10),
+        parvulos: parseInt(enrollStats.enrolled_parvulos || '0', 10)
+      },
+      by_status: {
+        'Matriculado': parseInt(enrollStats.status_matriculado || '0', 10),
+        'En Curso': parseInt(enrollStats.status_en_curso || '0', 10),
+        'Finalizada': parseInt(enrollStats.status_finalizada || '0', 10),
+        'Aprobada': parseInt(enrollStats.status_aprobada || '0', 10),
+        'Titulado': parseInt(enrollStats.status_titulado || '0', 10)
+      },
+      with_signed_agreement: parseInt(enrollStats.with_agreement || '0', 10),
+      with_school_insurance: parseInt(enrollStats.with_insurance || '0', 10),
       total4toMedio: parseInt(total4to.total || '0', 10),
       totalMecanica: parseInt(total4to.total_mecanica || '0', 10),
       totalParvulos: parseInt(total4to.total_parvulos || '0', 10),
