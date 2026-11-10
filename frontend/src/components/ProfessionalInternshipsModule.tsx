@@ -1571,27 +1571,35 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                   </div>
                 </div>
 
-                {/* MAESTRO GUÍA */}
-                <div style={{ background: '#f8fafc', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '0.75rem' }}>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.5rem' }}>
-                    Maestro Guía (Supervisor del Alumno en la Empresa)
+                {/* MAESTRO GUÍA (SUPERVISOR EN LA EMPRESA FORMADORA) */}
+                <div style={{ background: '#f8fafc', padding: '0.75rem', borderRadius: '8px', border: '1.5px dashed #cbd5e1', marginTop: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                    <div style={{ fontSize: '0.825rem', fontWeight: 700, color: '#1e293b' }}>
+                      Maestro Guía (Supervisor del Alumno en la Empresa)
+                    </div>
+                    <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', background: '#e0e7ff', color: '#3730a3', borderRadius: '4px', fontWeight: 600 }}>
+                      ✍️ Se completa de forma manual en la Ficha Impresa
+                    </span>
                   </div>
+                  <p style={{ margin: '0 0 0.6rem 0', fontSize: '0.725rem', color: '#64748b', lineHeight: 1.35 }}>
+                    Al momento de matricular la práctica generalmente aún no se conoce quién será el maestro guía. La <strong>Ficha Oficial Imprimible</strong> incluye automáticamente los campos con líneas de completado manual para que la empresa formadora lo rellene de forma manuscrita. Si ya conoce los datos, puede ingresarlos de forma opcional:
+                  </p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.6rem' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.725rem', color: '#64748b', marginBottom: '0.15rem' }}>Nombre Maestro Guía</label>
+                      <label style={{ display: 'block', fontSize: '0.725rem', color: '#64748b', marginBottom: '0.15rem' }}>Nombre Maestro Guía (Opcional)</label>
                       <input
                         type="text"
-                        placeholder="Nombre completo"
+                        placeholder="Dejar en blanco para llenado a mano"
                         value={formCompanyMentorName}
                         onChange={(e) => setFormCompanyMentorName(e.target.value)}
                         style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem', boxSizing: 'border-box' }}
                       />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.725rem', color: '#64748b', marginBottom: '0.15rem' }}>Cargo / Rol</label>
+                      <label style={{ display: 'block', fontSize: '0.725rem', color: '#64748b', marginBottom: '0.15rem' }}>Cargo / Rol (Opcional)</label>
                       <input
                         type="text"
-                        placeholder="Jefe de Taller / Educadora"
+                        placeholder="Dejar en blanco para llenado a mano"
                         value={formCompanyMentorPosition}
                         onChange={(e) => setFormCompanyMentorPosition(e.target.value)}
                         style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem', boxSizing: 'border-box' }}
@@ -1601,7 +1609,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                       <label style={{ display: 'block', fontSize: '0.725rem', color: '#64748b', marginBottom: '0.15rem' }}>Teléfono Maestro Guía</label>
                       <input
                         type="text"
-                        placeholder="+56 9 ..."
+                        placeholder="+56 9 ... (Opcional)"
                         value={formCompanyMentorPhone}
                         onChange={(e) => setFormCompanyMentorPhone(e.target.value)}
                         style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem', boxSizing: 'border-box' }}
@@ -1611,7 +1619,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                       <label style={{ display: 'block', fontSize: '0.725rem', color: '#64748b', marginBottom: '0.15rem' }}>Email Maestro Guía</label>
                       <input
                         type="email"
-                        placeholder="supervisor@empresa.cl"
+                        placeholder="supervisor@empresa.cl (Opcional)"
                         value={formCompanyMentorEmail}
                         onChange={(e) => setFormCompanyMentorEmail(e.target.value)}
                         style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem', boxSizing: 'border-box' }}
@@ -2201,16 +2209,46 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
                 </tr>
                 <tr>
                   <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Maestro Guía:</td>
-                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.company_mentor_name || 'Por asignar'}</td>
-                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Cargo Guía:</td>
-                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.company_mentor_position || '—'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>
+                    {enrollment.company_mentor_name ? (
+                      enrollment.company_mentor_name
+                    ) : (
+                      <span style={{ borderBottom: '1px dotted #334155', display: 'inline-block', width: '95%', color: '#64748b', fontSize: '0.675rem' }}>
+                        (Llenado manual empresa: Nombre y Apellidos)
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Cargo / Rol:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>
+                    {enrollment.company_mentor_position ? (
+                      enrollment.company_mentor_position
+                    ) : (
+                      <span style={{ borderBottom: '1px dotted #334155', display: 'inline-block', width: '95%', color: '#64748b', fontSize: '0.675rem' }}>
+                        (Cargo en la empresa)
+                      </span>
+                    )}
+                  </td>
                 </tr>
                 <tr>
-                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Contacto Guía:</td>
-                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }} colSpan={3}>
-                    {enrollment.company_mentor_phone ? `Fono: ${enrollment.company_mentor_phone}` : ''}
-                    {enrollment.company_mentor_email ? ` · Email: ${enrollment.company_mentor_email}` : ''}
-                    {!enrollment.company_mentor_phone && !enrollment.company_mentor_email ? '—' : ''}
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Teléfono Guía:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>
+                    {enrollment.company_mentor_phone ? (
+                      enrollment.company_mentor_phone
+                    ) : (
+                      <span style={{ borderBottom: '1px dotted #334155', display: 'inline-block', width: '95%', color: '#64748b', fontSize: '0.675rem' }}>
+                        +56 9 ....................................................
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Email Guía:</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>
+                    {enrollment.company_mentor_email ? (
+                      enrollment.company_mentor_email
+                    ) : (
+                      <span style={{ borderBottom: '1px dotted #334155', display: 'inline-block', width: '95%', color: '#64748b', fontSize: '0.675rem' }}>
+                        .............................................................
+                      </span>
+                    )}
                   </td>
                 </tr>
               </tbody>
