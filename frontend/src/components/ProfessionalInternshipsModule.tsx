@@ -143,6 +143,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
 
   // Modal Ficha Imprimible
   const [printModalEnrollment, setPrintModalEnrollment] = useState<InternshipEnrollment | null>(null);
+  const [institution, setInstitution] = useState<any>(null);
 
   // Form State
   const [formStudentId, setFormStudentId] = useState<string>('');
@@ -182,10 +183,11 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
       setLoading(true);
       const headers = { Authorization: `Bearer ${token}` };
 
-      const [resEnrollments, resCandidates, resStats] = await Promise.all([
+      const [resEnrollments, resCandidates, resStats, resInstitution] = await Promise.all([
         fetch(`/api/tp-internships?period=${encodeURIComponent(selectedPeriod)}`, { headers }),
         fetch(`/api/tp-internships/candidates?period=${encodeURIComponent(selectedPeriod)}`, { headers }),
-        fetch(`/api/tp-internships/stats?period=${encodeURIComponent(selectedPeriod)}`, { headers })
+        fetch(`/api/tp-internships/stats?period=${encodeURIComponent(selectedPeriod)}`, { headers }),
+        fetch('/api/config/institutional-settings')
       ]);
 
       if (resEnrollments.ok) {
@@ -201,6 +203,11 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
       if (resStats.ok) {
         const data = await resStats.json();
         setStats(data);
+      }
+
+      if (resInstitution && resInstitution.ok) {
+        const instData = await resInstitution.json();
+        setInstitution(instData);
       }
     } catch (err) {
       console.error('Error al cargar datos de prácticas:', err);
@@ -243,7 +250,8 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
     setFormCompanyMentorPosition('');
     setFormCompanyMentorPhone('');
     setFormCompanyMentorEmail('');
-    setFormSchoolTutorTeacher('');
+    const preCand = candidates.find(c => c.id === preselectedStudentId);
+    setFormSchoolTutorTeacher(preCand?.profesor_jefe || '');
     setFormFinalGrade('');
     setFormHasSignedAgreement(false);
     setFormHasSchoolInsurance(true);
@@ -540,7 +548,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                 Matrículas de Práctica Profesional TP (4° Medio)
               </h1>
               <p style={{ margin: 0, fontSize: '0.875rem', color: '#64748b' }}>
-                Liceo Bicentenario Polivalente Enrique Kirberg Baltiansky · Gestión Oficial de Prácticas y Centros Formativos
+                {institution?.schoolName || 'Liceo Técnico Profesional'} · Gestión Oficial de Prácticas y Centros Formativos
               </p>
             </div>
           </div>
@@ -1318,7 +1326,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                   {editingEnrollment ? 'Editar Matrícula de Práctica TP' : 'Nueva Matrícula de Práctica Profesional TP'}
                 </h2>
                 <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
-                  Período Oficial {formPeriod} · Liceo Bicentenario Polivalente Enrique Kirberg
+                  Período Oficial {formPeriod} · {institution?.schoolName || 'Liceo Técnico Profesional'}
                 </p>
               </div>
               <button
@@ -1345,7 +1353,14 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                     </label>
                     <select
                       value={formStudentId}
-                      onChange={(e) => setFormStudentId(e.target.value)}
+                      onChange={(e) => {
+                        const sid = e.target.value;
+                        setFormStudentId(sid);
+                        const cand = candidates.find(c => c.id === sid);
+                        if (cand && !formSchoolTutorTeacher) {
+                          setFormSchoolTutorTeacher(cand.profesor_jefe || '');
+                        }
+                      }}
                       disabled={Boolean(editingEnrollment)}
                       style={{
                         width: '100%',
@@ -1782,6 +1797,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
       {printModalEnrollment && (
         <PrintInternshipCardModal
           enrollment={printModalEnrollment}
+          institution={institution}
           onClose={() => setPrintModalEnrollment(null)}
         />
       )}
@@ -1794,11 +1810,13 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
 // =============================================================================
 interface PrintInternshipCardModalProps {
   enrollment: InternshipEnrollment;
+  institution?: any;
   onClose: () => void;
 }
 
 const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
   enrollment,
+  institution,
   onClose
 }) => {
   const handlePrint = () => {
@@ -1974,19 +1992,19 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
 
         {/* DOCUMENTO OFICIAL A IMPRIMIR */}
         <div style={{ border: '2px solid #0f172a', padding: '1.25rem', borderRadius: '4px' }}>
-          {/* MEMBRETE OFICIAL */}
+          {/* MEMBRETE OFICIAL DINÁMICO */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #0f172a', paddingBottom: '0.75rem', marginBottom: '0.85rem' }}>
             <div>
               <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#1e293b' }}>
-                REPÚBLICA DE CHILE · MINISTERIO DE EDUCACIÓN
+                {institution?.dependence ? `${institution.dependence.toUpperCase()} · ` : 'REPÚBLICA DE CHILE · '}MINISTERIO DE EDUCACIÓN
               </div>
-              <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a', marginTop: '0.15rem' }}>
-                LICEO BICENTENARIO POLIVALENTE ENRIQUE KIRBERG BALTIANSKY
+              <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#0f172a', marginTop: '0.15rem', textTransform: 'uppercase' }}>
+                {institution?.schoolName || 'LICEO TÉCNICO PROFESIONAL'}
               </div>
-              <div style={{ fontSize: '0.7rem', color: '#475569' }}>
-                RBD: 11462-6 · Comuna de Yungay · Región de Ñuble
+              <div style={{ fontSize: '0.725rem', color: '#475569' }}>
+                RBD: {institution?.rbd || '3941-1'} · Comuna de {institution?.commune || institution?.locality || 'Yungay'}{institution?.region ? ` · ${institution.region}` : ''}
               </div>
-              <div style={{ fontSize: '0.7rem', color: '#475569' }}>
+              <div style={{ fontSize: '0.725rem', color: '#475569' }}>
                 Área Técnico-Profesional · Formación por Alternancia y Centros de Práctica
               </div>
             </div>
@@ -2159,30 +2177,26 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
             </div>
           )}
 
-          {/* V. FIRMAS OFICIALES TRIPARTITAS */}
-          <div style={{ marginTop: '2rem', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', textAlign: 'center', fontSize: '0.7rem', color: '#1e293b' }}>
+          {/* V. FIRMAS OFICIALES: PROFESOR GUÍA Y APODERADO DEL ESTUDIANTE */}
+          <div style={{ marginTop: '2.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', textAlign: 'center', fontSize: '0.75rem', color: '#1e293b' }}>
             <div>
-              <div style={{ borderBottom: '1.5px solid #0f172a', height: '40px', marginBottom: '0.35rem' }} />
-              <strong>{enrollment.student_name}</strong>
-              <div style={{ color: '#64748b' }}>Firma Estudiante en Práctica</div>
+              <div style={{ borderBottom: '1.5px solid #0f172a', height: '48px', marginBottom: '0.45rem' }} />
+              <strong style={{ display: 'block', fontSize: '0.85rem' }}>
+                {enrollment.school_tutor_teacher || enrollment.profesor_jefe || 'Profesor(a) Guía TP'}
+              </strong>
+              <div style={{ color: '#475569', fontWeight: 600, fontSize: '0.75rem' }}>Profesor(a) Guía TP</div>
+              <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                {institution?.schoolName || 'Establecimiento Educacional'}
+              </div>
             </div>
 
             <div>
-              <div style={{ borderBottom: '1.5px solid #0f172a', height: '40px', marginBottom: '0.35rem' }} />
-              <strong>{enrollment.guardian_name || 'Apoderado(a)'}</strong>
-              <div style={{ color: '#64748b' }}>Firma y Autorización Apoderado</div>
-            </div>
-
-            <div>
-              <div style={{ borderBottom: '1.5px solid #0f172a', height: '40px', marginBottom: '0.35rem' }} />
-              <strong>{enrollment.company_mentor_name || 'Maestro Guía'}</strong>
-              <div style={{ color: '#64748b' }}>Firma y Timbre Empresa</div>
-            </div>
-
-            <div>
-              <div style={{ borderBottom: '1.5px solid #0f172a', height: '40px', marginBottom: '0.35rem' }} />
-              <strong>Encargado(a) TP / Dirección</strong>
-              <div style={{ color: '#64748b' }}>LTP Enrique Kirberg</div>
+              <div style={{ borderBottom: '1.5px solid #0f172a', height: '48px', marginBottom: '0.45rem' }} />
+              <strong style={{ display: 'block', fontSize: '0.85rem' }}>
+                {enrollment.guardian_name || 'Apoderado(a) del Estudiante'}
+              </strong>
+              <div style={{ color: '#475569', fontWeight: 600, fontSize: '0.75rem' }}>Firma Apoderado(a)</div>
+              <div style={{ color: '#64748b', fontSize: '0.7rem' }}>Toma de Conocimiento y Autorización</div>
             </div>
           </div>
         </div>
