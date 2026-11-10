@@ -175,6 +175,10 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
   const [formHasFinalEvaluation, setFormHasFinalEvaluation] = useState<boolean>(false);
   const [formHasStudentReport, setFormHasStudentReport] = useState<boolean>(false);
   const [formObservations, setFormObservations] = useState<string>('');
+  const [formGuardianName, setFormGuardianName] = useState<string>('');
+  const [formGuardianPhone, setFormGuardianPhone] = useState<string>('');
+  const [formStudentPhone, setFormStudentPhone] = useState<string>('');
+  const [formStudentAddress, setFormStudentAddress] = useState<string>('');
   const [saving, setSaving] = useState<boolean>(false);
 
   // Cargar datos
@@ -252,6 +256,10 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
     setFormCompanyMentorEmail('');
     const preCand = candidates.find(c => c.id === preselectedStudentId);
     setFormSchoolTutorTeacher(preCand?.profesor_jefe || '');
+    setFormGuardianName(preCand?.guardian_name || '');
+    setFormGuardianPhone(preCand?.guardian_phone || '');
+    setFormStudentPhone(preCand?.phone || '');
+    setFormStudentAddress(preCand?.address || '');
     setFormFinalGrade('');
     setFormHasSignedAgreement(false);
     setFormHasSchoolInsurance(true);
@@ -287,6 +295,10 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
     setFormCompanyMentorPhone(enrollment.company_mentor_phone || '');
     setFormCompanyMentorEmail(enrollment.company_mentor_email || '');
     setFormSchoolTutorTeacher(enrollment.school_tutor_teacher || '');
+    setFormGuardianName(enrollment.guardian_name || '');
+    setFormGuardianPhone(enrollment.guardian_phone || '');
+    setFormStudentPhone(enrollment.student_phone || '');
+    setFormStudentAddress(enrollment.student_address || '');
     setFormFinalGrade(enrollment.final_grade !== null && enrollment.final_grade !== undefined ? String(enrollment.final_grade) : '');
     setFormHasSignedAgreement(Boolean(enrollment.has_signed_agreement));
     setFormHasSchoolInsurance(enrollment.has_school_insurance !== undefined ? Boolean(enrollment.has_school_insurance) : true);
@@ -336,7 +348,11 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
         has_practice_plan: formHasPracticePlan,
         has_final_evaluation: formHasFinalEvaluation,
         has_student_report: formHasStudentReport,
-        observations: formObservations
+        observations: formObservations,
+        guardian_name: formGuardianName,
+        guardian_phone: formGuardianPhone,
+        student_phone: formStudentPhone,
+        student_address: formStudentAddress
       };
 
       const url = editingEnrollment
@@ -1339,7 +1355,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
 
             {/* Modal Body / Form */}
             <form onSubmit={handleSave} style={{ padding: '1.25rem' }}>
-              {/* SECCIÓN 1: ESTUDIANTE */}
+              {/* SECCIÓN 1: ESTUDIANTE Y APODERADO */}
               <div style={{ marginBottom: '1.25rem' }}>
                 <h4 style={{ margin: '0 0 0.6rem 0', fontSize: '0.9rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <GraduationCap size={16} color="#4f46e5" />
@@ -1357,8 +1373,14 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                         const sid = e.target.value;
                         setFormStudentId(sid);
                         const cand = candidates.find(c => c.id === sid);
-                        if (cand && !formSchoolTutorTeacher) {
-                          setFormSchoolTutorTeacher(cand.profesor_jefe || '');
+                        if (cand) {
+                          setFormGuardianName(cand.guardian_name || '');
+                          setFormGuardianPhone(cand.guardian_phone || '');
+                          setFormStudentPhone(cand.phone || '');
+                          setFormStudentAddress(cand.address || '');
+                          if (!formSchoolTutorTeacher) {
+                            setFormSchoolTutorTeacher(cand.profesor_jefe || '');
+                          }
                         }
                       }}
                       disabled={Boolean(editingEnrollment)}
@@ -1388,10 +1410,78 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                       <div><strong>Especialidad:</strong> {selectedCandidateForForm.specialty}</div>
                       <div><strong>Curso:</strong> {selectedCandidateForForm.desc_grado}</div>
                       <div><strong>Prof. Jefe:</strong> {selectedCandidateForForm.profesor_jefe || '—'}</div>
-                      <div><strong>Apoderado:</strong> {selectedCandidateForForm.guardian_name || '—'} ({selectedCandidateForForm.guardian_phone || 'Sin fono'})</div>
                     </div>
                   )}
                 </div>
+
+                {/* CAMPOS EDITABLES DE APODERADO Y CONTACTO */}
+                {formStudentId && (
+                  <div style={{ marginTop: '0.85rem', background: '#f8fafc', padding: '0.85rem', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem', flexWrap: 'wrap', gap: '0.35rem' }}>
+                      <div style={{ fontSize: '0.825rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <UserCheck size={16} color="#4f46e5" />
+                        <span>Datos del Apoderado(a) y Domicilio (Editables si cambiaron)</span>
+                      </div>
+                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                        Los cambios se actualizan automáticamente en el expediente del estudiante y en la ficha de práctica
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '0.65rem' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
+                          Nombre Completo del Apoderado(a) *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Nombre y apellidos del apoderado titular"
+                          value={formGuardianName}
+                          onChange={(e) => setFormGuardianName(e.target.value)}
+                          style={{ width: '100%', padding: '0.45rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
+                          Teléfono del Apoderado(a)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="+56 9 1234 5678"
+                          value={formGuardianPhone}
+                          onChange={(e) => setFormGuardianPhone(e.target.value)}
+                          style={{ width: '100%', padding: '0.45rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
+                          Teléfono / Celular del Alumno
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="+56 9 8765 4321"
+                          value={formStudentPhone}
+                          onChange={(e) => setFormStudentPhone(e.target.value)}
+                          style={{ width: '100%', padding: '0.45rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
+                          Dirección / Domicilio del Alumno
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Calle, Pasaje, Sector, Comuna..."
+                          value={formStudentAddress}
+                          onChange={(e) => setFormStudentAddress(e.target.value)}
+                          style={{ width: '100%', padding: '0.45rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* SECCIÓN 2: EMPRESA Y CENTRO DE PRÁCTICA */}

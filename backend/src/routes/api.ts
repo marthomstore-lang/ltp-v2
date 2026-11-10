@@ -14493,7 +14493,11 @@ router.post('/tp-internships', authMiddleware, checkRoles(['Admin', 'Director', 
       has_practice_plan = false,
       has_final_evaluation = false,
       has_student_report = false,
-      observations
+      observations,
+      guardian_name,
+      guardian_phone,
+      student_phone,
+      student_address
     } = req.body;
 
     if (!student_id) {
@@ -14543,6 +14547,24 @@ router.post('/tp-internships', authMiddleware, checkRoles(['Admin', 'Director', 
       Boolean(has_final_evaluation), Boolean(has_student_report), observations || null
     ]);
 
+    // Actualizar datos de contacto y apoderado en la ficha del estudiante si fueron editados
+    if (guardian_name || guardian_phone || student_phone || student_address) {
+      await query(`
+        UPDATE students SET
+          guardian_name = COALESCE($1, guardian_name),
+          guardian_phone = COALESCE($2, guardian_phone),
+          phone = COALESCE($3, phone),
+          address = COALESCE($4, address)
+        WHERE id = $5
+      `, [
+        guardian_name || null,
+        guardian_phone || null,
+        student_phone || null,
+        student_address || null,
+        student_id
+      ]);
+    }
+
     await logAudit(req, 'ENROLL_TP_INTERNSHIP', `Matrícula de práctica creada (${autoFolio}) para alumno ${student_id} en período ${period}.`);
 
     res.json({ success: true, id, enrollment_number: autoFolio, message: 'Matrícula de práctica creada exitosamente.' });
@@ -14584,7 +14606,11 @@ router.put('/tp-internships/:id', authMiddleware, checkRoles(['Admin', 'Director
       has_practice_plan,
       has_final_evaluation,
       has_student_report,
-      observations
+      observations,
+      guardian_name,
+      guardian_phone,
+      student_phone,
+      student_address
     } = req.body;
 
     await query(`
@@ -14650,6 +14676,28 @@ router.put('/tp-internships/:id', authMiddleware, checkRoles(['Admin', 'Director
       observations || null,
       id
     ]);
+
+    // Sincronizar datos de apoderado y contacto si fueron modificados
+    if (guardian_name || guardian_phone || student_phone || student_address) {
+      const sRes = await query('SELECT student_id FROM tp_internship_enrollments WHERE id = $1', [id]);
+      if (sRes.rows.length > 0) {
+        const sId = sRes.rows[0].student_id;
+        await query(`
+          UPDATE students SET
+            guardian_name = COALESCE($1, guardian_name),
+            guardian_phone = COALESCE($2, guardian_phone),
+            phone = COALESCE($3, phone),
+            address = COALESCE($4, address)
+          WHERE id = $5
+        `, [
+          guardian_name || null,
+          guardian_phone || null,
+          student_phone || null,
+          student_address || null,
+          sId
+        ]);
+      }
+    }
 
     await logAudit(req, 'UPDATE_TP_INTERNSHIP', `Matrícula de práctica ${id} actualizada.`);
     res.json({ success: true, message: 'Matrícula de práctica actualizada exitosamente.' });
