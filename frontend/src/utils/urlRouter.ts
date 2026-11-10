@@ -25,7 +25,8 @@ export type AdminTabId =
   | 'config'
   | 'audit'
   | 'guardian_calls'
-  | 'curriculum_plans';
+  | 'curriculum_plans'
+  | 'practicas_tp';
 
 export type TeacherTabId = 'home' | 'my_courses' | 'homeroom' | 'observations' | 'links';
 
@@ -57,6 +58,7 @@ export const ADMIN_TAB_TO_PATH: Record<AdminTabId, string> = {
   config: '/configuracion',
   audit: '/auditoria',
   guardian_calls: '/llamadas-apoderados',
+  practicas_tp: '/practicas-profesionales',
 };
 
 /**
@@ -143,6 +145,7 @@ export const FUNCTION_ID_TO_PATH: Record<string, string> = {
   guardian_calls: '/llamadas-apoderados',
   personality_reports: '/informes-personalidad',
   curriculum_plans: '/planificaciones-docentes',
+  practicas_tp: '/practicas-profesionales',
 };
 
 export const ADMIN_TAB_TITLES: Record<AdminTabId, string> = {
@@ -168,6 +171,7 @@ export const ADMIN_TAB_TITLES: Record<AdminTabId, string> = {
   audit: 'Auditoría Silent-Watch — LTP',
   guardian_calls: 'Llamadas a Apoderados — LTP',
   curriculum_plans: 'Planificaciones Docentes & Asistente IA — LTP',
+  practicas_tp: 'Prácticas Profesionales TP (4° Medio) — LTP',
 };
 
 const BASE_PATH_TO_ADMIN_TAB: Record<string, AdminTabId> = {
@@ -198,6 +202,9 @@ const BASE_PATH_TO_ADMIN_TAB: Record<string, AdminTabId> = {
   '/auditoria': 'audit',
   '/llamadas-apoderados': 'guardian_calls',
   '/bitacora-llamadas': 'guardian_calls',
+  '/practicas-profesionales': 'practicas_tp',
+  '/practica-profesional': 'practicas_tp',
+  '/practicas-tp': 'practicas_tp',
 };
 
 export const TEACHER_TAB_TO_PATH: Record<TeacherTabId, string> = {

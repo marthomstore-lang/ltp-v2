@@ -59,7 +59,8 @@ export const DEFAULT_PERMISSIONS_MATRIX: PermissionRow[] = [
   { functionId: 'course_messaging', functionName: 'Herramienta Superior: Comunicar a Curso (Mensajería Docente)', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'none', Asistente: 'none', Profesionales: 'edit', Comunicaciones: 'edit', EncargadoCRA: 'edit', Estudiante: 'none', Apoderado: 'none' },
   { functionId: 'guardian_calls', functionName: 'Registro y Marcador de Llamadas a Apoderados (Bitácora Telefónica)', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'edit', Asistente: 'edit', Profesionales: 'edit', Comunicaciones: 'edit', EncargadoCRA: 'view', Estudiante: 'none', Apoderado: 'none' },
   { functionId: 'personality_reports', functionName: 'Informes al Hogar y Personalidad (PK a 4°M)', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'view', Asistente: 'view', Profesionales: 'view', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
-  { functionId: 'curriculum_plans', functionName: 'Planificaciones Curriculares & Asistente IA', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'none', Asistente: 'view', Profesionales: 'edit', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' }
+  { functionId: 'curriculum_plans', functionName: 'Planificaciones Curriculares & Asistente IA', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'none', Asistente: 'view', Profesionales: 'edit', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' },
+  { functionId: 'practicas_tp', functionName: 'Prácticas Profesionales TP (4° Medio)', Admin: 'edit', Director: 'edit', Docente: 'edit', Administrativo: 'view', Asistente: 'view', Profesionales: 'view', Comunicaciones: 'none', EncargadoCRA: 'none', Estudiante: 'none', Apoderado: 'none' }
 ];
 
 const ROLES_LIST: { key: RoleKey; label: string }[] = [

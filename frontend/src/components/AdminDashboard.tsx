@@ -35,6 +35,7 @@ const TeacherCoursesGrid = lazy(() => import('./TeacherCoursesGrid').then(m => (
 const CurriculumPlansModule = lazy(() => import('./CurriculumPlansModule').then(m => ({ default: m.CurriculumPlansModule })));
 const ImpersonateUserModal = lazy(() => import('./ImpersonateUserModal').then(m => ({ default: m.ImpersonateUserModal })));
 const StudentsModule = lazy(() => import('./StudentsModule').then(m => ({ default: m.StudentsModule })));
+const ProfessionalInternshipsModule = lazy(() => import('./ProfessionalInternshipsModule').then(m => ({ default: m.ProfessionalInternshipsModule })));
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { DEFAULT_PERMISSIONS_MATRIX } from './PermissionsMatrix';
 
@@ -160,7 +161,7 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     const handleNav = (e: any) => {
-      if (e.detail && ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'curriculum_plans'].includes(e.detail)) {
+      if (e.detail && ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'curriculum_plans', 'practicas_tp'].includes(e.detail)) {
         setActiveTab(prev => {
           if (prev !== e.detail) {
             setTabHistory(hist => [...hist.slice(-15), prev]);
@@ -200,21 +201,22 @@ export const AdminDashboard: React.FC = () => {
     pedagogical_trips: 'pedagogical_trips',
     course_messaging: 'course_messaging',
     guardian_calls: 'guardian_calls',
-    curriculum_plans: 'curriculum_plans'
+    curriculum_plans: 'curriculum_plans',
+    practicas_tp: 'practicas_tp'
   };
 
   const rolePermissions: Record<string, string[]> = {
-    Admin: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'guardian_calls'],
-    Director: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'guardian_calls'],
-    Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'guardian_calls'],
+    Admin: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'practicas_tp', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'permissions', 'config', 'audit', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'guardian_calls'],
+    Director: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'practicas_tp', 'interviews', 'observations', 'staff', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'course_messaging', 'guardian_calls'],
+    Docente: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'practicas_tp', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'guardian_calls'],
     Comunicaciones: ['home', 'communications', 'students', 'apoderados', 'computer_lab', 'pedagogical_trips', 'admin_docs', 'course_messaging', 'guardian_calls'],
     EncargadoCRA: ['home', 'students', 'apoderados', 'communications', 'library', 'inspector_passes', 'admin_docs', 'guardian_calls'],
     Bibliotecario: ['home', 'computer_lab', 'evaluations_pie', 'library', 'admin_docs'],
     Entrevistador: ['home', 'students', 'communications', 'computer_lab', 'evaluations_pie', 'interviews', 'observations', 'admin_docs', 'course_messaging', 'guardian_calls'],
-    Administrativo: ['home', 'students', 'apoderados', 'communications', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'guardian_calls'],
-    Profesionales: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'guardian_calls'],
-    Asistente: ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'guardian_calls'],
-    'Asistente de la Educación': ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'guardian_calls'],
+    Administrativo: ['home', 'students', 'apoderados', 'communications', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'practicas_tp', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'guardian_calls'],
+    Profesionales: ['home', 'students', 'apoderados', 'communications', 'grades', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'practicas_tp', 'interviews', 'observations', 'inspector_passes', 'admin_docs', 'library', 'pedagogical_trips', 'course_messaging', 'guardian_calls'],
+    Asistente: ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'practicas_tp', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'guardian_calls'],
+    'Asistente de la Educación': ['home', 'students', 'apoderados', 'communications', 'overview', 'personality_reports', 'computer_lab', 'evaluations_pie', 'mineduc_reports', 'curriculum_plans', 'practicas_tp', 'interviews', 'observations', 'admin_docs', 'library', 'inspector_passes', 'pedagogical_trips', 'guardian_calls'],
     Apoderado: ['home', 'admin_docs'],
     Estudiante: ['home', 'admin_docs'],
     Visita: ['home', 'computer_lab', 'evaluations_pie', 'overview', 'admin_docs']
@@ -327,6 +329,7 @@ export const AdminDashboard: React.FC = () => {
       evaluations_pie: 'Portal de Evaluaciones & Integración PIE',
       mineduc_reports: 'Informes PIE & Formularios Oficiales MINEDUC (Dec. 170)',
       curriculum_plans: 'Planificaciones Curriculares & Asistente IA',
+      practicas_tp: 'Prácticas Profesionales TP (4° Medio)',
       interviews: 'Actas de Entrevistas & Compromisos',
       observations: 'Hoja de Vida & Anotaciones RICE',
       inspector_passes: 'Control de Atrasos & Pases de Inspectoría',
@@ -941,6 +944,7 @@ export const AdminDashboard: React.FC = () => {
     { id: 'grades', title: 'Libro Digital de Calificaciones Ponderadas', subtitle: 'Calificaciones, promedios, ponderaciones y registro docente', category: 'Gestión Académica & Aula', keywords: ['notas', 'calificaciones', 'ponderaciones', 'promedios', 'libro de clases', 'evaluaciones', 'examenes', 'libro digital'], icon: ClipboardList },
     { id: 'overview', title: 'Panorama General de Notas & Jefatura', subtitle: 'Alertas tempranas, promedios por curso y reportes ejecutivos', category: 'Gestión Académica & Aula', keywords: ['panorama', 'jefatura', 'resumen de notas', 'alertas academicas', 'promedio curso', 'desempeño'], icon: TrendingUp },
     { id: 'curriculum_plans', title: 'Planificaciones Curriculares & Asistente IA', subtitle: 'Planificación anual, unidades, clases y asistente pedagógico IA', category: 'Gestión Académica & Aula', keywords: ['planificaciones', 'ia', 'inteligencia artificial', 'curriculo', 'oas', 'clase a clase', 'unidades', 'anual'], icon: CalendarDays },
+    { id: 'practicas_tp', title: 'Matrículas de Práctica Profesional TP (4° Medio)', subtitle: 'Registro oficial de prácticas, empresas, maestros guías y seguro escolar D.S. 313', category: 'Gestión Académica & Aula', keywords: ['practicas', 'practica profesional', 'tecnico profesional', 'tp', '4 medio', 'cuarto medio', 'mecanica', 'parvulos', 'empresas', 'convenios', 'titulacion', 'seguro escolar'], icon: Briefcase },
     { id: 'curriculum_plans_schedules', title: 'Horarios Escolares & Distribución de Aulas', subtitle: 'Distribución horaria por curso, profesor y bloque pedagógico', category: 'Gestión Académica & Aula', keywords: ['horarios', 'bloques', 'salas', 'aulas', 'profesores', 'distribucion', 'asignaturas', 'horas'], icon: Clock },
     { id: 'evaluations_pie', title: 'Portal de Evaluaciones & Integración PIE', subtitle: 'Gestión del Programa de Integración Escolar y NEE', category: 'Gestión Académica & Aula', keywords: ['pie', 'evaluaciones', 'integracion', 'fep', 'fude', 'diagnostico', 'nee'], icon: Puzzle },
     { id: 'mineduc_reports', title: 'Informes Oficiales PIE (Dec. 170 / MINEDUC)', subtitle: 'Formularios Únicos de reevaluación e ingreso para subvención', category: 'Gestión Académica & Aula', keywords: ['mineduc', 'decreto 170', 'formulario unico', 'subvencion', 'informe oficial'], icon: FileCheck2 },
@@ -1239,6 +1243,7 @@ export const AdminDashboard: React.FC = () => {
                activeTab === 'overview' ? 'Panorama' :
                activeTab === 'evaluations_pie' ? 'Evaluaciones' :
                activeTab === 'curriculum_plans' ? 'Planificaciones' :
+               activeTab === 'practicas_tp' ? 'Prácticas TP' :
                activeTab === 'students' ? 'Matrícula' :
                activeTab === 'guardian_calls' ? 'Llamadas' :
                activeTab === 'interviews' ? 'Entrevistas' :
@@ -1464,7 +1469,8 @@ export const AdminDashboard: React.FC = () => {
                 { id: 'overview', label: 'Panorama & Jefatura', icon: TrendingUp },
                 { id: 'evaluations_pie', label: 'Evaluaciones & PIE', icon: Puzzle },
                 { id: 'mineduc_reports', label: 'Informes PIE (Dec. 170)', icon: FileCheck2 },
-                { id: 'curriculum_plans', label: 'Planificaciones & Asistente IA', icon: CalendarDays }
+                { id: 'curriculum_plans', label: 'Planificaciones & Asistente IA', icon: CalendarDays },
+                { id: 'practicas_tp', label: 'Prácticas TP (4° Medio)', icon: Briefcase }
               ]
             },
             {
@@ -3023,6 +3029,26 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               )}
 
+              {canAccess('practicas_tp') && (
+                <div
+                  className="stat-card"
+                  onClick={() => navigateToTab('practicas_tp', 'Prácticas Profesionales TP (4° Medio)')}
+                  style={{ cursor: 'pointer', transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease-out, border-color 0.18s ease-out' }}
+                  title="Abrir Matrículas y Centros de Práctica Profesional TP"
+                >
+                  <div className="stat-card-header">
+                    <span>Prácticas TP (4° Medio)</span>
+                    <div className="stat-icon-wrapper" style={{ background: '#e0e7ff', color: '#4338ca' }}>
+                      <Briefcase size={22} />
+                    </div>
+                  </div>
+                  <div className="stat-value" style={{ fontSize: '1.35rem', color: '#3730a3' }}>38 Alumnos TP</div>
+                  <div className="stat-trend" style={{ color: '#4338ca' }}>
+                    Mecánica & Párvulos 2026-2027 (Abrir →)
+                  </div>
+                </div>
+              )}
+
               {canAccess('audit') ? (
                 <div
                   className="stat-card"
@@ -3298,6 +3324,11 @@ export const AdminDashboard: React.FC = () => {
         {/* VISTA: PLANIFICACIONES CURRICULARES & ASISTENTE IA */}
         {activeTab === 'curriculum_plans' && (
           <CurriculumPlansModule token={token || ''} user={user} />
+        )}
+
+        {/* VISTA: PRÁCTICAS PROFESIONALES TP (4° MEDIO) */}
+        {activeTab === 'practicas_tp' && (
+          <ProfessionalInternshipsModule token={token || ''} currentUser={user} />
         )}
 
         {/* VISTA 5: ENTREVISTAS */}
