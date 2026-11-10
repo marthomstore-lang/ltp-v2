@@ -2213,9 +2213,7 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
                     {enrollment.company_mentor_name ? (
                       enrollment.company_mentor_name
                     ) : (
-                      <span style={{ borderBottom: '1px dotted #334155', display: 'inline-block', width: '95%', color: '#64748b', fontSize: '0.675rem' }}>
-                        (Llenado manual empresa: Nombre y Apellidos)
-                      </span>
+                      <span style={{ borderBottom: '1px dotted #475569', display: 'inline-block', width: '96%', height: '14px' }}>&nbsp;</span>
                     )}
                   </td>
                   <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Cargo / Rol:</td>
@@ -2223,9 +2221,7 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
                     {enrollment.company_mentor_position ? (
                       enrollment.company_mentor_position
                     ) : (
-                      <span style={{ borderBottom: '1px dotted #334155', display: 'inline-block', width: '95%', color: '#64748b', fontSize: '0.675rem' }}>
-                        (Cargo en la empresa)
-                      </span>
+                      <span style={{ borderBottom: '1px dotted #475569', display: 'inline-block', width: '96%', height: '14px' }}>&nbsp;</span>
                     )}
                   </td>
                 </tr>
@@ -2235,9 +2231,7 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
                     {enrollment.company_mentor_phone ? (
                       enrollment.company_mentor_phone
                     ) : (
-                      <span style={{ borderBottom: '1px dotted #334155', display: 'inline-block', width: '95%', color: '#64748b', fontSize: '0.675rem' }}>
-                        +56 9 ....................................................
-                      </span>
+                      <span style={{ borderBottom: '1px dotted #475569', display: 'inline-block', width: '96%', height: '14px' }}>&nbsp;</span>
                     )}
                   </td>
                   <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Email Guía:</td>
@@ -2245,9 +2239,7 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
                     {enrollment.company_mentor_email ? (
                       enrollment.company_mentor_email
                     ) : (
-                      <span style={{ borderBottom: '1px dotted #334155', display: 'inline-block', width: '95%', color: '#64748b', fontSize: '0.675rem' }}>
-                        .............................................................
-                      </span>
+                      <span style={{ borderBottom: '1px dotted #475569', display: 'inline-block', width: '96%', height: '14px' }}>&nbsp;</span>
                     )}
                   </td>
                 </tr>
