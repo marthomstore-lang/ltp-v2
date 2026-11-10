@@ -564,7 +564,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                 Matrículas de Práctica Profesional TP (4° Medio)
               </h1>
               <p style={{ margin: 0, fontSize: '0.875rem', color: '#64748b' }}>
-                {institution?.schoolName || 'Liceo Técnico Profesional'} · Gestión Oficial de Prácticas y Centros Formativos
+                {institution?.schoolName || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck'} · Gestión Oficial de Prácticas y Centros Formativos
               </p>
             </div>
           </div>
@@ -1342,7 +1342,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                   {editingEnrollment ? 'Editar Matrícula de Práctica TP' : 'Nueva Matrícula de Práctica Profesional TP'}
                 </h2>
                 <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
-                  Período Oficial {formPeriod} · {institution?.schoolName || 'Liceo Técnico Profesional'}
+                  Período Oficial {formPeriod} · {institution?.schoolName || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck'}
                 </p>
               </div>
               <button
@@ -2115,7 +2115,7 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
                 {institution?.dependence ? `${institution.dependence.toUpperCase()} · ` : 'REPÚBLICA DE CHILE · '}MINISTERIO DE EDUCACIÓN
               </div>
               <div style={{ fontSize: '0.9rem', fontWeight: 900, color: '#0f172a', marginTop: '0.1rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                {institution?.schoolName || 'LICEO TÉCNICO PROFESIONAL'}
+                {institution?.schoolName || 'LICEO TÉCNICO PROFESIONAL CAMPANARIO MARCOS DELUCCHI FONCK'}
               </div>
               <div style={{ fontSize: '0.7rem', color: '#475569', marginTop: '0.1rem' }}>
                 RBD: {institution?.rbd || '3941-1'} · Comuna de {institution?.commune || institution?.locality || 'Yungay'}{institution?.region ? ` · ${institution.region}` : ''}
@@ -2303,7 +2303,7 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
               </strong>
               <div style={{ color: '#475569', fontWeight: 600, fontSize: '0.72rem' }}>Profesor(a) Guía TP</div>
               <div style={{ color: '#64748b', fontSize: '0.66rem' }}>
-                {institution?.schoolName || 'Establecimiento Educacional'}
+                {institution?.schoolName || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck'}
               </div>
             </div>
 

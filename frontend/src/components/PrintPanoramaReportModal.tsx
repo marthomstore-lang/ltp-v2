@@ -28,7 +28,7 @@ export const PrintPanoramaReportModal: React.FC<PrintPanoramaReportModalProps> =
   const [showConfig, setShowConfig] = useState<boolean>(false);
   const [fontScale, setFontScale] = useState<'normal' | 'compact' | 'large'>('normal');
 
-  const [schoolName, setSchoolName] = useState<string>('LICEO CAMPANARIO');
+  const [schoolName, setSchoolName] = useState<string>('LICEO TÉCNICO PROFESIONAL CAMPANARIO MARCOS DELUCCHI FONCK');
   const [rbd, setRbd] = useState<string>('3941-1');
   const [commune, setCommune] = useState<string>('YUNGAY');
   const [region, setRegion] = useState<string>('XVI REGIÓN DE ÑUBLE');

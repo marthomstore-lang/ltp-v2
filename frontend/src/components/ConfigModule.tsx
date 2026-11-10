@@ -32,8 +32,8 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
 
   // CONFIGURACIÓN CENTRALIZADA DEL ESTABLECIMIENTO Y DIRECTOR
   const [institutionConfig, setInstitutionConfig] = useState<any>({
-    schoolName: 'Liceo Técnico Profesional',
-    shortName: 'LTP',
+    schoolName: 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck',
+    shortName: 'LTP Campanario',
     rbd: '',
     commune: '',
     locality: '',

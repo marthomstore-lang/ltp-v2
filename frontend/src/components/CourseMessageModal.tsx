@@ -696,7 +696,7 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
       <body>
         <div class="header">
           <div>
-            <h1 class="title">LICEO BICENTENARIO ENRIQUE KIRBERG — REGISTRO OFICIAL DE COMUNICACIONES</h1>
+            <h1 class="title">LICEO TÉCNICO PROFESIONAL CAMPANARIO MARCOS DELUCCHI FONCK — REGISTRO OFICIAL DE COMUNICACIONES</h1>
             <div class="subtitle">Acta de Despacho y Nómina de Destinatarios Notificados</div>
           </div>
           <button class="no-print" onclick="window.print()" style="background:#4f46e5;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-weight:700;cursor:pointer;">🖨️ Imprimir</button>

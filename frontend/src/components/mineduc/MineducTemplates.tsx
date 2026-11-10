@@ -279,7 +279,7 @@ export const SimceNeepCertificate: React.FC<{ data: any; student: any; instituti
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #000', paddingBottom: '10px', marginBottom: '25px' }}>
         <img src="/images/logo_liceo.png" alt="Logo" style={{ height: '70px', objectFit: 'contain' }} />
         <div style={{ textAlign: 'center', flex: 1 }}>
-          <h2 style={{ margin: 0, fontSize: '13pt', fontWeight: 800 }}>LICEO T.P. CAMPANARIO</h2>
+          <h2 style={{ margin: 0, fontSize: '13pt', fontWeight: 800 }}>LICEO TÉCNICO PROFESIONAL CAMPANARIO</h2>
           <h3 style={{ margin: '2px 0', fontSize: '11pt', fontWeight: 700 }}>MARCOS DELUCCHI FONCK</h3>
           <p style={{ margin: 0, fontSize: '9.5pt' }}>Programa de Integración Escolar (PIE)</p>
         </div>
@@ -300,7 +300,7 @@ export const SimceNeepCertificate: React.FC<{ data: any; student: any; instituti
         <p>
           Por medio del presente, se certifica que el/la estudiante <strong>{estudianteNombre}</strong>,{' '}
           RUT <strong>{estudianteRut}</strong>, del curso <strong>{estudianteCurso}</strong>,{' '}
-          pertenece al Programa de Integración Escolar {dateComp.anio} del Liceo T.P Campanario, RBD: 3941-1, Comuna de Yungay,{' '}
+          pertenece al Programa de Integración Escolar {dateComp.anio} del {institution?.name || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck'}, RBD: {institution?.rbd || '3941-1'}, Comuna de {institution?.commune || 'Yungay'},{' '}
           y presenta Necesidades Educativas Permanentes bajo el diagnóstico de <strong>{diagnostico}{diagnosticoAdicional ? `, ${diagnosticoAdicional}` : ''}</strong>.
         </p>
 
@@ -323,12 +323,12 @@ export const SimceNeepCertificate: React.FC<{ data: any; student: any; instituti
         <div className="signature-box">
           <strong>{directorNombre}</strong><br />
           Director(a)<br />
-          Liceo T.P. Campanario
+          {institution?.name || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck'}
         </div>
         <div className="signature-box">
           <strong>{coordinadorNombre}</strong><br />
           Coordinador(a) PIE<br />
-          Liceo T.P. Campanario
+          {institution?.name || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck'}
         </div>
       </div>
     </div>
@@ -523,7 +523,7 @@ export const FamilyReportSemester: React.FC<{ data: any; student: any; instituti
   const estudianteRut = student?.run || data.estudianteRut || '—';
   const estudianteCurso = student?.desc_grado || data.estudianteCurso || '—';
   const diagnostico = data.diagnostico || student?.pie_diagnosis || 'NEE en Seguimiento';
-  const estudianteEstablecimiento = data.estudianteEstablecimiento || institution?.name || 'Liceo Bicentenario Politécnico de Yungay';
+  const estudianteEstablecimiento = data.estudianteEstablecimiento || institution?.name || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck';
   const profesionalFechaInformeRaw = data.profesionalFechaInforme || data.profesional_data?.fecha || data.evaluation_date || '';
   const fechaInforme = profesionalFechaInformeRaw ? formatChileDate(profesionalFechaInformeRaw) : '07/07/2026';
 
@@ -600,11 +600,11 @@ export const FamilyReportSemester: React.FC<{ data: any; student: any; instituti
             <div style={{ fontSize: '8pt', fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.02em', marginTop: '1px' }}>
               Programa de Integración Escolar (PIE) — Decreto 170 / 83
             </div>
-            <div style={{ fontSize: '10.5pt', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-              LICEO BICENTENARIO POLITÉCNICO DE YUNGAY
+            <div style={{ fontSize: '10.5pt', fontWeight: 800, color: '#0f172a', marginTop: '2px', textTransform: 'uppercase' }}>
+              {institution?.name ? institution.name.toUpperCase() : 'LICEO TÉCNICO PROFESIONAL CAMPANARIO MARCOS DELUCCHI FONCK'}
             </div>
             <div style={{ fontSize: '7.5pt', color: '#475569', fontWeight: 600 }}>
-              RBD 3941-1 • Comuna de Yungay • Región de Ñuble
+              RBD: {institution?.rbd || '3941-1'} • Comuna de {institution?.commune || 'Yungay'} • {institution?.region || 'Región de Ñuble'}
             </div>
           </div>
         </div>
@@ -791,7 +791,7 @@ export const FamilyReportSemester: React.FC<{ data: any; student: any; instituti
           <div style={{ textAlign: 'center', borderTop: '1px solid #475569', paddingTop: '6px' }}>
             <div style={{ fontSize: '8.5pt', fontWeight: 800, color: '#0f172a' }}>{profesorJefe}</div>
             <div style={{ fontSize: '7.5pt', color: '#475569', fontWeight: 600 }}>Profesor(a) Jefe</div>
-            <div style={{ fontSize: '7pt', color: '#94a3b8' }}>Liceo Campanario</div>
+            <div style={{ fontSize: '7pt', color: '#94a3b8' }}>{institution?.name || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck'}</div>
           </div>
 
           <div style={{ textAlign: 'center', borderTop: '1px solid #475569', paddingTop: '6px' }}>
@@ -816,7 +816,7 @@ export const FamilyReportSemester: React.FC<{ data: any; student: any; instituti
             Documento emitido en conformidad al Decreto Supremo N° 170/2009 y Decreto N° 83/2015 del Ministerio de Educación de Chile.
           </div>
           <div>
-            Liceo Bicentenario Politécnico de Yungay • RBD 3941-1
+            {institution?.name || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck'} • RBD {institution?.rbd || '3941-1'}
           </div>
         </div>
       </div>
@@ -1263,7 +1263,7 @@ export const OfficialFuReevaluacionMineduc: React.FC<{
   const birthDate = formatChileDate(student?.birth_date || data.estudianteFechaNac);
   const age = student?.calculatedAge?.text || data.estudianteEdad || '—';
   const grade = student?.desc_grado || data.estudianteCurso || '—';
-  const establishment = institution?.name || data.establecimiento || 'Liceo Técnico Profesional Campanario';
+  const establishment = institution?.name || data.establecimiento || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck';
   const director = institution?.director || data.directorNombre || 'Víctor Ojeda Ojeda';
   const rbd = institution?.rbd || '3941-1';
 
@@ -1800,13 +1800,13 @@ export const OfficialFuReevaluacionMineduc: React.FC<{
             <div className="signature-box" style={{ width: '200px' }}>
               <strong>Scarlette Burgos Sandoval</strong><br />
               Coordinadora PIE<br />
-              Liceo T.P. Campanario<br />
+              {institution?.name || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck'}<br />
               Firma y Timbre
             </div>
             <div className="signature-box" style={{ width: '200px' }}>
               <strong>{director}</strong><br />
               Director(a)<br />
-              Liceo T.P. Campanario<br />
+              {institution?.name || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck'}<br />
               Firma y Timbre Institucional
             </div>
           </div>

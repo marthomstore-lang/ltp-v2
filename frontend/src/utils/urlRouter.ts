@@ -149,7 +149,7 @@ export const FUNCTION_ID_TO_PATH: Record<string, string> = {
 };
 
 export const ADMIN_TAB_TITLES: Record<AdminTabId, string> = {
-  home: 'Dashboard General — Liceo Bicentenario Enrique Kirberg',
+  home: 'Dashboard General — Liceo Técnico Profesional Campanario Marcos Delucchi Fonck',
   students: 'Matrícula Completa — LTP',
   apoderados: 'Nómina de Apoderados — LTP',
   communications: 'Centro de Comunicaciones y Registro de Envíos — LTP',
@@ -216,7 +216,7 @@ export const TEACHER_TAB_TO_PATH: Record<TeacherTabId, string> = {
 };
 
 export const TEACHER_TAB_TITLES: Record<TeacherTabId, string> = {
-  home: 'Portal Docente — Liceo Bicentenario Enrique Kirberg',
+  home: 'Portal Docente — Liceo Técnico Profesional Campanario Marcos Delucchi Fonck',
   my_courses: 'Mis Cursos y Calificaciones — LTP',
   homeroom: 'Jefatura de Curso — LTP',
   observations: 'Hoja de Vida — LTP',

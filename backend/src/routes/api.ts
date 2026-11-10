@@ -3632,8 +3632,8 @@ export async function getInstitutionalSettingsHelper() {
 
   // Configuración base por defecto (valores oficiales de Liceo Campanario y equipo directivo)
   const base: any = {
-    schoolName: 'Liceo Campanario',
-    shortName: 'LC',
+    schoolName: 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck',
+    shortName: 'LTP Campanario',
     rbd: '3941-1',
     commune: 'Yungay',
     locality: 'Campanario',
@@ -4373,7 +4373,7 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
     // 1. Institución Oficial y Equipo Directivo
     const instHelper = await getInstitutionalSettingsHelper();
     let inst = {
-      schoolName: (instHelper.schoolName || 'LICEO CAMPANARIO').toUpperCase(),
+      schoolName: (instHelper.schoolName || 'LICEO TÉCNICO PROFESIONAL CAMPANARIO MARCOS DELUCCHI FONCK').toUpperCase(),
       rbd: instHelper.rbd || '3941-1',
       commune: (instHelper.commune || 'YUNGAY').toUpperCase(),
       province: (instHelper.province || 'DIGUILLÍN').toUpperCase(),
@@ -13032,7 +13032,7 @@ async function consolidateInstitutionalFilesAndCalendars(syncRemoteDrive: boolea
     const lines = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//Liceo Bicentenario Tecnico Puente Nuble//LTP v2.0//ES',
+      'PRODID:-//Liceo Tecnico Profesional Campanario Marcos Delucchi Fonck//LTP v2.0//ES',
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
       `X-WR-CALNAME:${calName}`,
@@ -13397,7 +13397,7 @@ router.get('/drive/file/:code', async (req: Request, res: Response) => {
   <div class="sheet">
     <div class="header">
       <div>
-        <h1>Liceo Bicentenario Técnico Puente Ñuble</h1>
+        <h1>Liceo Técnico Profesional Campanario Marcos Delucchi Fonck</h1>
         <p>Repositorio Institucional de Evaluaciones y Adecuaciones PIE (${DEFAULT_DRIVE_ACCOUNT_EMAIL})</p>
       </div>
       <div class="badge">${ev.id}</div>

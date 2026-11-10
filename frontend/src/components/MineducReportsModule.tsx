@@ -435,7 +435,7 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
         apoderadoEmail: stu.guardian_email || '',
 
         // Específico SIMCE NEEP
-        directorNombre: data.institution?.director || 'Rodrigo Fonck Delucchi',
+        directorNombre: data.institution?.director || 'Víctor Robinson Ojeda Ojeda',
         coordinadorNombre: user?.name || 'Coordinador(a) PIE',
 
         // Específico FUS MINEDUC
@@ -472,7 +472,7 @@ export const MineducReportsModule: React.FC<MineducReportsModuleProps> = ({
 
         // Específico Semestral (vacío por defecto cuando no existe informe previo)
         semester: 1,
-        estudianteEstablecimiento: data.institution?.name || 'Liceo T.P. Campanario',
+        estudianteEstablecimiento: data.institution?.name || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck',
         profesionalFechaInforme: new Date().toISOString().split('T')[0],
         profesionalNombre: user?.name || '',
         reportePsicopedagogico: '',

@@ -561,8 +561,8 @@ router.get('/student-context/:run', authMiddleware, async (req: Request, res: Re
     } catch (_) {}
 
     const institution = {
-      name: instSettings?.schoolName || 'Liceo Técnico Profesional',
-      shortName: instSettings?.shortName || 'LTP',
+      name: instSettings?.schoolName || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck',
+      shortName: instSettings?.shortName || 'LTP Campanario',
       rbd: student.rbd || instSettings?.rbd || '',
       director: instSettings?.directorName || 'Director(a) Establecimiento',
       directorRun: instSettings?.directorRun || '',
