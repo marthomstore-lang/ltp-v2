@@ -76,12 +76,14 @@ interface ActaData {
 interface FinalActaModalProps {
   courseName: string;
   academicYear?: number | string;
+  courseData?: any;
   onClose: () => void;
 }
 
 export const FinalActaModal: React.FC<FinalActaModalProps> = ({
   courseName,
   academicYear = 2026,
+  courseData,
   onClose
 }) => {
   const [loading, setLoading] = useState<boolean>(true);
@@ -128,6 +130,101 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
         throw new Error(errJson.error || 'Error al obtener datos del acta oficial.');
       }
       const data: ActaData = await res.json();
+
+      // Si se pasa courseData desde GradesOverview, sincronizar al 100% el orden de columnas y notas visuales
+      if (courseData && Array.isArray(courseData.subjects) && Array.isArray(courseData.students) && courseData.subjects.length > 0) {
+        const visibleRegularSubs = courseData.subjects.filter((s: any) => {
+          const l = (s.name || '').toLowerCase();
+          return !s.isConceptual && !l.includes('relig') && !l.includes('orientac');
+        });
+
+        if (visibleRegularSubs.length > 0) {
+          // Reorganizar subjectColumns para coincidir exactamente con el orden en pantalla
+          const reorderedCols: SubjectColumn[] = visibleRegularSubs.map((vs: any, idx: number) => {
+            const existingCol = data.subjectColumns.find(c => c.internalName.toLowerCase() === vs.name.toLowerCase() || c.officialName.toLowerCase() === vs.name.toLowerCase());
+            return {
+              colNumber: idx + 1,
+              internalName: vs.name,
+              officialCode: existingCol?.officialCode || (idx + 1),
+              officialName: (existingCol?.officialName || vs.name).toUpperCase(),
+              teacherName: (existingCol?.teacherName || vs.teacher || 'DOCENTE ASIGNADO').toUpperCase(),
+              teacherRun: existingCol?.teacherRun || '',
+              teacherStatus: 'TITULADO'
+            };
+          });
+          data.subjectColumns = reorderedCols;
+
+          // Sincronizar calificaciones por columna y promedios con la pantalla
+          data.students = data.students.map((st) => {
+            const liveSt = courseData.students.find((ls: any) =>
+              (ls.run && st.run && ls.run.replace(/[^0-9k]/gi, '') === st.run.replace(/[^0-9k]/gi, '')) ||
+              ls.id === st.id ||
+              (ls.fullName && st.fullName && ls.fullName.toLowerCase() === st.fullName.toLowerCase())
+            );
+
+            if (liveSt && liveSt.subjectGrades) {
+              const updatedSubjectGrades: Record<string, string> = {};
+              const numericAverages: number[] = [];
+
+              for (const col of reorderedCols) {
+                const subPerf = liveSt.subjectGrades[col.internalName] ||
+                  Object.entries(liveSt.subjectGrades).find(([k]) => k.toLowerCase() === col.internalName.toLowerCase())?.[1];
+
+                const rawVal = subPerf?.annualAverage || subPerf?.average;
+                if (st.sf === 'Y' || rawVal === undefined || rawVal === null || rawVal === '-' || rawVal === '') {
+                  updatedSubjectGrades[String(col.colNumber)] = '-';
+                } else {
+                  const numVal = typeof rawVal === 'number' ? rawVal : parseFloat(String(rawVal).replace(',', '.'));
+                  if (!isNaN(numVal) && numVal > 0) {
+                    updatedSubjectGrades[String(col.colNumber)] = numVal.toFixed(1).replace('.', ',');
+                    numericAverages.push(numVal);
+                  } else {
+                    updatedSubjectGrades[String(col.colNumber)] = '-';
+                  }
+                }
+              }
+
+              let gpaStr = st.promedio;
+              if (st.sf !== 'Y') {
+                if (typeof liveSt.promedioGeneral === 'number' && liveSt.promedioGeneral > 0) {
+                  gpaStr = liveSt.promedioGeneral.toFixed(1).replace('.', ',');
+                } else if (numericAverages.length > 0) {
+                  const sum = numericAverages.reduce((a, b) => a + b, 0);
+                  gpaStr = (Math.round((sum / numericAverages.length + 1e-9) * 10) / 10).toFixed(1).replace('.', ',');
+                }
+              }
+
+              // Religión
+              const reliPerf = liveSt.subjectGrades['Religión'] ||
+                Object.entries(liveSt.subjectGrades).find(([k]) => k.toLowerCase().includes('relig'))?.[1];
+              let updatedReli = st.religion;
+              if (reliPerf && (reliPerf.average || reliPerf.annualAverage)) {
+                const rRaw = reliPerf.annualAverage || reliPerf.average;
+                if (typeof rRaw === 'string' && ['MB', 'B', 'S', 'I'].includes(rRaw.toUpperCase())) {
+                  updatedReli = rRaw.toUpperCase();
+                } else {
+                  const rAvg = typeof rRaw === 'number' ? rRaw : parseFloat(String(rRaw).replace(',', '.'));
+                  if (!isNaN(rAvg) && rAvg > 0) {
+                    if (rAvg >= 6.0) updatedReli = 'MB';
+                    else if (rAvg >= 5.0) updatedReli = 'B';
+                    else if (rAvg >= 4.0) updatedReli = 'S';
+                    else updatedReli = 'I';
+                  }
+                }
+              }
+
+              return {
+                ...st,
+                subjectGrades: updatedSubjectGrades,
+                promedio: gpaStr,
+                religion: updatedReli
+              };
+            }
+            return st;
+          });
+        }
+      }
+
       setActaData(data);
 
       setEditableDecretoEval(data.legal.decretoEvaluacion || 'Decreto N° 67 / 2018');
@@ -441,35 +538,34 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
             {/* PÁGINA 1: CUADRO GENERAL DE CALIFICACIONES Y PROMOCIÓN   */}
             {/* ======================================================== */}
             <div className="acta-page acta-page-1" style={{
-              padding: '12mm 10mm 10mm 10mm',
-              minHeight: '210mm',
+              padding: actaData.students.length > 35 ? '3mm 4mm 2mm 4mm' : '6mm 6mm 4mm 6mm',
               boxSizing: 'border-box'
             }}>
               
               {/* CABECERA GUBERNAMENTAL OFICIAL */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #000000', paddingBottom: '6px', marginBottom: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '42px', height: '42px', border: '1px solid #000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '9px', textAlign: 'center', lineHeight: '1.1' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #000000', paddingBottom: '3px', marginBottom: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '32px', height: '32px', border: '1px solid #000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '7.5px', textAlign: 'center', lineHeight: '1.1' }}>
                     ESCUDO<br />CHILE
                   </div>
                   <div>
-                    <div style={{ fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                       MINISTERIO DE EDUCACIÓN
                     </div>
-                    <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase' }}>
+                    <div style={{ fontSize: '8px', fontWeight: 700, textTransform: 'uppercase' }}>
                       DIVISIÓN DE EDUCACIÓN GENERAL
                     </div>
-                    <div style={{ fontSize: '8px', color: '#333' }}>
+                    <div style={{ fontSize: '7px', color: '#333' }}>
                       DOCUMENTO OFICIAL DEL ESTADO DE CHILE
                     </div>
                   </div>
                 </div>
 
-                <div style={{ border: '2px solid #000000', padding: '4px 10px', textAlign: 'center', minWidth: '320px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 900, letterSpacing: '0.5px' }}>
+                <div style={{ border: '2px solid #000000', padding: '3px 8px', textAlign: 'center', minWidth: '300px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 900, letterSpacing: '0.4px' }}>
                     ACTA DE REGISTRO DE CALIFICACIONES FINALES Y PROMOCIÓN ESCOLAR
                   </div>
-                  <div style={{ fontSize: '9px', fontWeight: 800, marginTop: '2px' }}>
+                  <div style={{ fontSize: '8.5px', fontWeight: 800, marginTop: '1px' }}>
                     CURSO: {actaData.course.name.toUpperCase()} — AÑO ESCOLAR: {actaData.course.academicYear}
                   </div>
                 </div>
@@ -478,20 +574,20 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
               {/* CUADRO IDENTIFICATORIO DEL ESTABLECIMIENTO Y DECRETOS */}
               <div style={{
                 border: '1px solid #000000',
-                fontSize: '8px',
-                lineHeight: '1.3',
-                marginBottom: '8px',
+                fontSize: '7px',
+                lineHeight: '1.2',
+                marginBottom: '4px',
                 display: 'grid',
                 gridTemplateColumns: '1.2fr 1fr'
               }}>
-                <div style={{ padding: '4px 6px', borderRight: '1px solid #000000' }}>
+                <div style={{ padding: '2px 4px', borderRight: '1px solid #000000' }}>
                   <div><strong>REGIÓN:</strong> {actaData.institution.region}</div>
                   <div><strong>PROVINCIA:</strong> {actaData.institution.province} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>COMUNA:</strong> {actaData.institution.commune}</div>
                   <div><strong>ESTABLECIMIENTO:</strong> {actaData.institution.schoolName}</div>
                   <div><strong>R.B.D.:</strong> {actaData.institution.rbd}</div>
                   <div><strong>PROFESOR(A) JEFE:</strong> {editableProfesorJefe.toUpperCase()}</div>
                 </div>
-                <div style={{ padding: '4px 6px' }}>
+                <div style={{ padding: '2px 4px' }}>
                   <div><strong>MODALIDAD:</strong> {actaData.course.modality}</div>
                   <div><strong>ESPECIALIDAD:</strong> {actaData.course.specialty}</div>
                   <div><strong>DEC. EVALUACIÓN N°:</strong> {editableDecretoEval}</div>
@@ -506,27 +602,28 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
                   width: '100%',
                   borderCollapse: 'collapse',
                   border: '1px solid #000000',
-                  fontSize: '7.5px',
-                  textAlign: 'center'
+                  fontSize: actaData.students.length > 35 ? '6.5px' : '7.2px',
+                  textAlign: 'center',
+                  lineHeight: '1.1'
                 }}>
                   <thead>
                     <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '1px solid #000000' }}>
-                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '3px 2px', width: '22px' }}>N°</th>
-                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', minWidth: '170px' }}>
+                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '2px 1px', width: '20px' }}>N°</th>
+                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', minWidth: '160px' }}>
                         NÓMINA DE ALUMNOS (APELLIDOS Y NOMBRES)
                       </th>
-                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '3px 2px', width: '64px' }}>R.U.N.</th>
-                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '3px 2px', width: '16px' }}>SEX</th>
-                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '3px 2px', width: '50px' }}>F. NAC.</th>
-                      <th colSpan={actaData.subjectColumns.length} style={{ border: '1px solid #000', padding: '2px', letterSpacing: '0.5px' }}>
+                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '2px 1px', width: '58px' }}>R.U.N.</th>
+                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '2px 1px', width: '14px' }}>SEX</th>
+                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '2px 1px', width: '46px' }}>F. NAC.</th>
+                      <th colSpan={actaData.subjectColumns.length} style={{ border: '1px solid #000', padding: '1.5px', letterSpacing: '0.4px' }}>
                         CALIFICACIONES POR ASIGNATURA O SUBSECTOR (NUMERACIÓN 1 A {actaData.subjectColumns.length})
                       </th>
-                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '3px 2px', width: '26px', backgroundColor: '#e2e8f0', fontWeight: 800 }}>PROM.</th>
-                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '3px 2px', width: '22px' }}>RELI.</th>
-                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '3px 2px', width: '20px' }}>ORIE.</th>
-                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '3px 2px', width: '28px' }}>% ASIS</th>
-                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '3px 2px', width: '20px', fontWeight: 900 }}>S.F.</th>
-                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', minWidth: '85px' }}>OBSERVACIONES</th>
+                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '2px 1px', width: '24px', backgroundColor: '#e2e8f0', fontWeight: 800 }}>PROM.</th>
+                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '2px 1px', width: '20px' }}>RELI.</th>
+                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '2px 1px', width: '18px' }}>ORIE.</th>
+                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '2px 1px', width: '24px' }}>% ASIS</th>
+                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '2px 1px', width: '18px', fontWeight: 900 }}>S.F.</th>
+                      <th rowSpan={2} style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', minWidth: '80px' }}>OBSERVACIONES</th>
                     </tr>
                     <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #000000' }}>
                       {actaData.subjectColumns.map(col => (
@@ -534,10 +631,10 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
                           key={col.colNumber}
                           style={{
                             border: '1px solid #000',
-                            padding: '2px 1px',
-                            width: '24px',
+                            padding: '1.5px 0.5px',
+                            width: '22px',
                             fontWeight: 800,
-                            fontSize: '8px'
+                            fontSize: '7px'
                           }}
                           title={`Columna ${col.colNumber}: [${col.officialCode}] ${col.officialName}`}
                         >
@@ -549,17 +646,17 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
                   <tbody>
                     {actaData.students.map((st) => (
                       <tr key={st.id} style={{
-                        height: '14px',
+                        height: actaData.students.length > 35 ? '10.5px' : '12.5px',
                         borderBottom: '1px solid #000000',
                         backgroundColor: st.sf === 'Y' ? '#f8fafc' : 'transparent'
                       }}>
-                        <td style={{ border: '1px solid #000', padding: '1px', fontWeight: 700 }}>{st.listNumber}</td>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <td style={{ border: '1px solid #000', padding: '0.5px', fontWeight: 700 }}>{st.listNumber}</td>
+                        <td style={{ border: '1px solid #000', padding: '0.5px 3px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {st.fullName}
                         </td>
-                        <td style={{ border: '1px solid #000', padding: '1px', fontFamily: 'monospace', fontSize: '7px' }}>{st.run}</td>
-                        <td style={{ border: '1px solid #000', padding: '1px' }}>{st.gender}</td>
-                        <td style={{ border: '1px solid #000', padding: '1px', fontSize: '7px' }}>{st.birthDate}</td>
+                        <td style={{ border: '1px solid #000', padding: '0.5px', fontFamily: 'monospace', fontSize: actaData.students.length > 35 ? '6px' : '6.8px' }}>{st.run}</td>
+                        <td style={{ border: '1px solid #000', padding: '0.5px' }}>{st.gender}</td>
+                        <td style={{ border: '1px solid #000', padding: '0.5px', fontSize: actaData.students.length > 35 ? '5.8px' : '6.8px' }}>{st.birthDate}</td>
 
                         {/* NOTAS POR ASIGNATURA */}
                         {actaData.subjectColumns.map(col => {
@@ -570,7 +667,7 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
                               key={col.colNumber}
                               style={{
                                 border: '1px solid #000',
-                                padding: '1px',
+                                padding: '0.5px',
                                 fontFamily: 'monospace',
                                 fontWeight: gradeVal !== '-' ? 700 : 400,
                                 color: isRed ? '#b91c1c' : '#000000'
@@ -584,7 +681,7 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
                         {/* PROMEDIO GENERAL */}
                         <td style={{
                           border: '1px solid #000',
-                          padding: '1px',
+                          padding: '0.5px',
                           backgroundColor: '#f1f5f9',
                           fontFamily: 'monospace',
                           fontWeight: 800
@@ -593,16 +690,16 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
                         </td>
 
                         {/* RELIGIÓN Y ORIENTACIÓN */}
-                        <td style={{ border: '1px solid #000', padding: '1px', fontWeight: 600 }}>{st.religion}</td>
-                        <td style={{ border: '1px solid #000', padding: '1px', color: '#64748b' }}>{st.orientacion}</td>
+                        <td style={{ border: '1px solid #000', padding: '0.5px', fontWeight: 600 }}>{st.religion}</td>
+                        <td style={{ border: '1px solid #000', padding: '0.5px', color: '#64748b' }}>{st.orientacion}</td>
 
                         {/* ASISTENCIA */}
-                        <td style={{ border: '1px solid #000', padding: '1px', fontFamily: 'monospace' }}>{st.attendance}</td>
+                        <td style={{ border: '1px solid #000', padding: '0.5px', fontFamily: 'monospace' }}>{st.attendance}</td>
 
                         {/* SITUACIÓN FINAL (P / R / Y) */}
                         <td style={{
                           border: '1px solid #000',
-                          padding: '1px',
+                          padding: '0.5px',
                           fontWeight: 900,
                           color: st.sf === 'P' ? '#047857' : st.sf === 'R' ? '#b91c1c' : '#64748b'
                         }}>
@@ -610,7 +707,7 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
                         </td>
 
                         {/* OBSERVACIONES */}
-                        <td style={{ border: '1px solid #000', padding: '1px 3px', textAlign: 'left', fontSize: '7px', whiteSpace: 'nowrap' }}>
+                        <td style={{ border: '1px solid #000', padding: '0.5px 2px', textAlign: 'left', fontSize: actaData.students.length > 35 ? '5.8px' : '6.5px', whiteSpace: 'nowrap' }}>
                           {st.observaciones}
                         </td>
                       </tr>
@@ -620,7 +717,7 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
               </div>
 
               {/* PIE DE PÁGINA 1 */}
-              <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', fontSize: '7.5px', color: '#475569' }}>
+              <div style={{ marginTop: '3px', display: 'flex', justifyContent: 'space-between', fontSize: '6.5px', color: '#475569' }}>
                 <div>
                   <strong>Simbología:</strong> P = Promovido(a) &nbsp;|&nbsp; R = Reprobado(a) &nbsp;|&nbsp; Y = Retirado(a) &nbsp;|&nbsp; RELI: MB (Muy Bueno), B (Bueno), S (Suficiente), I (Insuficiente), N/O (No Observa)
                 </div>
@@ -637,63 +734,62 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
             {/* PÁGINA 2: SUBSECTORES, RESUMEN ESTADÍSTICO Y FIRMAS      */}
             {/* ======================================================== */}
             <div className="acta-page acta-page-2" style={{
-              padding: '12mm 10mm 10mm 10mm',
-              minHeight: '210mm',
+              padding: '5mm 6mm 4mm 6mm',
               boxSizing: 'border-box'
             }}>
               
               {/* CABECERA PÁGINA 2 */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #000', paddingBottom: '4px', marginBottom: '8px' }}>
-                <div style={{ fontSize: '9px', fontWeight: 800 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #000', paddingBottom: '3px', marginBottom: '6px' }}>
+                <div style={{ fontSize: '8.5px', fontWeight: 800 }}>
                   {actaData.institution.schoolName} — R.B.D. {actaData.institution.rbd}
                 </div>
-                <div style={{ fontSize: '9px', fontWeight: 900, textTransform: 'uppercase' }}>
+                <div style={{ fontSize: '8.5px', fontWeight: 900, textTransform: 'uppercase' }}>
                   ACTA DE CALIFICACIONES FINALES Y PROMOCIÓN ESCOLAR — PÁGINA 2
                 </div>
-                <div style={{ fontSize: '8px', color: '#475569' }}>
+                <div style={{ fontSize: '7.5px', color: '#475569' }}>
                   CURSO: {actaData.course.name.toUpperCase()} ({actaData.course.academicYear})
                 </div>
               </div>
 
               {/* TABLA DE ASIGNATURAS / SUBSECTORES Y DOCENTES */}
-              <div style={{ marginBottom: '10px' }}>
-                <div style={{ fontSize: '8.5px', fontWeight: 900, textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.4px' }}>
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontSize: '7.5px', fontWeight: 900, textTransform: 'uppercase', marginBottom: '2px', letterSpacing: '0.4px' }}>
                   NÓMINA DE ASIGNATURAS, SUBSECTORES OFICIALES (MINEDUC) Y DOCENTES A CARGO
                 </div>
                 <table style={{
                   width: '100%',
                   borderCollapse: 'collapse',
                   border: '1px solid #000',
-                  fontSize: '7.5px'
+                  fontSize: '7px'
                 }}>
                   <thead>
                     <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '1px solid #000' }}>
-                      <th style={{ border: '1px solid #000', padding: '3px', width: '25px', textAlign: 'center' }}>N°</th>
-                      <th style={{ border: '1px solid #000', padding: '3px', width: '65px', textAlign: 'center' }}>CÓD. MINEDUC</th>
-                      <th style={{ border: '1px solid #000', padding: '3px 6px', textAlign: 'left' }}>ASIGNATURA O SUBSECTOR OFICIAL</th>
-                      <th style={{ border: '1px solid #000', padding: '3px 6px', textAlign: 'left' }}>NOMBRE DEL PROFESOR(A)</th>
-                      <th style={{ border: '1px solid #000', padding: '3px', width: '75px', textAlign: 'center' }}>R.U.N.</th>
-                      <th style={{ border: '1px solid #000', padding: '3px', width: '65px', textAlign: 'center' }}>CONDICIÓN</th>
-                      <th style={{ border: '1px solid #000', padding: '3px', width: '90px', textAlign: 'center' }}>FIRMA</th>
+                      <th style={{ border: '1px solid #000', padding: '2px', width: '22px', textAlign: 'center' }}>N°</th>
+                      <th style={{ border: '1px solid #000', padding: '2px', width: '55px', textAlign: 'center' }}>CÓD. MINEDUC</th>
+                      <th style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'left' }}>ASIGNATURA O SUBSECTOR OFICIAL</th>
+                      <th style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'left' }}>NOMBRE DEL PROFESOR(A)</th>
+                      <th style={{ border: '1px solid #000', padding: '2px', width: '65px', textAlign: 'center' }}>R.U.N.</th>
+                      <th style={{ border: '1px solid #000', padding: '2px', width: '55px', textAlign: 'center' }}>CONDICIÓN</th>
+                      <th style={{ border: '1px solid #000', padding: '2px', width: '80px', textAlign: 'center' }}>FIRMA</th>
                     </tr>
                   </thead>
                   <tbody>
                     {actaData.subjectColumns.map(col => (
-                      <tr key={col.colNumber} style={{ height: '14px', borderBottom: '1px solid #000' }}>
+                      <tr key={col.colNumber} style={{ height: '12px', borderBottom: '1px solid #000' }}>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 800 }}>{col.colNumber}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700 }}>
                           {col.officialCode}
                         </td>
-                        <td style={{ border: '1px solid #000', padding: '1px 6px', fontWeight: 700 }}>
+                        <td style={{ border: '1px solid #000', padding: '1px 4px', fontWeight: 700 }}>
                           {col.officialName}
                         </td>
-                        <td style={{ border: '1px solid #000', padding: '1px 6px' }}>
+                        <td style={{ border: '1px solid #000', padding: '1px 4px' }}>
                           {col.teacherName}
                         </td>
-                        <td style={{ border: '1px solid #000', textAlign: 'center', fontFamily: 'monospace', fontSize: '7px' }}>
+                        <td style={{ border: '1px solid #000', textAlign: 'center', fontFamily: 'monospace', fontSize: '6.5px' }}>
                           {col.teacherRun || '-'}
                         </td>
-                        <td style={{ border: '1px solid #000', textAlign: 'center', fontSize: '7px' }}>
+                        <td style={{ border: '1px solid #000', textAlign: 'center', fontSize: '6.5px' }}>
                           {col.teacherStatus}
                         </td>
                         <td style={{ border: '1px solid #000' }}></td>
@@ -707,68 +803,68 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: '1fr 1.6fr',
-                gap: '12px',
-                marginTop: '10px'
+                gap: '8px',
+                marginTop: '6px'
               }}>
                 
                 {/* CUADRO RESUMEN ESTADÍSTICO OFICIAL */}
                 <div>
-                  <div style={{ fontSize: '8.5px', fontWeight: 900, textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.4px' }}>
+                  <div style={{ fontSize: '7.5px', fontWeight: 900, textTransform: 'uppercase', marginBottom: '2px', letterSpacing: '0.4px' }}>
                     RESUMEN ESTADÍSTICO DE RENDIMIENTO ESCOLAR
                   </div>
                   <table style={{
                     width: '100%',
                     borderCollapse: 'collapse',
                     border: '1px solid #000',
-                    fontSize: '7.5px'
+                    fontSize: '7px'
                   }}>
                     <thead>
                       <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '1px solid #000' }}>
-                        <th style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left' }}>CONCEPTO</th>
-                        <th style={{ border: '1px solid #000', padding: '3px', width: '40px', textAlign: 'center' }}>VAR. (M)</th>
-                        <th style={{ border: '1px solid #000', padding: '3px', width: '40px', textAlign: 'center' }}>DAM. (F)</th>
-                        <th style={{ border: '1px solid #000', padding: '3px', width: '45px', textAlign: 'center', backgroundColor: '#e2e8f0' }}>TOTAL</th>
+                        <th style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left' }}>CONCEPTO</th>
+                        <th style={{ border: '1px solid #000', padding: '2px', width: '35px', textAlign: 'center' }}>VAR. (M)</th>
+                        <th style={{ border: '1px solid #000', padding: '2px', width: '35px', textAlign: 'center' }}>DAM. (F)</th>
+                        <th style={{ border: '1px solid #000', padding: '2px', width: '40px', textAlign: 'center', backgroundColor: '#e2e8f0' }}>TOTAL</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td style={{ border: '1px solid #000', padding: '2px 4px' }}>MATRÍCULA INICIAL</td>
+                        <td style={{ border: '1px solid #000', padding: '1.5px 3px' }}>MATRÍCULA INICIAL</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center' }}>{actaData.stats.matInicial.m}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center' }}>{actaData.stats.matInicial.f}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 800 }}>{actaData.stats.matInicial.total}</td>
                       </tr>
                       <tr>
-                        <td style={{ border: '1px solid #000', padding: '2px 4px' }}>RETIRADOS DURANTE EL AÑO</td>
+                        <td style={{ border: '1px solid #000', padding: '1.5px 3px' }}>RETIRADOS DURANTE EL AÑO</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center' }}>{actaData.stats.retirados.m}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center' }}>{actaData.stats.retirados.f}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 800 }}>{actaData.stats.retirados.total}</td>
                       </tr>
                       <tr style={{ backgroundColor: '#f8fafc' }}>
-                        <td style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 800 }}>MATRÍCULA FINAL</td>
+                        <td style={{ border: '1px solid #000', padding: '1.5px 3px', fontWeight: 800 }}>MATRÍCULA FINAL</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 700 }}>{actaData.stats.matFinal.m}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 700 }}>{actaData.stats.matFinal.f}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 900 }}>{actaData.stats.matFinal.total}</td>
                       </tr>
                       <tr style={{ color: '#047857' }}>
-                        <td style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 800 }}>TOTAL PROMOVIDOS (P)</td>
+                        <td style={{ border: '1px solid #000', padding: '1.5px 3px', fontWeight: 800 }}>TOTAL PROMOVIDOS (P)</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 700 }}>{actaData.stats.promovidos.m}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 700 }}>{actaData.stats.promovidos.f}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 900 }}>{actaData.stats.promovidos.total}</td>
                       </tr>
                       <tr style={{ color: '#b91c1c' }}>
-                        <td style={{ border: '1px solid #000', padding: '2px 4px' }}>REPROBADOS POR RENDIMIENTO</td>
+                        <td style={{ border: '1px solid #000', padding: '1.5px 3px' }}>REPROBADOS POR RENDIMIENTO</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center' }}>{actaData.stats.repRendimiento.m}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center' }}>{actaData.stats.repRendimiento.f}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 800 }}>{actaData.stats.repRendimiento.total}</td>
                       </tr>
                       <tr style={{ color: '#b91c1c' }}>
-                        <td style={{ border: '1px solid #000', padding: '2px 4px' }}>REPROBADOS POR INASISTENCIA</td>
+                        <td style={{ border: '1px solid #000', padding: '1.5px 3px' }}>REPROBADOS POR INASISTENCIA</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center' }}>{actaData.stats.repInasistencia.m}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center' }}>{actaData.stats.repInasistencia.f}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 800 }}>{actaData.stats.repInasistencia.total}</td>
                       </tr>
                       <tr style={{ backgroundColor: '#fee2e2', color: '#991b1b' }}>
-                        <td style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 800 }}>TOTAL REPROBADOS (R)</td>
+                        <td style={{ border: '1px solid #000', padding: '1.5px 3px', fontWeight: 800 }}>TOTAL REPROBADOS (R)</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 700 }}>{actaData.stats.repTotal.m}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 700 }}>{actaData.stats.repTotal.f}</td>
                         <td style={{ border: '1px solid #000', textAlign: 'center', fontWeight: 900 }}>{actaData.stats.repTotal.total}</td>
@@ -782,54 +878,53 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: '1fr 1fr 1fr',
-                    gap: '8px',
+                    gap: '6px',
                     textAlign: 'center',
-                    fontSize: '7.5px'
+                    fontSize: '7px'
                   }}>
                     {/* FIRMA 1 */}
-                    <div style={{ border: '1px solid #000', padding: '26px 4px 6px 4px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: '68px' }}>
-                      <div style={{ borderTop: '1px dotted #000', paddingTop: '3px' }}>
+                    <div style={{ border: '1px solid #000', padding: '16px 2px 4px 2px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: '52px' }}>
+                      <div style={{ borderTop: '1px dotted #000', paddingTop: '2px' }}>
                         <div style={{ fontWeight: 800 }}>{editableEncargadoActa.toUpperCase()}</div>
-                        <div style={{ fontSize: '7px' }}>R.U.N. {editableEncargadoRun || '—'}</div>
-                        <div style={{ fontWeight: 700, fontSize: '6.5px', marginTop: '1px' }}>ENCARGADO(A) CONFECCIÓN ACTA</div>
+                        <div style={{ fontSize: '6.5px' }}>R.U.N. {editableEncargadoRun || '—'}</div>
+                        <div style={{ fontWeight: 700, fontSize: '6px', marginTop: '1px' }}>ENCARGADO(A) CONFECCIÓN ACTA</div>
                       </div>
                     </div>
 
                     {/* FIRMA 2 */}
-                    <div style={{ border: '1px solid #000', padding: '26px 4px 6px 4px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: '68px' }}>
-                      <div style={{ borderTop: '1px dotted #000', paddingTop: '3px' }}>
+                    <div style={{ border: '1px solid #000', padding: '16px 2px 4px 2px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: '52px' }}>
+                      <div style={{ borderTop: '1px dotted #000', paddingTop: '2px' }}>
                         <div style={{ fontWeight: 800 }}>{editableProfesorJefe.toUpperCase()}</div>
-                        <div style={{ fontSize: '7px' }}>R.U.N. {editableProfesorRun || '—'}</div>
-                        <div style={{ fontWeight: 700, fontSize: '6.5px', marginTop: '1px' }}>PROFESOR(A) JEFE</div>
+                        <div style={{ fontSize: '6.5px' }}>R.U.N. {editableProfesorRun || '—'}</div>
+                        <div style={{ fontWeight: 700, fontSize: '6px', marginTop: '1px' }}>PROFESOR(A) JEFE</div>
                       </div>
                     </div>
 
                     {/* FIRMA 3 */}
-                    <div style={{ border: '1px solid #000', padding: '26px 4px 6px 4px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: '68px' }}>
-                      <div style={{ borderTop: '1px dotted #000', paddingTop: '3px' }}>
+                    <div style={{ border: '1px solid #000', padding: '16px 2px 4px 2px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: '52px' }}>
+                      <div style={{ borderTop: '1px dotted #000', paddingTop: '2px' }}>
                         <div style={{ fontWeight: 800 }}>{editableDirector.toUpperCase()}</div>
-                        <div style={{ fontSize: '7px' }}>R.U.N. {editableDirectorRun || '—'}</div>
-                        <div style={{ fontWeight: 700, fontSize: '6.5px', marginTop: '1px' }}>DIRECTOR(A) / TIMBRE</div>
+                        <div style={{ fontSize: '6.5px' }}>R.U.N. {editableDirectorRun || '—'}</div>
+                        <div style={{ fontWeight: 700, fontSize: '6px', marginTop: '1px' }}>DIRECTOR(A) / TIMBRE</div>
                       </div>
                     </div>
                   </div>
 
                   {/* LUGAR, FECHA Y CÓDIGO DE VALIDACIÓN */}
                   <div style={{
-                    marginTop: '8px',
-                    padding: '4px 6px',
+                    marginTop: '4px',
+                    padding: '3px 4px',
                     border: '1px solid #000',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    fontSize: '7.5px'
+                    fontSize: '7px'
                   }}>
                     <div>
                       <strong>LUGAR Y FECHA DE EMISIÓN:</strong> {actaData.institution.commune}, {editableFechaEmision}.
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {/* Código de barras decorativo SVG */}
-                      <svg width="100" height="16" viewBox="0 0 100 16">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <svg width="80" height="12" viewBox="0 0 100 16">
                         <rect x="0" y="0" width="2" height="16" fill="#000" />
                         <rect x="3" y="0" width="1" height="16" fill="#000" />
                         <rect x="6" y="0" width="3" height="16" fill="#000" />
@@ -866,7 +961,7 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
               </div>
 
               {/* PIE DE PÁGINA 2 */}
-              <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', fontSize: '7.5px', color: '#475569' }}>
+              <div style={{ marginTop: '4px', display: 'flex', justifyContent: 'space-between', fontSize: '6.5px', color: '#475569' }}>
                 <div>
                   Registro de Calificaciones Finales y Promoción Escolar conforme a normativa vigente MINEDUC (Decreto N° 67 / 2018).
                 </div>
@@ -886,7 +981,7 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
         @media print {
           @page {
             size: landscape;
-            margin: 5mm 6mm 5mm 6mm;
+            margin: 3mm 4mm 3mm 4mm;
           }
 
           html, body {
@@ -949,8 +1044,10 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
           }
 
           .acta-page {
-            min-height: auto !important;
+            min-height: unset !important;
             padding: 0 !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
           }
@@ -958,6 +1055,9 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
           .acta-page-1 {
             page-break-after: always !important;
             break-after: page !important;
+            max-height: 200mm !important;
+            height: 200mm !important;
+            overflow: hidden !important;
           }
 
           .acta-page-2 {
@@ -965,20 +1065,13 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
             break-before: page !important;
             page-break-after: avoid !important;
             break-after: avoid !important;
+            max-height: 200mm !important;
+            height: 200mm !important;
+            overflow: hidden !important;
           }
 
           .page-break {
             display: none !important;
-          }
-
-          table {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
-
-          tr {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
           }
         }
       `}</style>

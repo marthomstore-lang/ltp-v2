@@ -3859,7 +3859,7 @@ router.get('/config/course-subject-order', authMiddleware, async (req: Request, 
     let dbOrders: any = null;
     try {
       const dbRes = await query(
-        "SELECT config_value FROM system_settings WHERE id = 'SET-COURSE-SUBJ-ORDER' OR config_key = 'course_subject_orders' ORDER BY (CASE WHEN id = 'SET-COURSE-SUBJ-ORDER' THEN 1 ELSE 2 END), updated_at DESC LIMIT 1"
+        "SELECT config_value FROM system_settings WHERE (id = 'SET-COURSE-SUBJ-ORDER' OR config_key = 'course_subject_orders') AND config_value != '{}' AND length(config_value) > 2 ORDER BY length(config_value) DESC LIMIT 1"
       );
       if (dbRes.rows && dbRes.rows.length > 0 && dbRes.rows[0].config_value) {
         dbOrders = typeof dbRes.rows[0].config_value === 'string'
@@ -3883,7 +3883,7 @@ router.post('/config/course-subject-order', authMiddleware, checkRoles(['Admin',
     // 1. Obtener de BD primero
     try {
       const dbRes = await query(
-        "SELECT config_value FROM system_settings WHERE id = 'SET-COURSE-SUBJ-ORDER' OR config_key = 'course_subject_orders' ORDER BY (CASE WHEN id = 'SET-COURSE-SUBJ-ORDER' THEN 1 ELSE 2 END), updated_at DESC LIMIT 1"
+        "SELECT config_value FROM system_settings WHERE (id = 'SET-COURSE-SUBJ-ORDER' OR config_key = 'course_subject_orders') AND config_value != '{}' AND length(config_value) > 2 ORDER BY length(config_value) DESC LIMIT 1"
       );
       if (dbRes.rows && dbRes.rows.length > 0 && dbRes.rows[0].config_value) {
         existingOrders = typeof dbRes.rows[0].config_value === 'string'
@@ -4427,8 +4427,8 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
     // Catálogo oficial de asignaturas
     const catalogRes = await query('SELECT id, name, mineduc_code, official_name FROM subjects');
 
-    // Orden curricular oficial desde course_subject_orders
-    const csoRes = await query("SELECT config_value FROM system_settings WHERE id = 'SET-COURSE-SUBJ-ORDER' OR config_key = 'course_subject_orders' ORDER BY (CASE WHEN id = 'SET-COURSE-SUBJ-ORDER' THEN 1 ELSE 2 END), updated_at DESC LIMIT 1");
+    // Orden curricular oficial desde course_subject_orders (asegurando ignorar filas vacías {})
+    const csoRes = await query("SELECT config_value FROM system_settings WHERE (id = 'SET-COURSE-SUBJ-ORDER' OR config_key = 'course_subject_orders') AND config_value != '{}' AND length(config_value) > 2 ORDER BY length(config_value) DESC LIMIT 1");
     let preferredSubjects: string[] = [];
     try {
       if (csoRes.rows.length > 0 && csoRes.rows[0].config_value) {
@@ -4446,8 +4446,22 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
     );
     const rawGradeSubs = gradeSubjectsRes.rows.map((r: any) => r.subject_name.trim());
 
-    // Combinar asignaturas respetando el orden curricular
-    const allSubs: string[] = [...preferredSubjects];
+    // Asignaturas activas (que tienen notas o docente asignado en este curso)
+    const activeSubNames = new Set<string>();
+    for (const g of rawGradeSubs) activeSubNames.add(g.toLowerCase());
+    for (const t of taRes.rows) {
+      if (t.teacher_name && t.teacher_name.toLowerCase() !== 'sin asignar') {
+        activeSubNames.add((t.subject_name || '').toLowerCase());
+      }
+    }
+
+    // Combinar asignaturas respetando el orden curricular oficial, pero solo para asignaturas activas en este curso
+    const allSubs: string[] = [];
+    for (const p of preferredSubjects) {
+      if (Array.from(activeSubNames).some(a => matchSubjectBackend(a, p)) && !allSubs.some(s => matchSubjectBackend(s, p))) {
+        allSubs.push(p);
+      }
+    }
     for (const g of rawGradeSubs) {
       if (!allSubs.some(s => matchSubjectBackend(s, g))) {
         allSubs.push(g);
@@ -4478,9 +4492,16 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
       }
     }
 
-    // Si no había orden preferido, ordenar alfabéticamente
+    // Si no había orden curricular preferido, ordenar por catálogo oficial
     if (preferredSubjects.length === 0) {
-      regularSubjects.sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+      regularSubjects.sort((a, b) => {
+        const catA = catalogRes.rows.find((c: any) => matchSubjectBackend(c.name, a) || matchSubjectBackend(c.official_name, a));
+        const catB = catalogRes.rows.find((c: any) => matchSubjectBackend(c.name, b) || matchSubjectBackend(c.official_name, b));
+        const codeA = catA?.id || 999;
+        const codeB = catB?.id || 999;
+        if (codeA !== codeB) return codeA - codeB;
+        return a.localeCompare(b, 'es', { sensitivity: 'base' });
+      });
     }
 
     const subjectColumns = regularSubjects.map((sName, index) => {
@@ -4502,9 +4523,9 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
       };
     });
 
-    // 4. Notas del curso
+    // 4. Notas del curso (con semestre y columna)
     const gradesRes = await query(
-      `SELECT student_id, subject_name, score, grade_value
+      `SELECT student_id, subject_name, score, grade_value, period, grade_column_id
        FROM grades
        WHERE (course_name = $1 OR course_name LIKE $2) AND academic_year = $3`,
       [courseName, `%${courseName}%`, academicYear]
@@ -4539,30 +4560,55 @@ router.get('/reports/acta-final', async (req: Request, res: Response) => {
 
       for (const col of subjectColumns) {
         const matchingGrades = stGradesList.filter(g => matchSubjectBackend(g.subject_name, col.internalName));
-        const vals = matchingGrades
+        const s1 = matchingGrades
+          .filter(g => !(g.period || '').includes('2') && !(g.grade_column_id && String(g.grade_column_id).includes('S2')))
+          .map(g => parseFloat(String(g.score || g.grade_value || '0').replace(',', '.')))
+          .filter(v => !isNaN(v) && v > 0);
+        const s2 = matchingGrades
+          .filter(g => (g.period || '').includes('2') || (g.grade_column_id && String(g.grade_column_id).includes('S2')))
           .map(g => parseFloat(String(g.score || g.grade_value || '0').replace(',', '.')))
           .filter(v => !isNaN(v) && v > 0);
 
-        if (isRet || vals.length === 0) {
+        const s1Avg = s1.length > 0 ? roundGradeBackend(s1.reduce((a, b) => a + b, 0) / s1.length) : null;
+        const s2Avg = s2.length > 0 ? roundGradeBackend(s2.reduce((a, b) => a + b, 0) / s2.length) : null;
+
+        let annual: number | null = null;
+        if (s1Avg !== null && s2Avg !== null) {
+          annual = roundGradeBackend((s1Avg + s2Avg) / 2);
+        } else if (s1Avg !== null) {
+          annual = s1Avg;
+        } else if (s2Avg !== null) {
+          annual = s2Avg;
+        }
+
+        if (isRet || annual === null) {
           subjectGrades[String(col.colNumber)] = '-';
         } else {
-          const sum = vals.reduce((acc, v) => acc + v, 0);
-          const avg = roundGradeBackend(sum / vals.length);
-          subjectGrades[String(col.colNumber)] = avg.toFixed(1).replace('.', ',');
-          numericAverages.push(avg);
+          subjectGrades[String(col.colNumber)] = annual.toFixed(1).replace('.', ',');
+          numericAverages.push(annual);
         }
       }
 
       let reliGrade = '-';
       if (religionSubject && !isRet) {
         const matchingReligion = stGradesList.filter(g => matchSubjectBackend(g.subject_name, religionSubject));
-        const vals = matchingReligion
+        const s1 = matchingReligion
+          .filter(g => !(g.period || '').includes('2') && !(g.grade_column_id && String(g.grade_column_id).includes('S2')))
+          .map(g => parseFloat(String(g.score || g.grade_value || '0').replace(',', '.')))
+          .filter(v => !isNaN(v) && v > 0);
+        const s2 = matchingReligion
+          .filter(g => (g.period || '').includes('2') || (g.grade_column_id && String(g.grade_column_id).includes('S2')))
           .map(g => parseFloat(String(g.score || g.grade_value || '0').replace(',', '.')))
           .filter(v => !isNaN(v) && v > 0);
 
-        if (vals.length > 0) {
-          const sum = vals.reduce((acc, v) => acc + v, 0);
-          const avg = sum / vals.length;
+        const s1Avg = s1.length > 0 ? s1.reduce((a, b) => a + b, 0) / s1.length : null;
+        const s2Avg = s2.length > 0 ? s2.reduce((a, b) => a + b, 0) / s2.length : null;
+        let avg: number | null = null;
+        if (s1Avg !== null && s2Avg !== null) avg = (s1Avg + s2Avg) / 2;
+        else if (s1Avg !== null) avg = s1Avg;
+        else if (s2Avg !== null) avg = s2Avg;
+
+        if (avg !== null) {
           if (avg >= 6.0) reliGrade = 'MB';
           else if (avg >= 5.0) reliGrade = 'B';
           else if (avg >= 4.0) reliGrade = 'S';
@@ -5270,7 +5316,7 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
       query(`SELECT * FROM students ORDER BY list_number ASC, full_name ASC`),
       query(`SELECT * FROM subjects ORDER BY id ASC`),
       query(`SELECT * FROM teacher_assignments WHERE (academic_year = $1 OR academic_year IS NULL)`, [selectedYear]).catch(() => ({ rows: [] })),
-      query("SELECT config_value FROM system_settings WHERE id = 'SET-COURSE-SUBJ-ORDER' OR config_key = 'course_subject_orders' ORDER BY (CASE WHEN id = 'SET-COURSE-SUBJ-ORDER' THEN 1 ELSE 2 END), updated_at DESC LIMIT 1").catch(() => ({ rows: [] })),
+      query("SELECT config_value FROM system_settings WHERE (id = 'SET-COURSE-SUBJ-ORDER' OR config_key = 'course_subject_orders') AND config_value != '{}' AND length(config_value) > 2 ORDER BY length(config_value) DESC LIMIT 1").catch(() => ({ rows: [] })),
       query(
         `SELECT g.*, 
                 COALESCE(CAST(gc.subject_id AS TEXT), CAST(g.subject_id AS TEXT), '1') as subject_id, 
@@ -5720,6 +5766,15 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
       const stSem2Average = stSem2Count > 0 ? roundGradeBackend(stSem2Sum / stSem2Count) : '-';
       const stAnnualAverage = stAnnualCount > 0 ? roundGradeBackend(stAnnualSum / stAnnualCount) : (stAverage > 0 ? stAverage : '-');
 
+      let effectivePromedioGeneral = stAverage;
+      if (selectedPeriod === 'Anual' && stAnnualAverage !== '-') {
+        effectivePromedioGeneral = Number(stAnnualAverage);
+      } else if ((selectedPeriod === '1er Semestre' || selectedPeriod === 'Semestre 1') && stSem1Average !== '-') {
+        effectivePromedioGeneral = Number(stSem1Average);
+      } else if ((selectedPeriod === '2do Semestre' || selectedPeriod === 'Semestre 2') && stSem2Average !== '-') {
+        effectivePromedioGeneral = Number(stSem2Average);
+      }
+
       const studentHomeroom = st.profesor_jefe && st.profesor_jefe !== 'Sin Asignar' ? st.profesor_jefe : courseHomeroomTeacher;
 
       return {
@@ -5730,7 +5785,7 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
         course: course,
         azules: stAzules,
         rojas: stRojas,
-        promedioGeneral: selectedPeriod === 'Anual' && stAnnualAverage !== '-' ? stAnnualAverage : stAverage,
+        promedioGeneral: effectivePromedioGeneral,
         promedioSem1: stSem1Average,
         promedioSem2: stSem2Average,
         homeroomTeacher: studentHomeroom,

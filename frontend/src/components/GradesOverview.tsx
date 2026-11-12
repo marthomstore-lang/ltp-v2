@@ -1436,6 +1436,7 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
         <FinalActaModal
           courseName={currentCourseData.courseName}
           academicYear={selectedYear}
+          courseData={currentCourseData}
           onClose={() => setShowFinalActaModal(false)}
         />
       )}
