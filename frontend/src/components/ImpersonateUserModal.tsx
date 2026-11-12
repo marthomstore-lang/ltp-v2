@@ -38,6 +38,18 @@ export const ImpersonateUserModal: React.FC<ImpersonateUserModalProps> = ({ isOp
       });
   }, [isOpen, token]);
 
+  // Cerrar modal con tecla Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   const filteredUsers = useMemo(() => {
     return users.filter(u => {
       // Excluir al usuario actual si coincide

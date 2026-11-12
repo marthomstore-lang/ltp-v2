@@ -115,6 +115,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose, ini
   const { user, token, updateUser, logout, canCustomizeProfile } = useAuth();
   const allowedToCustomize = canCustomizeProfile && canUserCustomizeAppearance(user?.role);
 
+  // Cerrar modal con tecla Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const [activeTab, setActiveTab] = useState<'info' | 'customize' | 'credential'>(
     allowedToCustomize && initialTab === 'customize' ? 'customize' : 'info'
   );

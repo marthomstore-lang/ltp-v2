@@ -152,6 +152,18 @@ export const CourseSupportModal: React.FC<CourseSupportModalProps> = ({
   const [selectedMatrixCourses, setSelectedMatrixCourses] = useState<string[]>([]);
   const [savingMatrix, setSavingMatrix] = useState(false);
 
+  // Cerrar modal con tecla Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   const allCourseOptions = useMemo(() => {
     const merged = Array.from(new Set([...(availableCourses || []), ...DEFAULT_INSTITUTIONAL_COURSES])).filter(Boolean);
     return merged;

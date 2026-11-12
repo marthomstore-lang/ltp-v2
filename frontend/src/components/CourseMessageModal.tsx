@@ -158,6 +158,18 @@ export const CourseMessageModal: React.FC<CourseMessageModalProps> = ({
   const [subject, setSubject] = useState<string>('');
   const [message, setMessage] = useState<string>('');
 
+  // Soporte para cerrar con tecla Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   // Estado de Historial / Registro de Comunicados Enviados
   const [historyList, setHistoryList] = useState<CommunicationHistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);

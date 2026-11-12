@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { formatRut } from '../utils/rut';
 import { Mail, Lock, KeyRound, X, CheckCircle, AlertCircle, Clock, Eye, EyeOff } from 'lucide-react';
 import Swal from 'sweetalert2';
@@ -9,6 +9,17 @@ interface ForgotPasswordModalProps {
 }
 
 export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClose, onSuccess }) => {
+  // Cerrar modal con tecla Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const [step, setStep] = useState<1 | 2>(1);
   const [identifier, setIdentifier] = useState('');
   const [tempPassword, setTempPassword] = useState('');

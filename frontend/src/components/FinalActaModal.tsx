@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Printer, Settings, Award, AlertCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -150,16 +151,34 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
     loadActa();
   }, [courseName, academicYear]);
 
+  // Manejo de scroll en body y tecla Escape para volver atrás
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   const handlePrint = () => {
     window.print();
   };
 
-  return (
-    <div className="final-acta-overlay" style={{
+  const modalContent = (
+    <div className="final-acta-portal final-acta-overlay" style={{
       position: 'fixed',
       inset: 0,
       backgroundColor: 'rgba(15, 23, 42, 0.85)',
-      zIndex: 9999,
+      zIndex: 999999,
       display: 'flex',
       flexDirection: 'column',
       overflowY: 'auto'
@@ -867,25 +886,58 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
         @media print {
           @page {
             size: landscape;
-            margin: 6mm 6mm 6mm 6mm;
+            margin: 5mm 6mm 5mm 6mm;
           }
 
-          body {
+          html, body {
             background-color: #ffffff !important;
             color: #000000 !important;
             margin: 0 !important;
             padding: 0 !important;
-          }
-
-          .no-print {
-            display: none !important;
-          }
-
-          .final-acta-overlay {
-            position: static !important;
-            background: none !important;
-            padding: 0 !important;
+            width: 100% !important;
+            height: auto !important;
             overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          /* OCULTAR COMPLETAMENTE TODO EL RESTO DE LA APLICACIÓN (#root) */
+          #root,
+          #root * {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            max-height: 0 !important;
+            overflow: hidden !important;
+          }
+
+          body > *:not(.final-acta-portal) {
+            display: none !important;
+            visibility: hidden !important;
+          }
+
+          .final-acta-portal,
+          .final-acta-portal * {
+            visibility: visible !important;
+          }
+
+          .final-acta-portal {
+            display: block !important;
+            position: static !important;
+            width: 100% !important;
+            background: #ffffff !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            z-index: 99999999 !important;
+            overflow: visible !important;
+          }
+
+          .no-print,
+          .no-print * {
+            display: none !important;
+            height: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
           }
 
           .acta-print-container {
@@ -897,29 +949,44 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
           }
 
           .acta-page {
-            page-break-after: always;
-            break-after: page;
             min-height: auto !important;
             padding: 0 !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+
+          .acta-page-1 {
+            page-break-after: always !important;
+            break-after: page !important;
+          }
+
+          .acta-page-2 {
+            page-break-before: always !important;
+            break-before: page !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
 
           .page-break {
-            page-break-before: always !important;
-            break-before: page !important;
-            height: 0 !important;
+            display: none !important;
           }
 
           table {
-            page-break-inside: avoid;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
 
           tr {
-            page-break-inside: avoid;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
         }
       `}</style>
     </div>
   );
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(modalContent, document.body);
 };
 
 export default FinalActaModal;

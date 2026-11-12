@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowUpDown, ArrowUp, ArrowDown, Check, X, RefreshCw, Save, GripVertical } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { sortCoursesList, sortStudentsList, getStudentCourse } from '../utils/course';
@@ -11,6 +11,17 @@ interface ReorderModalProps {
 }
 
 export const ReorderStudentsModal: React.FC<ReorderModalProps> = ({ students, token, onClose, onSuccess }) => {
+  // Cerrar modal con tecla Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const [list, setList] = useState<any[]>(() => {
     return sortStudentsList(students);
   });

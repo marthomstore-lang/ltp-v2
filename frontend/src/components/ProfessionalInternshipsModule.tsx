@@ -225,6 +225,18 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
     loadData();
   }, [selectedPeriod]);
 
+  // Cerrar modal de formulario con tecla Escape
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isModalOpen]);
+
   // Alumno seleccionado en el formulario para previsualizar datos vinculados
   const selectedCandidateForForm = useMemo(() => {
     return candidates.find(c => c.id === formStudentId) || null;
@@ -1917,6 +1929,24 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
   institution,
   onClose
 }) => {
+  // Manejo de scroll en body y tecla Escape para cerrar
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   const handlePrint = () => {
     window.print();
   };

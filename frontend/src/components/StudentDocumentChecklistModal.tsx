@@ -118,6 +118,18 @@ export const StudentDocumentChecklistModal: React.FC<StudentDocumentChecklistMod
 
   // Historial de checklists guardados
   const [history, setHistory] = useState<StudentChecklistRecord[]>([]);
+
+  // Cerrar modal con tecla Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 

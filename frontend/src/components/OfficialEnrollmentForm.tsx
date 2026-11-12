@@ -16,6 +16,18 @@ interface OfficialFormProps {
 
 export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, onClose }) => {
   const { user, token } = useAuth();
+
+  // Cerrar formulario oficial con tecla Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const [docType, setDocType] = useState<'fide_ficha' | 'alumno_regular' | 'informe_hogar' | 'rice_compromiso' | 'checklist'>('fide_ficha');
   const [checklistType, setChecklistType] = useState<'nuevo' | 'antiguo' | 'retiro'>('nuevo');
 

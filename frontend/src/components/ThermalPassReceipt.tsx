@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Printer, X, CheckCircle2, AlertTriangle, Type } from 'lucide-react';
 
 export interface PassData {
@@ -396,6 +396,17 @@ export const ThermalReceiptPreviewModal: React.FC<ThermalReceiptPreviewModalProp
   onPrint
 }) => {
   const [fontScale, setFontScale] = useState<PassFontScale>(() => getSavedPassFontScale());
+
+  // Cerrar preview con tecla Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   if (!pass) return null;
 

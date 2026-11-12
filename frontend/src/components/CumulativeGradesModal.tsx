@@ -65,6 +65,17 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
   const [pasteTargetSubId, setPasteTargetSubId] = useState<string>('all');
   const [pastedRawText, setPastedRawText] = useState<string>('');
 
+  // Cerrar modal con tecla Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   // HELPER UNIVERSAL PARA CONVERTIR TEXTO A NOTA VÁLIDA (1.0 A 7.0)
   const parseRawGrade = (valStr: string): number => {
     if (!valStr) return 0;
