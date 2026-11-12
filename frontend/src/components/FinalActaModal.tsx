@@ -597,14 +597,14 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
               </div>
 
               {/* TABLA PRINCIPAL DE ALUMNOS Y NOTAS */}
-              <div style={{ width: '100%', overflowX: 'auto' }}>
+              <div className="acta-table-scroll-container" style={{ width: '100%', overflowX: 'auto' }}>
                 <table style={{
                   width: '100%',
                   borderCollapse: 'collapse',
                   border: '1px solid #000000',
-                  fontSize: actaData.students.length > 35 ? '6.5px' : '7.2px',
+                  fontSize: actaData.students.length > 35 ? '6px' : '7.2px',
                   textAlign: 'center',
-                  lineHeight: '1.1'
+                  lineHeight: actaData.students.length > 35 ? '1.0' : '1.1'
                 }}>
                   <thead>
                     <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '1px solid #000000' }}>
@@ -646,7 +646,7 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
                   <tbody>
                     {actaData.students.map((st) => (
                       <tr key={st.id} style={{
-                        height: actaData.students.length > 35 ? '10.5px' : '12.5px',
+                        height: actaData.students.length > 35 ? '9.5px' : '12px',
                         borderBottom: '1px solid #000000',
                         backgroundColor: st.sf === 'Y' ? '#f8fafc' : 'transparent'
                       }}>
@@ -1041,23 +1041,33 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
             width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
+            overflow: visible !important;
+          }
+
+          .acta-table-scroll-container {
+            overflow: visible !important;
+            width: 100% !important;
+            display: block !important;
+          }
+
+          .acta-table-scroll-container table {
+            page-break-inside: auto !important;
+            break-inside: auto !important;
           }
 
           .acta-page {
-            min-height: unset !important;
-            padding: 0 !important;
-            margin: 0 !important;
             box-sizing: border-box !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
+            overflow: visible !important;
           }
 
           .acta-page-1 {
+            page-break-before: avoid !important;
+            break-before: avoid !important;
             page-break-after: always !important;
             break-after: page !important;
-            max-height: 200mm !important;
-            height: 200mm !important;
-            overflow: hidden !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            overflow: visible !important;
           }
 
           .acta-page-2 {
@@ -1065,9 +1075,9 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
             break-before: page !important;
             page-break-after: avoid !important;
             break-after: avoid !important;
-            max-height: 200mm !important;
-            height: 200mm !important;
-            overflow: hidden !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            overflow: visible !important;
           }
 
           .page-break {

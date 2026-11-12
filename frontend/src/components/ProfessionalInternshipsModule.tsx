@@ -542,6 +542,16 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
     document.body.removeChild(link);
   };
 
+  // Status Count Helper (protección total contra indefinidos)
+  const getStatusCount = (statusName: string): number => {
+    try {
+      if (stats && stats.by_status && typeof (stats.by_status as any)[statusName] === 'number') {
+        return (stats.by_status as any)[statusName];
+      }
+    } catch (_) {}
+    return enrollments.filter(e => e.status === statusName).length;
+  };
+
   // Status Badge Helper
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -699,7 +709,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
             <Clock size={18} color="#d97706" />
           </div>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#d97706' }}>
-            {stats?.by_status?.['En Curso'] ?? enrollments.filter(e => e.status === 'En Curso').length}
+            {getStatusCount('En Curso')}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
             Cumpliendo 360 horas
@@ -712,7 +722,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
             <Award size={18} color="#4338ca" />
           </div>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#4338ca' }}>
-            {((stats?.by_status?.['Aprobada'] ?? 0) + (stats?.by_status?.['Finalizada'] ?? 0)) || enrollments.filter(e => e.status === 'Aprobada' || e.status === 'Finalizada').length}
+            {getStatusCount('Aprobada') + getStatusCount('Finalizada')}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
             Listos para titulación

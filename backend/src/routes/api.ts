@@ -5508,6 +5508,15 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
     let sumGradedValues = 0;
     let countGradedValues = 0;
 
+    // Helper para identificar semestre de cada nota
+    const getGradeSem = (g: any): 'sem1' | 'sem2' => {
+      const p = (g.effective_period || g.period || '').trim().toLowerCase();
+      if (p.includes('2') || p.includes('segundo') || (g.grade_column_id && String(g.grade_column_id).includes('S2'))) {
+        return 'sem2';
+      }
+      return 'sem1';
+    };
+
     // Estructura por alumno
     const mappedStudents = dbStudents.map((st, idx) => {
       const studentGrades = gradesRows.filter(g => g.student_id === st.id);
@@ -5523,15 +5532,6 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
       let stAnnualCount = 0;
       const subjectGrades: Record<string, any> = {};
       const alerts: { subject: string; grade: number; concept?: string }[] = [];
-
-      // Helper para identificar semestre de cada nota
-      const getGradeSem = (g: any): 'sem1' | 'sem2' => {
-        const p = (g.effective_period || g.period || '').trim().toLowerCase();
-        if (p.includes('2') || p.includes('segundo') || (g.grade_column_id && String(g.grade_column_id).includes('S2'))) {
-          return 'sem2';
-        }
-        return 'sem1';
-      };
 
       // Agrupar por asignatura relevante del curso
       courseSubjects.forEach(sb => {
@@ -5648,26 +5648,22 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
           }
         }
 
-        if (sbGrades.length > 0) {
-          let sbSum = 0;
-          let manualFinalConcept = '';
+        // Evaluaciones correspondientes al período seleccionado (1er Semestre, 2do Semestre o Anual)
+        const periodRelevantGrades = (selectedPeriod === '1er Semestre' || selectedPeriod === 'Semestre 1')
+          ? sem1SbGrades
+          : (selectedPeriod === '2do Semestre' || selectedPeriod === 'Semestre 2')
+            ? sem2SbGrades
+            : sbGrades;
 
-          const gradeDetails = sbGrades.map(g => {
-            const val = parseFloat(g.grade_value);
-            const colTitleNorm = (g.col_title || g.evaluation_name || '').toLowerCase();
-            const isFinalCol = colTitleNorm.includes('promedio') || (g.grade_column_id && String(g.grade_column_id).includes('FINAL'));
-
-            if (isConceptual && isFinalCol) {
-              manualFinalConcept = numberToConceptHelper(val);
-            }
-
+        // Contabilizar evaluaciones del período para estadísticas del alumno
+        periodRelevantGrades.forEach(g => {
+          const val = parseFloat(g.grade_value);
+          if (!isNaN(val)) {
             if (!isConceptual) {
-              sbSum += val;
               stSum += val;
               stCount++;
               sumGradedValues += val;
               countGradedValues++;
-
               if (val >= 4.0) {
                 stAzules++;
                 totalAzules++;
@@ -5676,11 +5672,7 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
                 totalRojas++;
               }
             } else {
-              // Asignatura conceptual (Religión / Orientación - Decreto 67 / 924):
-              // Excluida del promedio general numérico institucional (GPA), pero se registran sus conceptos.
-              if (!isFinalCol) {
-                sbSum += val;
-              }
+              // Asignatura conceptual (Religión / Orientación)
               if (val >= 4.0) {
                 stAzules++;
                 totalAzules++;
@@ -5689,90 +5681,80 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
                 totalRojas++;
               }
             }
+          }
+        });
 
-            return {
-              label: g.col_title || 'Nota',
-              value: val,
-              concept: isConceptual ? numberToConceptHelper(val) : undefined
-            };
-          });
+        // Determinar promedio y estado según el período seleccionado (Decreto 67)
+        let currentPeriodAvg: number | string = '-';
+        let currentPeriodStatus = 'SIN NOTAS';
 
+        if (selectedPeriod === '1er Semestre' || selectedPeriod === 'Semestre 1') {
           if (isConceptual) {
-            let finalConcept: string = '-';
-            let sbAvg: number = 0;
-
-            if (manualFinalConcept) {
-              finalConcept = manualFinalConcept;
-              sbAvg = conceptToNumberHelper(manualFinalConcept);
-            } else {
-              const evalGrades = gradeDetails.filter(g => !g.label.toLowerCase().includes('promedio'));
-              const avgNum = evalGrades.length > 0 ? (sbSum / evalGrades.length) : (gradeDetails.length > 0 ? gradeDetails[0].value : 0);
-              finalConcept = numberToConceptHelper(avgNum);
-              sbAvg = roundGradeBackend(avgNum);
-            }
-
-            const status = finalConcept === 'I' ? 'REPROBADO' : (finalConcept !== '-' ? 'APROBADO' : 'SIN NOTAS');
-            if (finalConcept === 'I') {
-              alerts.push({ subject: sb.name, grade: sbAvg, concept: 'I' });
-            }
-
-            subjectGrades[sb.name] = {
-              subjectName: sb.name,
-              isConceptual: true,
-              average: selectedPeriod === 'Anual' ? annualAvg : finalConcept,
-              annualAverage: annualAvg,
-              numericAverage: sbAvg,
-              status,
-              grades: gradeDetails,
-              sem1: sem1Data,
-              sem2: sem2Data
-            };
+            currentPeriodAvg = sem1Data.average;
+            currentPeriodStatus = sem1Data.average === '-' ? 'SIN NOTAS' : (sem1Data.average === 'I' ? 'REPROBADO' : 'APROBADO');
           } else {
-            const sbAvg = roundGradeBackend(sbSum / sbGrades.length);
-            const effectiveSubjAvg = selectedPeriod === 'Anual' && typeof annualAvg === 'number' ? annualAvg : sbAvg;
-            const status = effectiveSubjAvg >= 4.0 ? 'APROBADO' : 'REPROBADO';
-
-            if (effectiveSubjAvg < 4.0) {
-              alerts.push({ subject: sb.name, grade: effectiveSubjAvg });
-            }
-
-            subjectGrades[sb.name] = {
-              subjectName: sb.name,
-              isConceptual: false,
-              average: effectiveSubjAvg,
-              annualAverage: annualAvg,
-              status,
-              grades: gradeDetails,
-              sem1: sem1Data,
-              sem2: sem2Data
-            };
+            currentPeriodAvg = sem1Data.numericAverage !== null ? sem1Data.numericAverage : '-';
+            currentPeriodStatus = sem1Data.numericAverage !== null ? (sem1Data.numericAverage >= 4.0 ? 'APROBADO' : 'REPROBADO') : 'SIN NOTAS';
+          }
+        } else if (selectedPeriod === '2do Semestre' || selectedPeriod === 'Semestre 2') {
+          if (isConceptual) {
+            currentPeriodAvg = sem2Data.average;
+            currentPeriodStatus = sem2Data.average === '-' ? 'SIN NOTAS' : (sem2Data.average === 'I' ? 'REPROBADO' : 'APROBADO');
+          } else {
+            currentPeriodAvg = sem2Data.numericAverage !== null ? sem2Data.numericAverage : '-';
+            currentPeriodStatus = sem2Data.numericAverage !== null ? (sem2Data.numericAverage >= 4.0 ? 'APROBADO' : 'REPROBADO') : 'SIN NOTAS';
           }
         } else {
-          subjectGrades[sb.name] = {
-            subjectName: sb.name,
-            isConceptual,
-            average: '-',
-            annualAverage: '-',
-            status: 'SIN NOTAS',
-            grades: [],
-            sem1: buildSemesterBreakdown([]),
-            sem2: buildSemesterBreakdown([])
-          };
+          // Anual: promedio ponderado oficial entre semestres (Sem1 + Sem2)/2
+          if (isConceptual) {
+            currentPeriodAvg = annualAvg;
+            currentPeriodStatus = annualAvg === '-' ? 'SIN NOTAS' : (annualAvg === 'I' ? 'REPROBADO' : 'APROBADO');
+          } else {
+            currentPeriodAvg = annualAvg;
+            currentPeriodStatus = typeof annualAvg === 'number' ? (annualAvg >= 4.0 ? 'APROBADO' : 'REPROBADO') : 'SIN NOTAS';
+          }
         }
+
+        if (!isConceptual && typeof currentPeriodAvg === 'number' && currentPeriodAvg < 4.0) {
+          alerts.push({ subject: sb.name, grade: currentPeriodAvg });
+        } else if (isConceptual && currentPeriodAvg === 'I') {
+          alerts.push({ subject: sb.name, grade: 0, concept: 'I' });
+        }
+
+        subjectGrades[sb.name] = {
+          subjectName: sb.name,
+          isConceptual,
+          average: currentPeriodAvg,
+          annualAverage: annualAvg,
+          numericAverage: typeof currentPeriodAvg === 'number' ? currentPeriodAvg : null,
+          status: currentPeriodStatus,
+          grades: (selectedPeriod === '1er Semestre' || selectedPeriod === 'Semestre 1')
+            ? sem1Data.grades
+            : (selectedPeriod === '2do Semestre' || selectedPeriod === 'Semestre 2')
+              ? sem2Data.grades
+              : sbGrades.map(g => ({
+                  label: g.col_title || 'Nota',
+                  value: parseFloat(g.grade_value),
+                  concept: isConceptual ? numberToConceptHelper(parseFloat(g.grade_value)) : undefined
+                })),
+          sem1: sem1Data,
+          sem2: sem2Data
+        };
       });
 
-      const stAverage = stCount > 0 ? roundGradeBackend(stSum / stCount) : 0;
+      // Promedios generales del alumno estrictamente calculados según Decreto 67:
+      // Media aritmética de los promedios finales redondeados de cada asignatura no conceptual
       const stSem1Average = stSem1Count > 0 ? roundGradeBackend(stSem1Sum / stSem1Count) : '-';
       const stSem2Average = stSem2Count > 0 ? roundGradeBackend(stSem2Sum / stSem2Count) : '-';
-      const stAnnualAverage = stAnnualCount > 0 ? roundGradeBackend(stAnnualSum / stAnnualCount) : (stAverage > 0 ? stAverage : '-');
+      const stAnnualAverage = stAnnualCount > 0 ? roundGradeBackend(stAnnualSum / stAnnualCount) : (stSem1Average !== '-' ? stSem1Average : '-');
 
-      let effectivePromedioGeneral = stAverage;
-      if (selectedPeriod === 'Anual' && stAnnualAverage !== '-') {
-        effectivePromedioGeneral = Number(stAnnualAverage);
-      } else if ((selectedPeriod === '1er Semestre' || selectedPeriod === 'Semestre 1') && stSem1Average !== '-') {
-        effectivePromedioGeneral = Number(stSem1Average);
-      } else if ((selectedPeriod === '2do Semestre' || selectedPeriod === 'Semestre 2') && stSem2Average !== '-') {
-        effectivePromedioGeneral = Number(stSem2Average);
+      let effectivePromedioGeneral: number = 0;
+      if (selectedPeriod === '1er Semestre' || selectedPeriod === 'Semestre 1') {
+        effectivePromedioGeneral = stSem1Average !== '-' ? Number(stSem1Average) : 0;
+      } else if (selectedPeriod === '2do Semestre' || selectedPeriod === 'Semestre 2') {
+        effectivePromedioGeneral = stSem2Average !== '-' ? Number(stSem2Average) : 0;
+      } else {
+        effectivePromedioGeneral = stAnnualAverage !== '-' ? Number(stAnnualAverage) : (stSem1Average !== '-' ? Number(stSem1Average) : 0);
       }
 
       const studentHomeroom = st.profesor_jefe && st.profesor_jefe !== 'Sin Asignar' ? st.profesor_jefe : courseHomeroomTeacher;
@@ -5822,27 +5804,41 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
     const mappedSubjects = courseSubjects.map(sb => {
       const isConceptual = isConceptualSubjectHelper(sb.name);
       const eq = sb._equiv || getEquivalentSubjectKeys(sb.id, sb.name, dbSubjects);
+      const isSem1 = selectedPeriod === '1er Semestre' || selectedPeriod === 'Semestre 1';
+      const isSem2 = selectedPeriod === '2do Semestre' || selectedPeriod === 'Semestre 2';
+
       const sbGradesAll = gradesRows.filter(g =>
         eq.ids.includes(String(g.subject_id)) ||
         (g.subject_name && eq.normNames.has(normalizeSubjectOrCourseKey(g.subject_name)))
       );
-      const regCount = sbGradesAll.length;
-      let sbSumTotal = 0;
-      let nonFinalCount = 0;
-      sbGradesAll.forEach(g => {
-        const val = parseFloat(g.grade_value);
-        const colTitleNorm = (g.col_title || g.evaluation_name || '').toLowerCase();
-        const isFinalCol = colTitleNorm.includes('promedio') || (g.grade_column_id && String(g.grade_column_id).includes('FINAL'));
-        if (!isConceptual || !isFinalCol) {
-          sbSumTotal += val;
-          nonFinalCount++;
-        }
-      });
 
-      const effectiveCount = (isConceptual && nonFinalCount > 0) ? nonFinalCount : regCount;
-      const courseAvg = effectiveCount > 0 ? roundGradeBackend(sbSumTotal / effectiveCount) : 0;
-      const conceptAvg = isConceptual ? (effectiveCount > 0 ? numberToConceptHelper(courseAvg) : '-') : undefined;
+      const sbPeriodGrades = isSem1
+        ? sbGradesAll.filter(g => getGradeSem(g) === 'sem1')
+        : isSem2
+          ? sbGradesAll.filter(g => getGradeSem(g) === 'sem2')
+          : sbGradesAll;
+
+      const regCount = sbPeriodGrades.length;
       const status = regCount > 0 ? 'CON NOTAS' : 'SIN NOTAS';
+
+      // Promedio oficial de la asignatura para el curso en el período seleccionado (Decreto 67)
+      const studentSubAvgs = mappedStudents
+        .filter(st => !retiredStudents.some(r => String(r.id) === String(st.id)))
+        .map(st => st.subjectGrades[sb.name])
+        .filter(sg => sg && sg.status !== 'SIN NOTAS');
+
+      let courseAvg = 0;
+      let conceptAvg: string | undefined = undefined;
+
+      if (isConceptual) {
+        const validConcepts = studentSubAvgs.map(sg => sg.average).filter(v => v && v !== '-');
+        conceptAvg = validConcepts.length > 0 ? String(validConcepts[0]) : '-';
+      } else {
+        const validNums = studentSubAvgs
+          .map(sg => typeof sg.average === 'number' ? sg.average : parseFloat(String(sg.average).replace(',', '.')))
+          .filter(v => !isNaN(v) && v > 0);
+        courseAvg = validNums.length > 0 ? roundGradeBackend(validNums.reduce((a, b) => a + b, 0) / validNums.length) : 0;
+      }
 
       // Docente asignado real (incluyendo equivalentes)
       const sName = (sb.name || '').trim().toLowerCase();
@@ -5910,7 +5906,10 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
     });
 
     const totalCalificaciones = totalAzules + totalRojas;
-    const promedioCursoGeneral = countGradedValues > 0 ? roundGradeBackend(sumGradedValues / countGradedValues) : 0;
+    const activeMappedStudents = mappedStudents.filter(st => !retiredStudents.some(r => String(r.id) === String(st.id)) && st.promedioGeneral > 0);
+    const promedioCursoGeneral = activeMappedStudents.length > 0
+      ? roundGradeBackend(activeMappedStudents.reduce((sum, s) => sum + s.promedioGeneral, 0) / activeMappedStudents.length)
+      : (countGradedValues > 0 ? roundGradeBackend(sumGradedValues / countGradedValues) : 0);
     const alumnosRiesgoCount = mappedStudents.filter(st => st.promedioGeneral > 0 && (st.promedioGeneral < 4.0 || st.rojas > 0)).length;
     const alumnosBajoCuatroCount = mappedStudents.filter(st => st.promedioGeneral > 0 && st.promedioGeneral < 4.0).length;
 
@@ -5977,7 +5976,23 @@ router.get('/grades/averages-summary', authMiddleware, async (req: Request, res:
       ORDER BY course_name, subject_name;
     `;
     const result = await query(sql, params);
-    res.json(result.rows);
+    const rows = result.rows.map((r: any) => {
+      const s1 = r.avg_s1 !== null && r.avg_s1 !== undefined ? parseFloat(String(r.avg_s1).replace(',', '.')) : null;
+      const s2 = r.avg_s2 !== null && r.avg_s2 !== undefined ? parseFloat(String(r.avg_s2).replace(',', '.')) : null;
+      let calculatedAnnual: number | null = null;
+      if (s1 !== null && s2 !== null) {
+        calculatedAnnual = roundGradeBackend((s1 + s2) / 2);
+      } else if (s1 !== null) {
+        calculatedAnnual = s1;
+      } else if (s2 !== null) {
+        calculatedAnnual = s2;
+      }
+      return {
+        ...r,
+        avg_anual: calculatedAnnual !== null ? calculatedAnnual.toFixed(1) : r.avg_anual
+      };
+    });
+    res.json(rows);
   } catch (err) {
     console.error('Error al obtener resumen de promedios para docentes:', err);
     res.status(500).json({ error: 'Error al consultar promedios semestrales y anuales.' });
@@ -7174,8 +7189,24 @@ router.get('/apoderado/pupilos', authMiddleware, async (req: Request, res: Respo
         const sem2Grades = subGradesList.filter(g => g.semester === 2);
         const sem1Average = sem1Grades.length > 0 ? roundGradeBackend(sem1Grades.reduce((acc, x) => acc + x.value, 0) / sem1Grades.length) : 0;
         const sem2Average = sem2Grades.length > 0 ? roundGradeBackend(sem2Grades.reduce((acc, x) => acc + x.value, 0) / sem2Grades.length) : 0;
-        const average = count > 0 ? roundGradeBackend(sum / count) : 0;
-        const conceptAverage = isConceptual && count > 0 ? numberToConceptHelper(average) : undefined;
+
+        // Promedio anual oficial según Decreto 67: promedio entre semestres cuando ambos existen
+        let average = 0;
+        if (sem1Average > 0 && sem2Average > 0) {
+          average = roundGradeBackend((sem1Average + sem2Average) / 2);
+        } else if (sem1Average > 0) {
+          average = sem1Average;
+        } else if (sem2Average > 0) {
+          average = sem2Average;
+        } else if (count > 0) {
+          average = roundGradeBackend(sum / count);
+        }
+
+        const conceptAverage = isConceptual
+          ? (sem1Average > 0 && sem2Average > 0
+              ? numberToConceptHelper((sem1Average + sem2Average) / 2)
+              : (sem1Average > 0 ? numberToConceptHelper(sem1Average) : (sem2Average > 0 ? numberToConceptHelper(sem2Average) : (count > 0 ? numberToConceptHelper(average) : undefined))))
+          : undefined;
         const status = count === 0
           ? 'SIN NOTAS'
           : isConceptual
