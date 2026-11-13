@@ -14372,6 +14372,7 @@ router.get('/tp-internships', authMiddleware, async (req: Request, res: Response
         s.run as student_run,
         s.full_name as student_name,
         s.desc_grado as course_name,
+        s.birth_date,
         s.letra_curso,
         s.phone as student_phone,
         s.email as student_email,
@@ -14440,6 +14441,7 @@ router.get('/tp-internships/candidates', authMiddleware, async (req: Request, re
         s.run,
         s.full_name,
         s.desc_grado,
+        s.birth_date,
         s.letra_curso,
         s.phone,
         s.email,
@@ -14459,7 +14461,8 @@ router.get('/tp-internships/candidates', authMiddleware, async (req: Request, re
         e.enrollment_number,
         e.status as enrollment_status,
         e.company_name,
-        e.period as enrollment_period
+        e.period as enrollment_period,
+        e.is_adult_student
       FROM students s
       LEFT JOIN tp_internship_enrollments e ON s.id = e.student_id AND e.period = $1
       WHERE s.desc_grado ILIKE '%4%Medio%' OR s.desc_grado ILIKE '%Egresad%' OR e.id IS NOT NULL
@@ -14561,6 +14564,7 @@ router.get('/tp-internships/search-student', authMiddleware, async (req: Request
         s.run,
         s.full_name,
         s.desc_grado,
+        s.birth_date,
         s.letra_curso,
         s.phone,
         s.email,
@@ -14576,7 +14580,8 @@ router.get('/tp-internships/search-student', authMiddleware, async (req: Request
         END as specialty,
         e.id as existing_enrollment_id,
         e.enrollment_number as existing_enrollment_number,
-        e.status as existing_status
+        e.status as existing_status,
+        e.is_adult_student as existing_is_adult
       FROM students s
       LEFT JOIN tp_internship_enrollments e ON s.id = e.student_id AND e.period = '2026 - 2027'
       WHERE 
@@ -14637,7 +14642,8 @@ router.post('/tp-internships', authMiddleware, checkRoles(['Admin', 'Director', 
       student_phone,
       student_address,
       student_email,
-      student_commune
+      student_commune,
+      is_adult_student
     } = req.body;
 
     let resolvedStudentId = student_id;
@@ -14735,6 +14741,17 @@ router.post('/tp-internships', authMiddleware, checkRoles(['Admin', 'Director', 
       autoFolio = `PRAC-${String(period).split('-')[0].trim().slice(-2)}-${String(nextNum).padStart(3, '0')}`;
     }
 
+    let resolvedIsAdult = Boolean(is_adult_student);
+    if (!resolvedIsAdult && resolvedStudentId) {
+      const stuCheck = await query('SELECT desc_grado, birth_date FROM students WHERE id = $1', [resolvedStudentId]);
+      if (stuCheck.rows.length > 0) {
+        const row = stuCheck.rows[0];
+        if (row.desc_grado && row.desc_grado.toLowerCase().includes('egresad')) {
+          resolvedIsAdult = true;
+        }
+      }
+    }
+
     const id = `PRAC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const eDate = enrollment_date || new Date().toISOString().slice(0, 10);
 
@@ -14745,9 +14762,10 @@ router.post('/tp-internships', authMiddleware, checkRoles(['Admin', 'Director', 
         company_name, company_rut, company_address, company_commune, company_phone, company_email,
         company_mentor_name, company_mentor_position, company_mentor_phone, company_mentor_email,
         school_tutor_teacher, final_grade, has_signed_agreement, has_school_insurance,
-        has_practice_plan, has_final_evaluation, has_student_report, observations
+        has_practice_plan, has_final_evaluation, has_student_report, observations,
+        is_adult_student
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
       )
     `, [
       id, resolvedStudentId, period, autoFolio, eDate, status, modality,
@@ -14756,7 +14774,8 @@ router.post('/tp-internships', authMiddleware, checkRoles(['Admin', 'Director', 
       company_mentor_name || null, company_mentor_position || null, company_mentor_phone || null, company_mentor_email || null,
       school_tutor_teacher || null, final_grade ? parseFloat(final_grade) : null,
       Boolean(has_signed_agreement), Boolean(has_school_insurance), Boolean(has_practice_plan),
-      Boolean(has_final_evaluation), Boolean(has_student_report), observations || null
+      Boolean(has_final_evaluation), Boolean(has_student_report), observations || null,
+      resolvedIsAdult
     ]);
 
     // Actualizar datos de contacto y apoderado en la ficha del estudiante si fueron editados
@@ -14828,7 +14847,8 @@ router.put('/tp-internships/:id', authMiddleware, checkRoles(['Admin', 'Director
       student_phone,
       student_address,
       student_email,
-      student_commune
+      student_commune,
+      is_adult_student
     } = req.body;
 
     await query(`
@@ -14861,8 +14881,9 @@ router.put('/tp-internships/:id', authMiddleware, checkRoles(['Admin', 'Director
         has_final_evaluation = COALESCE($26, has_final_evaluation),
         has_student_report = COALESCE($27, has_student_report),
         observations = $28,
+        is_adult_student = COALESCE($29, is_adult_student),
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $29
+      WHERE id = $30
     `, [
       period || null,
       enrollment_number || null,
@@ -14892,6 +14913,7 @@ router.put('/tp-internships/:id', authMiddleware, checkRoles(['Admin', 'Director
       has_final_evaluation !== undefined ? Boolean(has_final_evaluation) : null,
       has_student_report !== undefined ? Boolean(has_student_report) : null,
       observations || null,
+      is_adult_student !== undefined && is_adult_student !== null ? Boolean(is_adult_student) : null,
       id
     ]);
 

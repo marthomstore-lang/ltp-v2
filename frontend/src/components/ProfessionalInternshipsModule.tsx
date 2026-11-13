@@ -78,6 +78,8 @@ export interface InternshipEnrollment {
   emergency_contact_phone?: string;
   profesor_jefe?: string;
   specialty: string;
+  is_adult_student?: boolean;
+  birth_date?: string;
 }
 
 export interface CandidateStudent {
@@ -101,7 +103,36 @@ export interface CandidateStudent {
   enrollment_number: string | null;
   enrollment_status: string | null;
   company_name: string | null;
+  is_adult_student?: boolean;
+  birth_date?: string;
 }
+
+export const checkIsAdult = (item: any): boolean => {
+  if (!item) return false;
+  if (item.is_adult_student === true) return true;
+  const courseStr = String(item.course_name || item.desc_grado || '').toLowerCase();
+  if (courseStr.includes('egresad')) return true;
+  if (item.birth_date) {
+    const str = String(item.birth_date).trim();
+    let y = 0, m = 0, d = 0;
+    if (str.includes('/')) {
+      const p = str.split('/');
+      if (p.length === 3) { d = parseInt(p[0], 10); m = parseInt(p[1], 10) - 1; y = parseInt(p[2], 10); }
+    } else if (str.includes('-')) {
+      const p = str.split('T')[0].split('-');
+      if (p.length === 3) { y = parseInt(p[0], 10); m = parseInt(p[1], 10) - 1; d = parseInt(p[2], 10); }
+    }
+    if (y > 1900) {
+      const today = new Date();
+      let age = today.getFullYear() - y;
+      const curM = today.getMonth();
+      const curD = today.getDate();
+      if (curM < m || (curM === m && curD < d)) age--;
+      if (age >= 18) return true;
+    }
+  }
+  return false;
+};
 
 export interface InternshipStats {
   period: string;
@@ -180,6 +211,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
   const [formGuardianPhone, setFormGuardianPhone] = useState<string>('');
   const [formStudentPhone, setFormStudentPhone] = useState<string>('');
   const [formStudentAddress, setFormStudentAddress] = useState<string>('');
+  const [formIsAdultStudent, setFormIsAdultStudent] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
 
   // Estado para Estudiantes de Años Anteriores / Egresados (Fuera de la lista regular de 4° Medio)
@@ -228,6 +260,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
     setFormStudentAddress(stu.address || '');
     setFormExternalEmail(stu.email || '');
     setFormExternalCommune(stu.commune || 'Yungay');
+    setFormIsAdultStudent(checkIsAdult(stu));
     if (stu.profesor_jefe && !formSchoolTutorTeacher) {
       setFormSchoolTutorTeacher(stu.profesor_jefe);
     }
@@ -335,6 +368,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
     setFormGuardianPhone(preCand?.guardian_phone || '');
     setFormStudentPhone(preCand?.phone || '');
     setFormStudentAddress(preCand?.address || '');
+    setFormIsAdultStudent(Boolean(preCand && checkIsAdult(preCand)));
     setFormFinalGrade('');
     setFormHasSignedAgreement(false);
     setFormHasSchoolInsurance(true);
@@ -387,6 +421,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
     setFormGuardianPhone(enrollment.guardian_phone || '');
     setFormStudentPhone(enrollment.student_phone || '');
     setFormStudentAddress(enrollment.student_address || '');
+    setFormIsAdultStudent(checkIsAdult(enrollment));
     setFormFinalGrade(enrollment.final_grade !== null && enrollment.final_grade !== undefined ? String(enrollment.final_grade) : '');
     setFormHasSignedAgreement(Boolean(enrollment.has_signed_agreement));
     setFormHasSchoolInsurance(enrollment.has_school_insurance !== undefined ? Boolean(enrollment.has_school_insurance) : true);
@@ -454,7 +489,8 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
         student_phone: formStudentPhone,
         student_address: formStudentAddress,
         student_email: formExternalEmail,
-        student_commune: formExternalCommune
+        student_commune: formExternalCommune,
+        is_adult_student: formIsAdultStudent
       };
 
       const url = editingEnrollment
@@ -1002,7 +1038,14 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                           </div>
                         </td>
                         <td style={{ padding: '0.75rem 0.6rem' }}>
-                          <div style={{ fontWeight: 700, color: '#0f172a' }}>{item.student_name}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 700, color: '#0f172a' }}>{item.student_name}</span>
+                            {checkIsAdult(item) && (
+                              <span style={{ fontSize: '0.65rem', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '0.05rem 0.35rem', borderRadius: '4px', fontWeight: 600 }}>
+                                Mayor de edad
+                              </span>
+                            )}
+                          </div>
                           <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
                             RUN: {item.student_run} {item.student_phone ? `· 📞 ${item.student_phone}` : ''}
                           </div>
@@ -1627,6 +1670,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                       onClick={() => {
                         setIsExternalStudent(false);
                         setFormStudentId('');
+                        setFormIsAdultStudent(false);
                       }}
                       style={{
                         flex: 1,
@@ -1654,6 +1698,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                       onClick={() => {
                         setIsExternalStudent(true);
                         setFormStudentId('');
+                        setFormIsAdultStudent(true);
                       }}
                       style={{
                         flex: 1,
@@ -1691,11 +1736,13 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                           if (sid === '__NEW_GRADUATE__') {
                             setIsExternalStudent(true);
                             setFormStudentId('');
+                            setFormIsAdultStudent(true);
                             return;
                           }
                           setFormStudentId(sid);
                           const cand = candidates.find(c => c.id === sid);
                           if (cand) {
+                            setFormIsAdultStudent(checkIsAdult(cand));
                             setFormGuardianName(cand.guardian_name || '');
                             setFormGuardianPhone(cand.guardian_phone || '');
                             setFormStudentPhone(cand.phone || '');
@@ -1900,10 +1947,52 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                 {/* CAMPOS EDITABLES DE APODERADO Y CONTACTO */}
                 {(formStudentId || isExternalStudent) && (
                   <div style={{ marginTop: '0.85rem', background: '#f8fafc', padding: '0.85rem', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}>
+                    {/* CHECKBOX ESTUDIANTE MAYOR DE EDAD */}
+                    <div style={{
+                      marginBottom: '0.85rem',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '6px',
+                      background: formIsAdultStudent ? '#ecfdf5' : '#ffffff',
+                      border: formIsAdultStudent ? '1.5px solid #10b981' : '1px solid #cbd5e1',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '0.75rem',
+                      transition: 'all 0.15s ease'
+                    }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', flex: 1, margin: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={formIsAdultStudent}
+                          onChange={(e) => setFormIsAdultStudent(e.target.checked)}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#059669' }}
+                        />
+                        <div>
+                          <div style={{ fontSize: '0.825rem', fontWeight: 700, color: formIsAdultStudent ? '#065f46' : '#1e293b' }}>
+                            Estudiante Mayor de Edad (+18 años o Egresado de Años Anteriores)
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: formIsAdultStudent ? '#047857' : '#64748b' }}>
+                            Al estar marcado, en la Ficha Oficial de Matrícula el recuadro de firma será para el <strong>propio estudiante</strong> (Firma Estudiante Titular / Toma de Conocimiento y Aceptación) con su nombre y RUN, en vez del apoderado.
+                          </div>
+                        </div>
+                      </label>
+                      <span style={{
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        padding: '0.2rem 0.5rem',
+                        borderRadius: '4px',
+                        background: formIsAdultStudent ? '#059669' : '#e2e8f0',
+                        color: formIsAdultStudent ? '#ffffff' : '#475569',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {formIsAdultStudent ? '✓ Firma Estudiante' : 'Firma Apoderado'}
+                      </span>
+                    </div>
+
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem', flexWrap: 'wrap', gap: '0.35rem' }}>
                       <div style={{ fontSize: '0.825rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                         <UserCheck size={16} color="#4f46e5" />
-                        <span>Datos del Apoderado(a) o Contacto y Domicilio (Editables)</span>
+                        <span>{formIsAdultStudent ? 'Datos de Contacto de Emergencia / Apoderado y Domicilio' : 'Datos del Apoderado(a) o Contacto y Domicilio (Editables)'}</span>
                       </div>
                       <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
                         Los cambios se actualizan automáticamente en la ficha oficial de práctica
@@ -1913,11 +2002,11 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '0.65rem' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
-                          Nombre Completo del Apoderado(a) / Contacto
+                          {formIsAdultStudent ? 'Nombre Apoderado / Contacto de Emergencia (Opcional)' : 'Nombre Completo del Apoderado(a) / Contacto'}
                         </label>
                         <input
                           type="text"
-                          placeholder="Nombre y apellidos del apoderado o contacto"
+                          placeholder={formIsAdultStudent ? 'Contacto familiar o tutor (opcional para adultos)' : 'Nombre y apellidos del apoderado o contacto'}
                           value={formGuardianName}
                           onChange={(e) => setFormGuardianName(e.target.value)}
                           style={{ width: '100%', padding: '0.45rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
@@ -1926,7 +2015,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
 
                       <div>
                         <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
-                          Teléfono del Apoderado(a) / Contacto
+                          {formIsAdultStudent ? 'Teléfono Contacto de Emergencia / Apoderado' : 'Teléfono del Apoderado(a) / Contacto'}
                         </label>
                         <input
                           type="text"
@@ -2742,9 +2831,13 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
                 <tr>
                   <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Domicilio Alumno:</td>
                   <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.student_address || 'Comuna de Yungay'}</td>
-                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Apoderado(a):</td>
+                  <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>
+                    {checkIsAdult(enrollment) ? 'Apoderado / Emergencia:' : 'Apoderado(a):'}
+                  </td>
                   <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>
-                    {enrollment.guardian_name || 'No informado'} {enrollment.guardian_phone ? `(${enrollment.guardian_phone})` : ''}
+                    {enrollment.guardian_name
+                      ? `${enrollment.guardian_name} ${enrollment.guardian_phone ? `(${enrollment.guardian_phone})` : ''}`
+                      : checkIsAdult(enrollment) ? 'Estudiante Titular (Mayor de edad)' : 'No informado'}
                   </td>
                 </tr>
               </tbody>
@@ -2911,7 +3004,7 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
             </div>
           )}
 
-          {/* V. FIRMAS OFICIALES: PROFESOR GUÍA Y APODERADO DEL ESTUDIANTE */}
+          {/* V. FIRMAS OFICIALES: PROFESOR GUÍA Y APODERADO / ESTUDIANTE MAYOR DE EDAD */}
           <div style={{ marginTop: '1.25rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', textAlign: 'center', fontSize: '0.72rem', color: '#1e293b' }}>
             <div>
               <div style={{ borderBottom: '1.5px solid #0f172a', height: '36px', marginBottom: '0.35rem' }} />
@@ -2926,11 +3019,31 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
 
             <div>
               <div style={{ borderBottom: '1.5px solid #0f172a', height: '36px', marginBottom: '0.35rem' }} />
-              <strong style={{ display: 'block', fontSize: '0.8rem', color: '#0f172a' }}>
-                {enrollment.guardian_name || 'Apoderado(a) del Estudiante'}
-              </strong>
-              <div style={{ color: '#475569', fontWeight: 600, fontSize: '0.72rem' }}>Firma Apoderado(a)</div>
-              <div style={{ color: '#64748b', fontSize: '0.66rem' }}>Toma de Conocimiento y Autorización</div>
+              {checkIsAdult(enrollment) ? (
+                <>
+                  <strong style={{ display: 'block', fontSize: '0.8rem', color: '#0f172a' }}>
+                    {enrollment.student_name}
+                  </strong>
+                  <div style={{ color: '#475569', fontWeight: 600, fontSize: '0.72rem' }}>
+                    Firma del Estudiante (Mayor de Edad)
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.66rem' }}>
+                    RUN: {enrollment.student_run} · Toma de Conocimiento y Aceptación
+                  </div>
+                </>
+              ) : (
+                <>
+                  <strong style={{ display: 'block', fontSize: '0.8rem', color: '#0f172a' }}>
+                    {enrollment.guardian_name || 'Apoderado(a) del Estudiante'}
+                  </strong>
+                  <div style={{ color: '#475569', fontWeight: 600, fontSize: '0.72rem' }}>
+                    Firma Apoderado(a)
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.66rem' }}>
+                    Toma de Conocimiento y Autorización
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
