@@ -14462,7 +14462,7 @@ router.get('/tp-internships/candidates', authMiddleware, async (req: Request, re
         e.period as enrollment_period
       FROM students s
       LEFT JOIN tp_internship_enrollments e ON s.id = e.student_id AND e.period = $1
-      WHERE s.desc_grado ILIKE '%4%Medio%'
+      WHERE s.desc_grado ILIKE '%4%Medio%' OR s.desc_grado ILIKE '%Egresad%' OR e.id IS NOT NULL
       ORDER BY s.desc_grado ASC, s.full_name ASC
     `, [period]);
 
@@ -14547,11 +14547,63 @@ router.get('/tp-internships/stats', authMiddleware, async (req: Request, res: Re
   }
 });
 
+// GET /api/tp-internships/search-student - Buscar estudiante por RUN o Nombre para matrícula
+router.get('/tp-internships/search-student', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (!q || q.length < 2) {
+      return res.json([]);
+    }
+    const cleanQ = q.replace(/[\.\-]/g, '');
+    const result = await query(`
+      SELECT 
+        s.id,
+        s.run,
+        s.full_name,
+        s.desc_grado,
+        s.letra_curso,
+        s.phone,
+        s.email,
+        s.address,
+        s.commune,
+        s.guardian_name,
+        s.guardian_phone,
+        s.profesor_jefe,
+        CASE 
+          WHEN s.desc_grado ILIKE '%Mecánica%' THEN 'Mecánica Industrial'
+          WHEN s.desc_grado ILIKE '%Párvulo%' OR s.desc_grado ILIKE '%Niños%' THEN 'Atención de Párvulos'
+          ELSE 'Técnico Profesional'
+        END as specialty,
+        e.id as existing_enrollment_id,
+        e.enrollment_number as existing_enrollment_number,
+        e.status as existing_status
+      FROM students s
+      LEFT JOIN tp_internship_enrollments e ON s.id = e.student_id AND e.period = '2026 - 2027'
+      WHERE 
+        s.full_name ILIKE $1 OR 
+        s.run ILIKE $1 OR 
+        REPLACE(REPLACE(s.run, '.', ''), '-', '') ILIKE $2
+      ORDER BY s.full_name ASC
+      LIMIT 15
+    `, [`%${q}%`, `%${cleanQ}%`]);
+
+    res.json(result.rows);
+  } catch (err: any) {
+    console.error('❌ Error en GET /api/tp-internships/search-student:', err);
+    res.status(500).json({ error: 'Error al buscar estudiante.' });
+  }
+});
+
 // POST /api/tp-internships - Crear o registrar matrícula de práctica
 router.post('/tp-internships', authMiddleware, checkRoles(['Admin', 'Director', 'Docente']), async (req: Request, res: Response) => {
   try {
     const {
       student_id,
+      is_external_or_graduate,
+      student_run,
+      student_name,
+      specialty = 'Mecánica Industrial',
+      generation_year = '2025',
       period = '2026 - 2027',
       enrollment_number,
       enrollment_date,
@@ -14583,17 +14635,91 @@ router.post('/tp-internships', authMiddleware, checkRoles(['Admin', 'Director', 
       guardian_name,
       guardian_phone,
       student_phone,
-      student_address
+      student_address,
+      student_email,
+      student_commune
     } = req.body;
 
-    if (!student_id) {
-      return res.status(400).json({ error: 'Debe seleccionar un estudiante de 4° Medio.' });
+    let resolvedStudentId = student_id;
+
+    // Manejo de estudiantes de años anteriores / egresados fuera de la nómina regular
+    if (is_external_or_graduate || !student_id) {
+      if (!student_run || !student_name) {
+        return res.status(400).json({ error: 'Debe ingresar el RUN y Nombre Completo del estudiante egresado.' });
+      }
+
+      const cleanRun = String(student_run).replace(/[\.\-]/g, '').trim().toUpperCase();
+      const degreeDesc = `Egresado ${generation_year || 'Anterior'} (${specialty || 'Técnico Profesional'})`;
+
+      // Buscar si ya existe en la base de datos por RUN o ID
+      const existingStu = await query(
+        "SELECT id, full_name, desc_grado FROM students WHERE REPLACE(REPLACE(run, '.', ''), '-', '') = $1 OR id = $2",
+        [cleanRun, student_id || '']
+      );
+
+      if (existingStu.rows.length > 0) {
+        resolvedStudentId = existingStu.rows[0].id;
+        await query(`
+          UPDATE students SET
+            full_name = COALESCE($1, full_name),
+            desc_grado = COALESCE($2, desc_grado),
+            phone = COALESCE($3, phone),
+            email = COALESCE($4, email),
+            address = COALESCE($5, address),
+            commune = COALESCE($6, commune),
+            guardian_name = COALESCE($7, guardian_name),
+            guardian_phone = COALESCE($8, guardian_phone),
+            status = 'Active'
+          WHERE id = $9
+        `, [
+          student_name.trim().toUpperCase(),
+          degreeDesc,
+          student_phone || null,
+          student_email || null,
+          student_address || null,
+          student_commune || 'Yungay',
+          guardian_name || null,
+          guardian_phone || null,
+          resolvedStudentId
+        ]);
+      } else {
+        resolvedStudentId = `STU-EGR-${cleanRun}`;
+        await query(`
+          INSERT INTO students (
+            id, run, full_name, desc_grado, status, academic_year,
+            address, commune, email, phone, mobile_phone,
+            guardian_name, guardian_phone, emergency_contact_name, emergency_contact_phone,
+            profesor_jefe, is_retired, created_at
+          ) VALUES (
+            $1, $2, $3, $4, 'Active', 2026,
+            $5, $6, $7, $8, $8,
+            $9, $10, $9, $10,
+            $11, 0, NOW()
+          )
+        `, [
+          resolvedStudentId,
+          String(student_run).trim().toUpperCase(),
+          String(student_name).trim().toUpperCase(),
+          degreeDesc,
+          student_address || null,
+          student_commune || 'Yungay',
+          student_email || null,
+          student_phone || null,
+          guardian_name || null,
+          guardian_phone || null,
+          school_tutor_teacher || null
+        ]);
+      }
+    }
+
+    if (!resolvedStudentId) {
+      return res.status(400).json({ error: 'Debe seleccionar o ingresar un estudiante para la matrícula.' });
     }
 
     // Verificar si el estudiante ya tiene matrícula en este período
     const existing = await query(
       'SELECT id, enrollment_number FROM tp_internship_enrollments WHERE student_id = $1 AND period = $2',
-      [student_id, period]
+      [resolvedStudentId, period]
     );
     if (existing.rows.length > 0) {
       return res.status(400).json({ 
@@ -14624,7 +14750,7 @@ router.post('/tp-internships', authMiddleware, checkRoles(['Admin', 'Director', 
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30
       )
     `, [
-      id, student_id, period, autoFolio, eDate, status, modality,
+      id, resolvedStudentId, period, autoFolio, eDate, status, modality,
       required_hours || 360, completed_hours || 0, start_date || null, end_date || null, schedule_shift,
       company_name || null, company_rut || null, company_address || null, company_commune || 'Yungay', company_phone || null, company_email || null,
       company_mentor_name || null, company_mentor_position || null, company_mentor_phone || null, company_mentor_email || null,
@@ -14634,24 +14760,28 @@ router.post('/tp-internships', authMiddleware, checkRoles(['Admin', 'Director', 
     ]);
 
     // Actualizar datos de contacto y apoderado en la ficha del estudiante si fueron editados
-    if (guardian_name || guardian_phone || student_phone || student_address) {
+    if (guardian_name || guardian_phone || student_phone || student_address || student_email || student_commune) {
       await query(`
         UPDATE students SET
           guardian_name = COALESCE($1, guardian_name),
           guardian_phone = COALESCE($2, guardian_phone),
           phone = COALESCE($3, phone),
-          address = COALESCE($4, address)
-        WHERE id = $5
+          address = COALESCE($4, address),
+          email = COALESCE($5, email),
+          commune = COALESCE($6, commune)
+        WHERE id = $7
       `, [
         guardian_name || null,
         guardian_phone || null,
         student_phone || null,
         student_address || null,
-        student_id
+        student_email || null,
+        student_commune || null,
+        resolvedStudentId
       ]);
     }
 
-    await logAudit(req, 'ENROLL_TP_INTERNSHIP', `Matrícula de práctica creada (${autoFolio}) para alumno ${student_id} en período ${period}.`);
+    await logAudit(req, 'ENROLL_TP_INTERNSHIP', `Matrícula de práctica creada (${autoFolio}) para alumno ${resolvedStudentId} en período ${period}.`);
 
     res.json({ success: true, id, enrollment_number: autoFolio, message: 'Matrícula de práctica creada exitosamente.' });
   } catch (err: any) {
@@ -14696,7 +14826,9 @@ router.put('/tp-internships/:id', authMiddleware, checkRoles(['Admin', 'Director
       guardian_name,
       guardian_phone,
       student_phone,
-      student_address
+      student_address,
+      student_email,
+      student_commune
     } = req.body;
 
     await query(`
@@ -14764,7 +14896,7 @@ router.put('/tp-internships/:id', authMiddleware, checkRoles(['Admin', 'Director
     ]);
 
     // Sincronizar datos de apoderado y contacto si fueron modificados
-    if (guardian_name || guardian_phone || student_phone || student_address) {
+    if (guardian_name || guardian_phone || student_phone || student_address || student_email || student_commune) {
       const sRes = await query('SELECT student_id FROM tp_internship_enrollments WHERE id = $1', [id]);
       if (sRes.rows.length > 0) {
         const sId = sRes.rows[0].student_id;
@@ -14773,13 +14905,17 @@ router.put('/tp-internships/:id', authMiddleware, checkRoles(['Admin', 'Director
             guardian_name = COALESCE($1, guardian_name),
             guardian_phone = COALESCE($2, guardian_phone),
             phone = COALESCE($3, phone),
-            address = COALESCE($4, address)
-          WHERE id = $5
+            address = COALESCE($4, address),
+            email = COALESCE($5, email),
+            commune = COALESCE($6, commune)
+          WHERE id = $7
         `, [
           guardian_name || null,
           guardian_phone || null,
           student_phone || null,
           student_address || null,
+          student_email || null,
+          student_commune || null,
           sId
         ]);
       }

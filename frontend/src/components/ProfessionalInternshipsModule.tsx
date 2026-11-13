@@ -23,6 +23,7 @@ import {
   Mail,
   MapPin,
   UserCheck,
+  UserPlus,
   Award,
   ChevronRight,
   X,
@@ -181,6 +182,59 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
   const [formStudentAddress, setFormStudentAddress] = useState<string>('');
   const [saving, setSaving] = useState<boolean>(false);
 
+  // Estado para Estudiantes de Años Anteriores / Egresados (Fuera de la lista regular de 4° Medio)
+  const [isExternalStudent, setIsExternalStudent] = useState<boolean>(false);
+  const [formExternalRun, setFormExternalRun] = useState<string>('');
+  const [formExternalName, setFormExternalName] = useState<string>('');
+  const [formExternalSpecialty, setFormExternalSpecialty] = useState<string>('Mecánica Industrial');
+  const [formExternalYear, setFormExternalYear] = useState<string>('2025');
+  const [formExternalEmail, setFormExternalEmail] = useState<string>('');
+  const [formExternalCommune, setFormExternalCommune] = useState<string>('Yungay');
+  const [searchStudentQuery, setSearchStudentQuery] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchingStudent, setSearchingStudent] = useState<boolean>(false);
+
+  // Búsqueda rápida de estudiantes históricos
+  const handleSearchExistingStudent = async (term: string) => {
+    setSearchStudentQuery(term);
+    if (!term || term.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    try {
+      setSearchingStudent(true);
+      const res = await fetch(`/api/tp-internships/search-student?q=${encodeURIComponent(term.trim())}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResults(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Error buscando estudiante:', err);
+    } finally {
+      setSearchingStudent(false);
+    }
+  };
+
+  const handleSelectSearchedStudent = (stu: any) => {
+    setFormStudentId(stu.id);
+    setFormExternalRun(stu.run || '');
+    setFormExternalName(stu.full_name || '');
+    setFormExternalSpecialty(stu.specialty || 'Mecánica Industrial');
+    setFormGuardianName(stu.guardian_name || '');
+    setFormGuardianPhone(stu.guardian_phone || '');
+    setFormStudentPhone(stu.phone || '');
+    setFormStudentAddress(stu.address || '');
+    setFormExternalEmail(stu.email || '');
+    setFormExternalCommune(stu.commune || 'Yungay');
+    if (stu.profesor_jefe && !formSchoolTutorTeacher) {
+      setFormSchoolTutorTeacher(stu.profesor_jefe);
+    }
+    setSearchResults([]);
+    setSearchStudentQuery('');
+  };
+
   // Cargar datos
   const loadData = async () => {
     try {
@@ -245,6 +299,15 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
   // Abrir Modal para Nueva Matrícula
   const handleOpenNewModal = (preselectedStudentId?: string) => {
     setEditingEnrollment(null);
+    setIsExternalStudent(false);
+    setFormExternalRun('');
+    setFormExternalName('');
+    setFormExternalSpecialty('Mecánica Industrial');
+    setFormExternalYear('2025');
+    setFormExternalEmail('');
+    setFormExternalCommune('Yungay');
+    setSearchStudentQuery('');
+    setSearchResults([]);
     setFormStudentId(preselectedStudentId || '');
     setFormPeriod(selectedPeriod);
     setFormEnrollmentNumber('');
@@ -285,6 +348,19 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
   // Abrir Modal para Editar
   const handleOpenEditModal = (enrollment: InternshipEnrollment) => {
     setEditingEnrollment(enrollment);
+    const isEgresado = Boolean(
+      enrollment.course_name?.toLowerCase().includes('egresad') ||
+      (enrollment as any).desc_grado?.toLowerCase().includes('egresad')
+    );
+    setIsExternalStudent(isEgresado);
+    setFormExternalRun(enrollment.student_run || '');
+    setFormExternalName(enrollment.student_name || '');
+    setFormExternalSpecialty(enrollment.specialty || 'Mecánica Industrial');
+    setFormExternalYear('2025');
+    setFormExternalEmail(enrollment.student_email || '');
+    setFormExternalCommune(enrollment.student_commune || 'Yungay');
+    setSearchStudentQuery('');
+    setSearchResults([]);
     setFormStudentId(enrollment.student_id);
     setFormPeriod(enrollment.period || selectedPeriod);
     setFormEnrollmentNumber(enrollment.enrollment_number || '');
@@ -324,15 +400,27 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
   // Guardar Matrícula
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formStudentId) {
-      Swal.fire('Atención', 'Debe seleccionar un estudiante de 4° Medio.', 'warning');
-      return;
+    if (isExternalStudent) {
+      if (!formExternalRun.trim() || !formExternalName.trim()) {
+        Swal.fire('Atención', 'Debe ingresar el RUN y Nombre Completo del estudiante egresado o de años anteriores.', 'warning');
+        return;
+      }
+    } else {
+      if (!formStudentId) {
+        Swal.fire('Atención', 'Debe seleccionar un estudiante de 4° Medio.', 'warning');
+        return;
+      }
     }
 
     try {
       setSaving(true);
-      const payload = {
-        student_id: formStudentId,
+      const payload: any = {
+        student_id: isExternalStudent ? (formStudentId || null) : formStudentId,
+        is_external_or_graduate: isExternalStudent,
+        student_run: isExternalStudent ? formExternalRun.trim() : undefined,
+        student_name: isExternalStudent ? formExternalName.trim() : undefined,
+        specialty: isExternalStudent ? formExternalSpecialty : undefined,
+        generation_year: isExternalStudent ? formExternalYear : undefined,
         period: formPeriod,
         enrollment_number: formEnrollmentNumber,
         enrollment_date: formEnrollmentDate,
@@ -364,7 +452,9 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
         guardian_name: formGuardianName,
         guardian_phone: formGuardianPhone,
         student_phone: formStudentPhone,
-        student_address: formStudentAddress
+        student_address: formStudentAddress,
+        student_email: formExternalEmail,
+        student_commune: formExternalCommune
       };
 
       const url = editingEnrollment
@@ -1313,6 +1403,125 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                 ))}
             </div>
           </div>
+
+          {/* CURSO 3: ESTUDIANTES DE GENERACIONES ANTERIORES / EGRESADOS */}
+          {candidates.some(c => c.desc_grado && (c.desc_grado.toLowerCase().includes('egresad') || (!c.desc_grado.includes('4°') && !c.desc_grado.includes('4TO')))) && (
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#312e81', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <UserPlus size={18} color="#4f46e5" />
+                    Estudiantes de Generaciones Anteriores / Egresados
+                  </h3>
+                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                    Estudiantes fuera de la nómina regular matriculados o realizando su práctica profesional
+                  </p>
+                </div>
+
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, background: '#ede9fe', color: '#5b21b6', padding: '0.3rem 0.75rem', borderRadius: '9999px' }}>
+                  {candidates.filter(c => c.desc_grado && (c.desc_grado.toLowerCase().includes('egresad') || (!c.desc_grado.includes('4°') && !c.desc_grado.includes('4TO'))) && c.is_enrolled).length} Registrados
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '0.85rem' }}>
+                {candidates
+                  .filter(c => c.desc_grado && (c.desc_grado.toLowerCase().includes('egresad') || (!c.desc_grado.includes('4°') && !c.desc_grado.includes('4TO'))))
+                  .map((student, idx) => (
+                    <div
+                      key={student.id}
+                      style={{
+                        border: student.is_enrolled ? '1.5px solid #818cf8' : '1px solid #e2e8f0',
+                        background: student.is_enrolled ? '#f5f3ff' : '#ffffff',
+                        borderRadius: '8px',
+                        padding: '0.85rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        gap: '0.5rem'
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>#{idx + 1}</span>
+                          {student.is_enrolled ? (
+                            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#5b21b6', background: '#ede9fe', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
+                              {student.enrollment_number} ({student.enrollment_status})
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#d97706', background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
+                              Pendiente Matrícula
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: '0.875rem', color: '#0f172a', marginTop: '0.25rem' }}>
+                          {student.full_name}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                          RUN: <strong>{student.run}</strong> · {student.desc_grado}
+                        </div>
+                        {student.guardian_name && (
+                          <div style={{ fontSize: '0.725rem', color: '#64748b', marginTop: '0.2rem' }}>
+                            Apoderado / Contacto: {student.guardian_name} {student.guardian_phone ? `(${student.guardian_phone})` : ''}
+                          </div>
+                        )}
+                        {student.company_name && (
+                          <div style={{ fontSize: '0.725rem', color: '#4338ca', fontWeight: 600, marginTop: '0.25rem' }}>
+                            🏢 Centro: {student.company_name}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.35rem', marginTop: '0.35rem' }}>
+                        {student.is_enrolled ? (
+                          <button
+                            onClick={() => {
+                              const found = enrollments.find(e => e.id === student.enrollment_id);
+                              if (found) setPrintModalEnrollment(found);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
+                              padding: '0.35rem 0.65rem',
+                              background: '#ffffff',
+                              border: '1px solid #818cf8',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              color: '#4f46e5',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <Printer size={13} />
+                            <span>Ver Ficha</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleOpenNewModal(student.id)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
+                              padding: '0.35rem 0.75rem',
+                              background: '#4f46e5',
+                              border: 'none',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              color: '#ffffff',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <Plus size={13} />
+                            <span>Matricular en Práctica</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1381,82 +1590,308 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
               <div style={{ marginBottom: '1.25rem' }}>
                 <h4 style={{ margin: '0 0 0.6rem 0', fontSize: '0.9rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <GraduationCap size={16} color="#4f46e5" />
-                  1. Antecedentes del Estudiante (4° Medio TP)
+                  1. Antecedentes del Estudiante
                 </h4>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.85rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.3rem' }}>
-                      Estudiante *
-                    </label>
-                    <select
-                      value={formStudentId}
-                      onChange={(e) => {
-                        const sid = e.target.value;
-                        setFormStudentId(sid);
-                        const cand = candidates.find(c => c.id === sid);
-                        if (cand) {
-                          setFormGuardianName(cand.guardian_name || '');
-                          setFormGuardianPhone(cand.guardian_phone || '');
-                          setFormStudentPhone(cand.phone || '');
-                          setFormStudentAddress(cand.address || '');
-                          if (!formSchoolTutorTeacher) {
-                            setFormSchoolTutorTeacher(cand.profesor_jefe || '');
-                          }
-                        }
+                {/* SELECTOR DE TIPO: REGULAR 4° MEDIO vs EGRESADO / AÑOS ANTERIORES */}
+                {!editingEnrollment && (
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.85rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsExternalStudent(false);
+                        setFormStudentId('');
                       }}
-                      disabled={Boolean(editingEnrollment)}
                       style={{
-                        width: '100%',
-                        padding: '0.5rem',
+                        flex: 1,
+                        padding: '0.55rem 0.75rem',
                         borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '0.85rem',
-                        boxSizing: 'border-box'
+                        border: !isExternalStudent ? '2px solid #4f46e5' : '1px solid #cbd5e1',
+                        background: !isExternalStudent ? '#eef2ff' : '#ffffff',
+                        color: !isExternalStudent ? '#4338ca' : '#64748b',
+                        fontWeight: !isExternalStudent ? 700 : 500,
+                        fontSize: '0.825rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.4rem',
+                        transition: 'all 0.15s ease'
                       }}
-                      required
                     >
-                      <option value="">-- Seleccionar Alumno de 4° Medio --</option>
-                      {candidates.map((c) => (
-                        <option key={c.id} value={c.id} disabled={c.is_enrolled && (!editingEnrollment || editingEnrollment.student_id !== c.id)}>
-                          {c.full_name} ({c.run}) - {c.desc_grado.includes('Mecánica') ? 'Mecánica Ind.' : 'Párvulos'}
-                          {c.is_enrolled && (!editingEnrollment || editingEnrollment.student_id !== c.id) ? ' (Ya matriculado)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                      <GraduationCap size={16} />
+                      <span>Alumno 4° Medio Regular (Nómina 2026)</span>
+                    </button>
 
-                  {selectedCandidateForForm && (
-                    <div style={{ background: '#f8fafc', padding: '0.6rem 0.85rem', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.75rem', color: '#475569' }}>
-                      <div><strong>RUN:</strong> {selectedCandidateForForm.run}</div>
-                      <div><strong>Especialidad:</strong> {selectedCandidateForForm.specialty}</div>
-                      <div><strong>Curso:</strong> {selectedCandidateForForm.desc_grado}</div>
-                      <div><strong>Prof. Jefe:</strong> {selectedCandidateForForm.profesor_jefe || '—'}</div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsExternalStudent(true);
+                        setFormStudentId('');
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '0.55rem 0.75rem',
+                        borderRadius: '6px',
+                        border: isExternalStudent ? '2px solid #4f46e5' : '1px solid #cbd5e1',
+                        background: isExternalStudent ? '#eef2ff' : '#ffffff',
+                        color: isExternalStudent ? '#4338ca' : '#64748b',
+                        fontWeight: isExternalStudent ? 700 : 500,
+                        fontSize: '0.825rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.4rem',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <UserPlus size={16} />
+                      <span>Alumno de Años Anteriores / Egresado</span>
+                    </button>
+                  </div>
+                )}
+
+                {!isExternalStudent ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.85rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.3rem' }}>
+                        Estudiante *
+                      </label>
+                      <select
+                        value={formStudentId}
+                        onChange={(e) => {
+                          const sid = e.target.value;
+                          if (sid === '__NEW_GRADUATE__') {
+                            setIsExternalStudent(true);
+                            setFormStudentId('');
+                            return;
+                          }
+                          setFormStudentId(sid);
+                          const cand = candidates.find(c => c.id === sid);
+                          if (cand) {
+                            setFormGuardianName(cand.guardian_name || '');
+                            setFormGuardianPhone(cand.guardian_phone || '');
+                            setFormStudentPhone(cand.phone || '');
+                            setFormStudentAddress(cand.address || '');
+                            if (!formSchoolTutorTeacher) {
+                              setFormSchoolTutorTeacher(cand.profesor_jefe || '');
+                            }
+                          }
+                        }}
+                        disabled={Boolean(editingEnrollment)}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.85rem',
+                          boxSizing: 'border-box'
+                        }}
+                        required={!isExternalStudent}
+                      >
+                        <option value="">-- Seleccionar Alumno de 4° Medio --</option>
+                        <option value="__NEW_GRADUATE__" style={{ color: '#4f46e5', fontWeight: 700, backgroundColor: '#f1f5f9' }}>
+                          ➕ Ingresar Estudiante de Años Anteriores / Egresado...
+                        </option>
+                        {candidates.map((c) => (
+                          <option key={c.id} value={c.id} disabled={c.is_enrolled && (!editingEnrollment || editingEnrollment.student_id !== c.id)}>
+                            {c.full_name} ({c.run}) - {c.desc_grado.includes('Mecánica') ? 'Mecánica Ind.' : c.desc_grado.includes('Párvulo') ? 'Párvulos' : c.desc_grado}
+                            {c.is_enrolled && (!editingEnrollment || editingEnrollment.student_id !== c.id) ? ' (Ya matriculado)' : ''}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                  )}
-                </div>
+
+                    {selectedCandidateForForm && (
+                      <div style={{ background: '#f8fafc', padding: '0.6rem 0.85rem', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.75rem', color: '#475569' }}>
+                        <div><strong>RUN:</strong> {selectedCandidateForForm.run}</div>
+                        <div><strong>Especialidad:</strong> {selectedCandidateForForm.specialty}</div>
+                        <div><strong>Curso:</strong> {selectedCandidateForForm.desc_grado}</div>
+                        <div><strong>Prof. Jefe:</strong> {selectedCandidateForForm.profesor_jefe || '—'}</div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '8px', border: '1.5px solid #818cf8', marginBottom: '0.75rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '0.35rem' }}>
+                      <div style={{ fontSize: '0.825rem', fontWeight: 700, color: '#312e81', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <UserPlus size={16} color="#4f46e5" />
+                        <span>Registro de Estudiante de Generación Anterior o Egresado</span>
+                      </div>
+                      <span style={{ fontSize: '0.7rem', color: '#6366f1', fontWeight: 600, background: '#e0e7ff', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
+                        Habilita matrícula oficial y emisión de ficha para ex-alumnos
+                      </span>
+                    </div>
+
+                    {/* BUSCADOR HISTÓRICO RÁPIDO */}
+                    {!editingEnrollment && (
+                      <div style={{ marginBottom: '0.75rem', position: 'relative' }}>
+                        <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
+                          🔍 Buscar en base de datos histórica por RUT o Nombre (Opcional si ya cursó en el liceo):
+                        </label>
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          <input
+                            type="text"
+                            placeholder="Escriba RUT o apellido para buscar si ya está registrado en el liceo..."
+                            value={searchStudentQuery}
+                            onChange={(e) => handleSearchExistingStudent(e.target.value)}
+                            style={{
+                              flex: 1,
+                              padding: '0.45rem 0.6rem',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '0.8rem',
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                          {searchStudentQuery && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSearchStudentQuery('');
+                                setSearchResults([]);
+                              }}
+                              style={{ padding: '0.45rem 0.65rem', background: '#e2e8f0', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' }}
+                            >
+                              Limpiar
+                            </button>
+                          )}
+                        </div>
+                        {searchingStudent && (
+                          <div style={{ fontSize: '0.725rem', color: '#64748b', marginTop: '0.25rem' }}>Buscando...</div>
+                        )}
+                        {searchResults.length > 0 && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            right: 0,
+                            background: '#ffffff',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '6px',
+                            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+                            zIndex: 50,
+                            maxHeight: '180px',
+                            overflowY: 'auto',
+                            marginTop: '2px'
+                          }}>
+                            {searchResults.map((stu) => (
+                              <div
+                                key={stu.id}
+                                onClick={() => handleSelectSearchedStudent(stu)}
+                                style={{
+                                  padding: '0.5rem 0.75rem',
+                                  cursor: 'pointer',
+                                  borderBottom: '1px solid #f1f5f9',
+                                  fontSize: '0.75rem',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center'
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                              >
+                                <div>
+                                  <strong>{stu.full_name}</strong> ({stu.run})
+                                  <div style={{ color: '#64748b', fontSize: '0.7rem' }}>{stu.desc_grado || 'Sin curso'}</div>
+                                </div>
+                                <span style={{ fontSize: '0.7rem', color: '#4f46e5', fontWeight: 600 }}>Seleccionar</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* CAMPOS MANUALES DE EGRESADO */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.65rem' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
+                          RUN / RUT del Estudiante *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ej: 21.234.567-8"
+                          value={formExternalRun}
+                          onChange={(e) => setFormExternalRun(e.target.value)}
+                          disabled={Boolean(editingEnrollment)}
+                          required={isExternalStudent}
+                          style={{ width: '100%', padding: '0.45rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
+                          Nombre Completo del Estudiante *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Apellidos y nombres"
+                          value={formExternalName}
+                          onChange={(e) => setFormExternalName(e.target.value)}
+                          required={isExternalStudent}
+                          style={{ width: '100%', padding: '0.45rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
+                          Especialidad Técnico-Profesional *
+                        </label>
+                        <select
+                          value={formExternalSpecialty}
+                          onChange={(e) => setFormExternalSpecialty(e.target.value)}
+                          style={{ width: '100%', padding: '0.45rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
+                        >
+                          <option value="Mecánica Industrial">Mecánica Industrial</option>
+                          <option value="Atención de Párvulos">Atención de Párvulos</option>
+                          <option value="Técnico Profesional">Técnico Profesional (General)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
+                          Año de Egreso / Generación *
+                        </label>
+                        <select
+                          value={formExternalYear}
+                          onChange={(e) => setFormExternalYear(e.target.value)}
+                          style={{ width: '100%', padding: '0.45rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
+                        >
+                          <option value="2025">Generación 2025 (Egresado 2025)</option>
+                          <option value="2024">Generación 2024 (Egresado 2024)</option>
+                          <option value="2023">Generación 2023 (Egresado 2023)</option>
+                          <option value="2022">Generación 2022</option>
+                          <option value="2021">Generación 2021</option>
+                          <option value="Anterior">Generaciones Anteriores</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* CAMPOS EDITABLES DE APODERADO Y CONTACTO */}
-                {formStudentId && (
+                {(formStudentId || isExternalStudent) && (
                   <div style={{ marginTop: '0.85rem', background: '#f8fafc', padding: '0.85rem', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem', flexWrap: 'wrap', gap: '0.35rem' }}>
                       <div style={{ fontSize: '0.825rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                         <UserCheck size={16} color="#4f46e5" />
-                        <span>Datos del Apoderado(a) y Domicilio (Editables si cambiaron)</span>
+                        <span>Datos del Apoderado(a) o Contacto y Domicilio (Editables)</span>
                       </div>
                       <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                        Los cambios se actualizan automáticamente en el expediente del estudiante y en la ficha de práctica
+                        Los cambios se actualizan automáticamente en la ficha oficial de práctica
                       </span>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '0.65rem' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
-                          Nombre Completo del Apoderado(a) *
+                          Nombre Completo del Apoderado(a) / Contacto
                         </label>
                         <input
                           type="text"
-                          placeholder="Nombre y apellidos del apoderado titular"
+                          placeholder="Nombre y apellidos del apoderado o contacto"
                           value={formGuardianName}
                           onChange={(e) => setFormGuardianName(e.target.value)}
                           style={{ width: '100%', padding: '0.45rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
@@ -1465,7 +1900,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
 
                       <div>
                         <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
-                          Teléfono del Apoderado(a)
+                          Teléfono del Apoderado(a) / Contacto
                         </label>
                         <input
                           type="text"
@@ -1498,6 +1933,32 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                           placeholder="Calle, Pasaje, Sector, Comuna..."
                           value={formStudentAddress}
                           onChange={(e) => setFormStudentAddress(e.target.value)}
+                          style={{ width: '100%', padding: '0.45rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
+                          Email del Alumno
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="alumno@correo.cl"
+                          value={formExternalEmail}
+                          onChange={(e) => setFormExternalEmail(e.target.value)}
+                          style={{ width: '100%', padding: '0.45rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
+                          Comuna de Residencia
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Yungay, Campanario, Chillán..."
+                          value={formExternalCommune}
+                          onChange={(e) => setFormExternalCommune(e.target.value)}
                           style={{ width: '100%', padding: '0.45rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
                         />
                       </div>
