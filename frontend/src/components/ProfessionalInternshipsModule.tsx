@@ -1028,12 +1028,38 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
                         </td>
                         <td style={{ padding: '0.75rem 0.6rem' }}>
                           <div style={{ fontWeight: 600, color: '#1e293b' }}>
-                            {item.company_name || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Empresa por asignar</span>}
+                            {item.company_name && item.company_name.trim() !== '' && item.company_name !== 'Por definir' ? (
+                              item.company_name
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-start' }}>
+                                <span style={{ fontSize: '0.725rem', fontWeight: 600, color: '#d97706', background: '#fef3c7', padding: '0.15rem 0.45rem', borderRadius: '4px' }}>
+                                  ⚠️ Empresa por asignar
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditModal(item)}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    color: '#4f46e5',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    textDecoration: 'underline'
+                                  }}
+                                >
+                                  + Asignar o completar empresa
+                                </button>
+                              </div>
+                            )}
                           </div>
-                          <div style={{ fontSize: '0.725rem', color: '#64748b' }}>
-                            {item.company_commune ? `${item.company_commune} · ` : ''}
-                            {item.company_mentor_name ? `Guía: ${item.company_mentor_name}` : ''}
-                          </div>
+                          {item.company_name && item.company_name.trim() !== '' && item.company_name !== 'Por definir' && (
+                            <div style={{ fontSize: '0.725rem', color: '#64748b' }}>
+                              {item.company_commune ? `${item.company_commune} · ` : ''}
+                              {item.company_mentor_name ? `Guía: ${item.company_mentor_name}` : ''}
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '0.75rem 0.6rem' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', marginBottom: '0.2rem' }}>
@@ -1969,19 +1995,55 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
 
               {/* SECCIÓN 2: EMPRESA Y CENTRO DE PRÁCTICA */}
               <div style={{ marginBottom: '1.25rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
-                <h4 style={{ margin: '0 0 0.6rem 0', fontSize: '0.9rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Building size={16} color="#059669" />
-                  2. Datos del Centro de Práctica / Empresa
-                </h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Building size={16} color="#059669" />
+                    <span>2. Datos del Centro de Práctica / Empresa</span>
+                  </h4>
+                  <span style={{ fontSize: '0.725rem', padding: '0.2rem 0.55rem', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', borderRadius: '4px', fontWeight: 600 }}>
+                    💡 Opcional al matricular — Se puede asignar o completar después
+                  </span>
+                </div>
+
+                <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.75rem', color: '#64748b', lineHeight: 1.35 }}>
+                  En caso de que aún no se sepa en qué empresa le corresponde realizar la práctica profesional, puede dejar estos datos en blanco o marcar <em>"Empresa pendiente de asignación"</em>. Podrá asignarla o completarla en cualquier momento desde la nómina oficial.
+                </p>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', background: '#f8fafc', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <input
+                    type="checkbox"
+                    id="chkEmpresaPendiente"
+                    checked={!formCompanyName || formCompanyName.trim() === '' || formCompanyName === 'Por definir'}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setFormCompanyName('');
+                        setFormCompanyRut('');
+                        setFormCompanyAddress('');
+                        setFormCompanyPhone('');
+                        setFormCompanyEmail('');
+                        setFormCompanyMentorName('');
+                        setFormCompanyMentorPosition('');
+                        setFormCompanyMentorPhone('');
+                        setFormCompanyMentorEmail('');
+                      } else {
+                        setFormCompanyName('');
+                      }
+                    }}
+                    style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                  />
+                  <label htmlFor="chkEmpresaPendiente" style={{ fontSize: '0.78rem', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>
+                    Empresa pendiente de asignación (Se definirá o completará más adelante)
+                  </label>
+                </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
-                      Razón Social / Empresa
+                      Razón Social / Empresa (Opcional)
                     </label>
                     <input
                       type="text"
-                      placeholder="Ej: Maestranza Biobío SpA / Jardín Campanita"
+                      placeholder="Ej: Maestranza Biobío (o dejar en blanco)"
                       value={formCompanyName}
                       onChange={(e) => setFormCompanyName(e.target.value)}
                       style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
@@ -1990,11 +2052,11 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
 
                   <div>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
-                      RUT Empresa
+                      RUT Empresa (Opcional)
                     </label>
                     <input
                       type="text"
-                      placeholder="Ej: 76.123.456-7"
+                      placeholder="Ej: 76.123.456-7 (Opcional)"
                       value={formCompanyRut}
                       onChange={(e) => setFormCompanyRut(e.target.value)}
                       style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
@@ -2003,11 +2065,11 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
 
                   <div>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
-                      Dirección Empresa
+                      Dirección Empresa (Opcional)
                     </label>
                     <input
                       type="text"
-                      placeholder="Ej: Av. Principal #120"
+                      placeholder="Ej: Av. Principal #120 (Opcional)"
                       value={formCompanyAddress}
                       onChange={(e) => setFormCompanyAddress(e.target.value)}
                       style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
@@ -2016,7 +2078,7 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
 
                   <div>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
-                      Comuna
+                      Comuna Empresa (Opcional)
                     </label>
                     <input
                       type="text"
@@ -2029,11 +2091,11 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
 
                   <div>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
-                      Teléfono Empresa
+                      Teléfono Empresa (Opcional)
                     </label>
                     <input
                       type="text"
-                      placeholder="+56 9 1234 5678"
+                      placeholder="+56 9 1234 5678 (Opcional)"
                       value={formCompanyPhone}
                       onChange={(e) => setFormCompanyPhone(e.target.value)}
                       style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
@@ -2042,11 +2104,11 @@ export const ProfessionalInternshipsModule: React.FC<ProfessionalInternshipsModu
 
                   <div>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.2rem' }}>
-                      Correo Empresa
+                      Correo Empresa (Opcional)
                     </label>
                     <input
                       type="email"
-                      placeholder="contacto@empresa.cl"
+                      placeholder="contacto@empresa.cl (Opcional)"
                       value={formCompanyEmail}
                       onChange={(e) => setFormCompanyEmail(e.target.value)}
                       style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.825rem', boxSizing: 'border-box' }}
@@ -2698,15 +2760,39 @@ const PrintInternshipCardModal: React.FC<PrintInternshipCardModalProps> = ({
               <tbody>
                 <tr>
                   <td style={{ padding: '0.15rem 0.25rem', width: '18%', fontWeight: 700, color: '#334155' }}>Razón Social:</td>
-                  <td style={{ padding: '0.15rem 0.25rem', width: '47%', fontWeight: 600, color: '#0f172a' }}>{enrollment.company_name || 'Por definir'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '47%', fontWeight: 600, color: '#0f172a' }}>
+                    {enrollment.company_name && enrollment.company_name.trim() !== '' && enrollment.company_name !== 'Por definir' ? (
+                      enrollment.company_name
+                    ) : (
+                      <span style={{ borderBottom: '1px dotted #475569', display: 'inline-block', width: '96%', height: '14px' }}>&nbsp;</span>
+                    )}
+                  </td>
                   <td style={{ padding: '0.15rem 0.25rem', width: '12%', fontWeight: 700, color: '#334155' }}>RUT Empresa:</td>
-                  <td style={{ padding: '0.15rem 0.25rem', width: '23%', color: '#0f172a' }}>{enrollment.company_rut || '—'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', width: '23%', color: '#0f172a' }}>
+                    {enrollment.company_rut && enrollment.company_rut.trim() !== '' ? (
+                      enrollment.company_rut
+                    ) : (
+                      <span style={{ borderBottom: '1px dotted #475569', display: 'inline-block', width: '96%', height: '14px' }}>&nbsp;</span>
+                    )}
+                  </td>
                 </tr>
                 <tr>
                   <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Dirección y Comuna:</td>
-                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.company_address || '—'} {enrollment.company_commune ? `(${enrollment.company_commune})` : ''}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>
+                    {enrollment.company_address && enrollment.company_address.trim() !== '' ? (
+                      `${enrollment.company_address} ${enrollment.company_commune ? `(${enrollment.company_commune})` : ''}`
+                    ) : (
+                      <span style={{ borderBottom: '1px dotted #475569', display: 'inline-block', width: '96%', height: '14px' }}>&nbsp;</span>
+                    )}
+                  </td>
                   <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Teléfono:</td>
-                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>{enrollment.company_phone || '—'}</td>
+                  <td style={{ padding: '0.15rem 0.25rem', color: '#0f172a' }}>
+                    {enrollment.company_phone && enrollment.company_phone.trim() !== '' ? (
+                      enrollment.company_phone
+                    ) : (
+                      <span style={{ borderBottom: '1px dotted #475569', display: 'inline-block', width: '96%', height: '14px' }}>&nbsp;</span>
+                    )}
+                  </td>
                 </tr>
                 <tr>
                   <td style={{ padding: '0.15rem 0.25rem', fontWeight: 700, color: '#334155' }}>Maestro Guía:</td>
