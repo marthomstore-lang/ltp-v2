@@ -2439,7 +2439,21 @@ router.get('/users', authMiddleware, async (req: Request, res: Response) => {
 });
 
 router.post('/users', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
-  const { run, name, email, role, roles, password, staff_type, job_function } = req.body;
+  const {
+    run,
+    name,
+    email,
+    role,
+    roles,
+    password,
+    staff_type,
+    job_function,
+    is_substitute,
+    replaced_teacher_id,
+    replaced_teacher_name,
+    transfer_homeroom,
+    send_welcome_email
+  } = req.body;
   const rawRun = String(run || '').trim();
   const cleanRun = rawRun.replace(/\./g, '').trim();
   const alnumRun = cleanRun.replace(/[^0-9kK]/g, '');
@@ -2502,7 +2516,84 @@ router.post('/users', authMiddleware, checkRoles(['Admin', 'Director']), async (
       ).catch(() => {});
     }
 
-    await logAudit(req, 'CREATE_USER', `Usuario ${name} (${rawRun}) creado/actualizado con roles [${roleArray.join(', ')}]`);
+    // LÓGICA DE PROFESOR REEMPLAZANTE: Clonar asignaciones de cursos y jefaturas
+    let clonedAssignmentsCount = 0;
+    let homeroomUpdated = false;
+    if (is_substitute && (replaced_teacher_id || replaced_teacher_name)) {
+      const targetUserId = existingRes.rows[0]?.id || id;
+      const targetUserName = name.trim();
+
+      const titularRes = await query(
+        `SELECT * FROM teacher_assignments 
+         WHERE teacher_id = $1 
+            OR UPPER(TRIM(teacher_name)) = UPPER(TRIM($2))
+            OR teacher_id_2 = $1 
+            OR UPPER(TRIM(teacher_name_2)) = UPPER(TRIM($2))`,
+        [replaced_teacher_id || '', (replaced_teacher_name || '').trim()]
+      );
+
+      const titularAssignments = titularRes.rows || [];
+      console.log(`[Reemplazo Docente] Se encontraron ${titularAssignments.length} asignaciones del titular para asignar a ${targetUserName}.`);
+
+      for (let idx = 0; idx < titularAssignments.length; idx++) {
+        const asn = titularAssignments[idx];
+        const year = asn.academic_year || 2026;
+
+        const existsCheck = await query(
+          `SELECT id FROM teacher_assignments 
+           WHERE (teacher_id = $1 OR UPPER(TRIM(teacher_name)) = UPPER(TRIM($2)))
+             AND level_name = $3 
+             AND subject_name = $4 
+             AND (academic_year = $5 OR academic_year IS NULL)`,
+          [targetUserId, targetUserName, asn.level_name, asn.subject_name, year]
+        );
+
+        if (existsCheck.rows.length === 0) {
+          const newAsnId = `ASN-SUB-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`;
+          await query(
+            `INSERT INTO teacher_assignments (
+               id, teacher_id, teacher_name, teacher_id_2, teacher_name_2, 
+               level_id, level_name, subject_id, subject_name, academic_year, created_at
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+            [
+              newAsnId,
+              targetUserId,
+              targetUserName,
+              asn.teacher_id_2 || null,
+              asn.teacher_name_2 || null,
+              asn.level_id || asn.level_name,
+              asn.level_name,
+              asn.subject_id || asn.subject_name,
+              asn.subject_name,
+              year
+            ]
+          );
+          clonedAssignmentsCount++;
+        }
+      }
+
+      if (transfer_homeroom && replaced_teacher_name) {
+        const coursesToUpdate = await query(
+          `SELECT id, name FROM courses WHERE UPPER(TRIM(teacher)) = UPPER(TRIM($1))`,
+          [replaced_teacher_name.trim()]
+        );
+        for (const c of coursesToUpdate.rows) {
+          await query(`UPDATE courses SET teacher = $1 WHERE id = $2`, [targetUserName, c.id]);
+          homeroomUpdated = true;
+          console.log(`[Reemplazo Docente] Jefatura del curso ${c.name} asignada a ${targetUserName}.`);
+        }
+      }
+    }
+
+    // ENVÍO DE CORREO DE BIENVENIDA CON CREDENCIALES
+    let emailResult = null;
+    if (send_welcome_email && safeEmail && !safeEmail.endsWith('@liceocampanario.cl')) {
+      const loginUrl = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://ltp-v2.vercel.app' : 'http://localhost:3000');
+      emailResult = await sendTeacherWelcomeEmail(safeEmail, name.trim(), passStr, loginUrl, rawRun);
+      console.log(`[Bienvenida Docente] Correo enviado a ${safeEmail}: success=${emailResult?.success}`);
+    }
+
+    await logAudit(req, 'CREATE_USER', `Usuario ${name} (${rawRun}) creado/actualizado con roles [${roleArray.join(', ')}]. Reemplazo: ${is_substitute ? `${clonedAssignmentsCount} cursos asignados` : 'No'}`);
     res.json({
       success: true,
       user: {
@@ -2515,7 +2606,11 @@ router.post('/users', authMiddleware, checkRoles(['Admin', 'Director']), async (
         staff_type: stType,
         job_function: job_function || 'Docente de Aula',
         password_plain: passStr
-      }
+      },
+      clonedAssignmentsCount,
+      homeroomUpdated,
+      emailSent: emailResult ? emailResult.success : false,
+      emailError: emailResult && !emailResult.success ? emailResult.error : null
     });
   } catch (err) {
     console.error('Error creando usuario:', err);
@@ -2525,7 +2620,21 @@ router.post('/users', authMiddleware, checkRoles(['Admin', 'Director']), async (
 
 router.put('/users/:id', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { run, name, email, role, roles, password, staff_type, job_function } = req.body;
+  const {
+    run,
+    name,
+    email,
+    role,
+    roles,
+    password,
+    staff_type,
+    job_function,
+    is_substitute,
+    replaced_teacher_id,
+    replaced_teacher_name,
+    transfer_homeroom,
+    send_welcome_email
+  } = req.body;
   const rawRun = String(run || '').trim();
   const cleanRun = rawRun.replace(/\./g, '').trim();
   const alnumRun = cleanRun.replace(/[^0-9kK]/g, '');
@@ -2659,13 +2768,92 @@ router.put('/users/:id', authMiddleware, checkRoles(['Admin', 'Director']), asyn
       console.warn('Error al sincronizar cargo directivo en institution_settings:', syncErr);
     }
 
-    await logAudit(req, 'UPDATE_USER', `Usuario ${name} (${id}) modificado con roles [${roleArray.join(', ')}]`);
+    // LÓGICA DE PROFESOR REEMPLAZANTE: Clonar asignaciones de cursos y jefaturas
+    let clonedAssignmentsCount = 0;
+    let homeroomUpdated = false;
+    const finalUserId = existingUserRes.rows[0]?.id || usrIdFromRun;
+    const finalUserName = name.trim();
+
+    if (is_substitute && (replaced_teacher_id || replaced_teacher_name)) {
+      const titularRes = await query(
+        `SELECT * FROM teacher_assignments 
+         WHERE teacher_id = $1 
+            OR UPPER(TRIM(teacher_name)) = UPPER(TRIM($2))
+            OR teacher_id_2 = $1 
+            OR UPPER(TRIM(teacher_name_2)) = UPPER(TRIM($2))`,
+        [replaced_teacher_id || '', (replaced_teacher_name || '').trim()]
+      );
+
+      const titularAssignments = titularRes.rows || [];
+      console.log(`[Reemplazo Docente PUT] Se encontraron ${titularAssignments.length} asignaciones del titular para asignar a ${finalUserName}.`);
+
+      for (let idx = 0; idx < titularAssignments.length; idx++) {
+        const asn = titularAssignments[idx];
+        const year = asn.academic_year || 2026;
+
+        const existsCheck = await query(
+          `SELECT id FROM teacher_assignments 
+           WHERE (teacher_id = $1 OR UPPER(TRIM(teacher_name)) = UPPER(TRIM($2)))
+             AND level_name = $3 
+             AND subject_name = $4 
+             AND (academic_year = $5 OR academic_year IS NULL)`,
+          [finalUserId, finalUserName, asn.level_name, asn.subject_name, year]
+        );
+
+        if (existsCheck.rows.length === 0) {
+          const newAsnId = `ASN-SUB-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`;
+          await query(
+            `INSERT INTO teacher_assignments (
+               id, teacher_id, teacher_name, teacher_id_2, teacher_name_2, 
+               level_id, level_name, subject_id, subject_name, academic_year, created_at
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+            [
+              newAsnId,
+              finalUserId,
+              finalUserName,
+              asn.teacher_id_2 || null,
+              asn.teacher_name_2 || null,
+              asn.level_id || asn.level_name,
+              asn.level_name,
+              asn.subject_id || asn.subject_name,
+              asn.subject_name,
+              year
+            ]
+          );
+          clonedAssignmentsCount++;
+        }
+      }
+
+      if (transfer_homeroom && replaced_teacher_name) {
+        const coursesToUpdate = await query(
+          `SELECT id, name FROM courses WHERE UPPER(TRIM(teacher)) = UPPER(TRIM($1))`,
+          [replaced_teacher_name.trim()]
+        );
+        for (const c of coursesToUpdate.rows) {
+          await query(`UPDATE courses SET teacher = $1 WHERE id = $2`, [finalUserName, c.id]);
+          homeroomUpdated = true;
+          console.log(`[Reemplazo Docente PUT] Jefatura del curso ${c.name} asignada a ${finalUserName}.`);
+        }
+      }
+    }
+
+    // ENVÍO DE CORREO DE BIENVENIDA / CREDENCIALES
+    let emailResult = null;
+    const finalEmailToSend = cleanEmail || existingUserRes.rows[0]?.email;
+    const finalPassToSend = passStr || (existingUserRes.rows[0]?.id ? (await query('SELECT password_plain FROM users WHERE id = $1', [finalUserId])).rows[0]?.password_plain : null) || 'Profe2026!';
+    if (send_welcome_email && finalEmailToSend && !finalEmailToSend.endsWith('@liceocampanario.cl')) {
+      const loginUrl = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://ltp-v2.vercel.app' : 'http://localhost:3000');
+      emailResult = await sendTeacherWelcomeEmail(finalEmailToSend, finalUserName, finalPassToSend, loginUrl, rawRun || existingUserRes.rows[0]?.run);
+      console.log(`[Bienvenida Docente PUT] Correo enviado a ${finalEmailToSend}: success=${emailResult?.success}`);
+    }
+
+    await logAudit(req, 'UPDATE_USER', `Usuario ${name} (${id}) modificado con roles [${roleArray.join(', ')}]. Reemplazo: ${is_substitute ? `${clonedAssignmentsCount} cursos asignados` : 'No'}`);
     res.json({
       success: true,
       role: primaryRole,
       roles: roleArray,
       user: {
-        id: existingUserRes.rows[0]?.id || usrIdFromRun,
+        id: finalUserId,
         run: rawRun,
         name: name.trim(),
         email: cleanEmail || existingUserRes.rows[0]?.email || '',
@@ -2673,7 +2861,11 @@ router.put('/users/:id', authMiddleware, checkRoles(['Admin', 'Director']), asyn
         roles: roleArray,
         staff_type: stType,
         job_function: job_function || 'Docente de Aula'
-      }
+      },
+      clonedAssignmentsCount,
+      homeroomUpdated,
+      emailSent: emailResult ? emailResult.success : false,
+      emailError: emailResult && !emailResult.success ? emailResult.error : null
     });
   } catch (err) {
     console.error('Error actualizando usuario:', err);

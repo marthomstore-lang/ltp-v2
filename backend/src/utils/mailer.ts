@@ -128,10 +128,11 @@ export async function sendTeacherWelcomeEmail(
   toEmail: string,
   userName: string,
   tempPassword: string,
-  loginUrl: string = 'http://localhost:3000'
+  loginUrl: string = 'https://ltp-v2.vercel.app',
+  userRun?: string
 ): Promise<SendMailResult> {
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const port = parseInt(process.env.SMTP_PORT || '465', 10);
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
   const from = process.env.SMTP_FROM || `"LTP Liceo Pro" <${user}>`;
@@ -176,6 +177,11 @@ export async function sendTeacherWelcomeEmail(
             <span class="card-label">🌐 Enlace de Acceso:</span>
             <span class="card-value" style="color: #4f46e5;">${loginUrl}</span>
           </div>
+          ${userRun ? `
+          <div class="card-row">
+            <span class="card-label">🆔 RUT de Acceso:</span>
+            <span class="card-value" style="color: #0f172a;">${userRun}</span>
+          </div>` : ''}
           <div class="card-row">
             <span class="card-label">👤 Usuario / Correo Oficial:</span>
             <span class="card-value" style="color: #0284c7;">${toEmail}</span>

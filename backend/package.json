@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.1",
+    "@types/pg-copy-streams": "^1.2.5",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -23,6 +24,7 @@
     "mysql2": "^3.23.3",
     "nodemailer": "^9.0.5",
     "pg": "^8.11.5",
+    "pg-copy-streams": "^7.0.0",
     "validator": "^13.15.35",
     "xlsx": "^0.18.5"
   },

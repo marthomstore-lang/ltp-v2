@@ -805,12 +805,62 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
   const [newSubjectForCourseOrder, setNewSubjectForCourseOrder] = useState<string>('');
   const [savingCourseOrder, setSavingCourseOrder] = useState<boolean>(false);
 
+  // Estados para Reemplazo Docente / Suplencias y Bienvenida por Correo
+  const [isSubstitute, setIsSubstitute] = useState<boolean>(false);
+  const [replacedTeacherId, setReplacedTeacherId] = useState<string>('');
+  const [transferHomeroom, setTransferHomeroom] = useState<boolean>(true);
+  const [sendWelcomeEmail, setSendWelcomeEmail] = useState<boolean>(true);
+
   const normalizeStr = (str: any) =>
     String(str || '')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim();
+
+  // Lista de docentes disponibles para reemplazar
+  const availableTeachersToReplace = React.useMemo(() => {
+    return (usersList || [])
+      .filter((u: any) => {
+        const roles = parseRolesList(u.roles, u.role);
+        const isTeacher = roles.includes('Docente') || u.staff_type === 'Docente' || (u.job_function && u.job_function.toLowerCase().includes('docente'));
+        if (editingUser && !editingUser.isNew && (u.id === editingUser.id || u.run === editingUser.run)) return false;
+        return isTeacher;
+      })
+      .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
+  }, [usersList, editingUser]);
+
+  // Docente titular seleccionado para reemplazo
+  const selectedTitularTeacher = React.useMemo(() => {
+    if (!replacedTeacherId) return null;
+    return (usersList || []).find((u: any) => u.id === replacedTeacherId || u.run === replacedTeacherId) || null;
+  }, [replacedTeacherId, usersList]);
+
+  // Cursos y asignaturas que imparte el titular seleccionado
+  const titularAssignmentsPreview = React.useMemo(() => {
+    if (!selectedTitularTeacher) return [];
+    const titularRun = String(selectedTitularTeacher.run || '').replace(/\./g, '').trim().toUpperCase();
+    const titularNameNorm = normalizeStr(selectedTitularTeacher.name || '');
+
+    return (assignmentsList || []).filter((a: any) => {
+      const aRun = String(a.teacher_run || a.teacher_id || '').replace(/\./g, '').trim().toUpperCase();
+      const aName = normalizeStr(a.teacher_name || '');
+      const aName2 = normalizeStr(a.teacher_name_2 || '');
+      return (titularRun && aRun === titularRun) || 
+             (titularNameNorm && (aName === titularNameNorm || aName.includes(titularNameNorm) || titularNameNorm.includes(aName))) ||
+             (titularNameNorm && (aName2 === titularNameNorm || aName2.includes(titularNameNorm) || titularNameNorm.includes(aName2)));
+    });
+  }, [selectedTitularTeacher, assignmentsList]);
+
+  // Jefaturas que tiene el titular seleccionado
+  const titularHomeroomCourses = React.useMemo(() => {
+    if (!selectedTitularTeacher) return [];
+    const titularNameNorm = normalizeStr(selectedTitularTeacher.name || '');
+    return (coursesList || []).filter((c: any) => {
+      const cTeacher = normalizeStr(c.teacher || '');
+      return titularNameNorm && (cTeacher === titularNameNorm || cTeacher.includes(titularNameNorm) || titularNameNorm.includes(cTeacher));
+    });
+  }, [selectedTitularTeacher, coursesList]);
 
   const currentCourseSubjects = React.useMemo(() => {
     if (!selectedCourseForOrder) return [];
@@ -1453,6 +1503,11 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
       return;
     }
 
+    if (isSubstitute && !replacedTeacherId) {
+      Swal.fire('Atención', 'Por favor seleccione el profesor titular al que reemplaza.', 'warning');
+      return;
+    }
+
     const targetUser = { ...editingUser };
     const isNew = !!targetUser.isNew;
     const url = isNew ? '/api/users' : `/api/users/${encodeURIComponent(targetUser.id)}`;
@@ -1460,6 +1515,12 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
 
     const userEmail = targetUser.email && String(targetUser.email) !== 'null' ? String(targetUser.email).trim() : '';
     const userName = String(targetUser.name).trim();
+
+    if (sendWelcomeEmail && !userEmail) {
+      Swal.fire('Atención', 'Debe ingresar un Correo Institucional para enviar el correo de bienvenida con credenciales.', 'warning');
+      return;
+    }
+
     const rolesToSave = parseRolesList(targetUser.roles, targetUser.role);
     const primaryRole = targetUser.role ? normalizeRoleId(targetUser.role) : (rolesToSave[0] || 'Docente');
     if (!rolesToSave.includes(primaryRole)) rolesToSave.unshift(primaryRole);
@@ -1483,9 +1544,16 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
           staff_type: staffTypeToSave,
           job_function: jobFunctionToSave,
           email: userEmail,
-          password: passwordToSave
+          password: passwordToSave,
+          is_substitute: isSubstitute,
+          replaced_teacher_id: isSubstitute ? (selectedTitularTeacher?.id || replacedTeacherId) : undefined,
+          replaced_teacher_name: isSubstitute ? (selectedTitularTeacher?.name || undefined) : undefined,
+          transfer_homeroom: isSubstitute ? transferHomeroom : false,
+          send_welcome_email: sendWelcomeEmail
         })
       });
+
+      const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
         // Actualizar estado en memoria inmediatamente para reflejar los múltiples perfiles sin demora
@@ -1538,21 +1606,37 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
         } catch (_) {}
 
         setEditingUser(null);
+        setIsSubstitute(false);
+        setReplacedTeacherId('');
+        setTransferHomeroom(true);
+        setSendWelcomeEmail(true);
+
+        let successHtml = `Los datos y perfiles [${rolesToSave.join(', ')}] de <strong>${userName}</strong> se guardaron correctamente.`;
+        if (data.clonedAssignmentsCount > 0) {
+          successHtml += `<br/><br/>🔄 <strong>${data.clonedAssignmentsCount} cursos y asignaturas</strong> del docente titular fueron asignados automáticamente.`;
+        }
+        if (data.homeroomUpdated) {
+          successHtml += `<br/>🏆 Se traspasó la <strong>Jefatura de Curso</strong> exitosamente.`;
+        }
+        if (data.emailSent) {
+          successHtml += `<br/><br/>📧 <strong>Correo de bienvenida enviado:</strong> Se enviaron las credenciales oficiales de acceso a <em>${userEmail}</em>.`;
+        } else if (data.emailError) {
+          successHtml += `<br/><br/>⚠️ <em>Aviso de correo:</em> No se pudo despachar el email (${data.emailError}).`;
+        }
 
         Swal.fire({
           icon: 'success',
-          title: '¡Perfiles y Datos Guardados!',
-          text: `Los datos y perfiles [${rolesToSave.join(', ')}] de ${userName} se guardaron correctamente.`,
+          title: '¡Usuario Guardado con Éxito!',
+          html: successHtml,
           confirmButtonColor: '#4f46e5',
           confirmButtonText: 'Aceptar'
         });
-        fetchUsers();
+        loadConfigData();
       } else {
-        const errData = await res.json().catch(() => ({}));
-        Swal.fire('Error', errData.error || 'No se pudo guardar el usuario.', 'error');
+        Swal.fire('Error', data.error || 'No se pudo guardar el usuario.', 'error');
       }
     } catch (err) {
-      Swal.fire('Error', 'Error de conexión con el servidor local.', 'error');
+      Swal.fire('Error', 'Error de conexión con el servidor.', 'error');
     }
   };
 
@@ -3356,7 +3440,13 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
               </button>
 
               <button
-                onClick={() => setEditingUser({ isNew: true, run: '', name: '', role: 'Docente', roles: ['Docente'], staff_type: 'Docente', job_function: 'Docente de Aula', password_plain: 'Profe2026!' })}
+                onClick={() => {
+                  setIsSubstitute(false);
+                  setReplacedTeacherId('');
+                  setTransferHomeroom(true);
+                  setSendWelcomeEmail(true);
+                  setEditingUser({ isNew: true, run: '', name: '', role: 'Docente', roles: ['Docente'], staff_type: 'Docente', job_function: 'Docente de Aula', password_plain: 'Profe2026!' });
+                }}
                 className="btn btn-primary"
                 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 700 }}
               >
@@ -3694,6 +3784,10 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                         <div style={{ display: 'inline-flex', gap: '0.4rem', justifyContent: 'center' }}>
                           <button
                             onClick={() => {
+                              setIsSubstitute(false);
+                              setReplacedTeacherId('');
+                              setTransferHomeroom(true);
+                              setSendWelcomeEmail(false);
                               const initRoles = parseRolesList(u.roles, u.role);
                               const initPrimary = normalizeRoleId(u.role || initRoles[0] || 'Docente');
                               setEditingUser({
@@ -5312,7 +5406,7 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
               <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#4f46e5', margin: 0, fontSize: '1.15rem' }}>
                 {editingUser.isNew ? 'Crear Nuevo Usuario / Funcionario' : 'Editar Usuario / Funcionario'}
               </h3>
-              <button type="button" onClick={() => setEditingUser(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+              <button type="button" onClick={() => { setEditingUser(null); setIsSubstitute(false); setReplacedTeacherId(''); setSendWelcomeEmail(true); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
             </div>
 
             <form onSubmit={handleSaveUserEdit}>
@@ -5565,7 +5659,95 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+              {/* APARTADO: PROFESOR(A) REEMPLAZANTE / SUPLENTE */}
+              <div style={{ marginBottom: '0.9rem', background: isSubstitute ? '#eff6ff' : '#f8fafc', padding: '0.85rem', borderRadius: '10px', border: isSubstitute ? '1.5px solid #3b82f6' : '1px solid #e2e8f0', transition: 'all 0.2s ease' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 800, color: isSubstitute ? '#1d4ed8' : '#334155', fontSize: '0.84rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={isSubstitute}
+                    onChange={e => {
+                      const checked = e.target.checked;
+                      setIsSubstitute(checked);
+                      if (!checked) {
+                        setReplacedTeacherId('');
+                      }
+                    }}
+                    style={{ width: '17px', height: '17px', accentColor: '#2563eb', cursor: 'pointer' }}
+                  />
+                  <span>🔄 ¿Es Profesor(a) Reemplazante / Suplente?</span>
+                </label>
+                <div style={{ fontSize: '0.73rem', color: isSubstitute ? '#2563eb' : '#64748b', marginTop: '0.2rem', marginLeft: '1.55rem', lineHeight: '1.3' }}>
+                  Activa esta casilla para clonar y asignar automáticamente a este funcionario todos los cursos y asignaturas que imparte el profesor titular al que reemplaza.
+                </div>
+
+                {isSubstitute && (
+                  <div style={{ marginTop: '0.75rem', paddingLeft: '0.2rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#1e3a8a', marginBottom: '0.25rem' }}>
+                      👨‍🏫 Seleccionar Docente Titular a Reemplazar:
+                    </label>
+                    <select
+                      value={replacedTeacherId}
+                      onChange={e => setReplacedTeacherId(e.target.value)}
+                      style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: '6px', border: '1.5px solid #60a5fa', fontSize: '0.82rem', fontWeight: 700, color: '#1e3a8a', background: '#ffffff', outline: 'none' }}
+                    >
+                      <option value="">-- Seleccionar Docente Titular --</option>
+                      {availableTeachersToReplace.map((t: any) => (
+                        <option key={t.id || t.run} value={t.id || t.run}>
+                          {t.name} ({t.run}) {t.job_function ? `• ${t.job_function}` : ''}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* DETALLES DE ASIGNATURAS Y JEFATURA ENCONTRADAS */}
+                    {selectedTitularTeacher && (
+                      <div style={{ marginTop: '0.65rem', background: '#ffffff', borderRadius: '8px', padding: '0.65rem 0.75rem', border: '1px solid #bfdbfe' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                          <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#1e40af' }}>
+                            📚 Cursos y Asignaturas a Traspasar ({titularAssignmentsPreview.length}):
+                          </span>
+                          <span style={{ fontSize: '0.68rem', color: '#1d4ed8', fontWeight: 700, background: '#dbeafe', padding: '2px 7px', borderRadius: '4px' }}>
+                            Clonación Automática
+                          </span>
+                        </div>
+
+                        {titularAssignmentsPreview.length === 0 ? (
+                          <div style={{ fontSize: '0.73rem', color: '#64748b', fontStyle: 'italic', padding: '0.3rem 0' }}>
+                            ⚠️ El docente titular seleccionado no tiene asignaturas académicas registradas actualmente en la base de datos.
+                          </div>
+                        ) : (
+                          <div style={{ maxHeight: '120px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingRight: '0.2rem' }}>
+                            {titularAssignmentsPreview.map((asn: any, idx: number) => (
+                              <div key={idx} style={{ fontSize: '0.72rem', color: '#1e293b', background: '#f8fafc', padding: '0.28rem 0.5rem', borderRadius: '5px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontWeight: 700, color: '#1e40af' }}>{asn.level_name}</span>
+                                <span style={{ color: '#475569', fontWeight: 600 }}>{asn.subject_name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* JEFATURA DE CURSO */}
+                        {titularHomeroomCourses.length > 0 && (
+                          <div style={{ marginTop: '0.6rem', paddingTop: '0.5rem', borderTop: '1px dashed #cbd5e1' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, color: '#065f46' }}>
+                              <input
+                                type="checkbox"
+                                checked={transferHomeroom}
+                                onChange={e => setTransferHomeroom(e.target.checked)}
+                                style={{ accentColor: '#059669', width: '16px', height: '16px', cursor: 'pointer' }}
+                              />
+                              <span>
+                                🏆 Traspasar también Jefatura de Curso: <strong>{titularHomeroomCourses.map((c: any) => c.name).join(', ')}</strong>
+                              </span>
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.2rem' }}>Correo Institucional</label>
                   <input
@@ -5595,8 +5777,26 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                 </div>
               </div>
 
+              {/* BANNER / OPCIÓN: ENVIAR CORREO DE BIENVENIDA CON CREDENCIALES */}
+              <div style={{ marginBottom: '1rem', background: sendWelcomeEmail ? '#f0fdf4' : '#f8fafc', padding: '0.75rem 0.85rem', borderRadius: '8px', border: sendWelcomeEmail ? '1.5px solid #86efac' : '1px solid #e2e8f0', transition: 'all 0.2s ease' }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', cursor: 'pointer', fontWeight: 800, color: sendWelcomeEmail ? '#166534' : '#475569', fontSize: '0.82rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={sendWelcomeEmail}
+                    onChange={e => setSendWelcomeEmail(e.target.checked)}
+                    style={{ width: '17px', height: '17px', accentColor: '#16a34a', marginTop: '2px', cursor: 'pointer' }}
+                  />
+                  <div>
+                    <div>📧 Enviar correo de bienvenida con credenciales oficiales</div>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 500, color: sendWelcomeEmail ? '#15803d' : '#64748b', marginTop: '2px', lineHeight: '1.3' }}>
+                      Se enviará un correo institucional a <strong>{editingUser.email || '(ingrese correo arriba)'}</strong> con el enlace directo al sistema (<em>https://ltp-v2.vercel.app</em>), su RUT de acceso ({editingUser.run || 'RUT'}) y su contraseña asignada.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0', position: 'sticky', bottom: 0, background: '#ffffff' }}>
-                <button type="button" onClick={() => setEditingUser(null)} className="btn" style={{ background: '#e2e8f0', color: '#334155', fontWeight: 700 }}>Cancelar</button>
+                <button type="button" onClick={() => { setEditingUser(null); setIsSubstitute(false); setReplacedTeacherId(''); setSendWelcomeEmail(true); }} className="btn" style={{ background: '#e2e8f0', color: '#334155', fontWeight: 700 }}>Cancelar</button>
                 <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 800, padding: '0.55rem 1.2rem' }}>
                   <Save size={16} /> Guardar Cambios
                 </button>
