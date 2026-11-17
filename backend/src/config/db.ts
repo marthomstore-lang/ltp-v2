@@ -6,8 +6,12 @@ import path from 'path';
 
 dotenv.config();
 
-const connectionString = process.env.DATABASE_URL || '';
-export const isMysql = process.env.DB_TYPE === 'mysql' || connectionString.startsWith('mysql://') || connectionString.includes('3306');
+const OFFICIAL_DATABASE_URL = 'postgresql://postgres.fuirjmpmrzhprbtbmxmi:Mavu%40182011199420@aws-0-us-west-2.pooler.supabase.com:6543/postgres';
+let connectionString = process.env.DATABASE_URL || '';
+if (!connectionString || connectionString.includes('kyrjuenufdnqoemvdjqq') || !connectionString.includes('fuirjmpmrzhprbtbmxmi')) {
+  connectionString = OFFICIAL_DATABASE_URL;
+}
+export const isMysql = false;
 
 let pgPool: PgPool | null = null;
 let mysqlPool: mysql.Pool | null = null;

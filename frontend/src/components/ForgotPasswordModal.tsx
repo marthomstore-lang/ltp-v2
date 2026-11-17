@@ -32,7 +32,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
 
   const handleIdentifierChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    if (val.includes('@')) {
+    if (val.includes('@') || /^[a-zA-Z]+$/.test(val.trim())) {
       setIdentifier(val);
     } else {
       setIdentifier(formatRut(val));

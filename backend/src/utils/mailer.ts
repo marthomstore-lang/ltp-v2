@@ -1,5 +1,11 @@
 import nodemailer from 'nodemailer';
 
+export const OFFICIAL_SMTP_HOST = 'smtp.gmail.com';
+export const OFFICIAL_SMTP_PORT = 465;
+export const OFFICIAL_SMTP_USER = 'david.vidal@eduvallediguillin.gob.cl';
+export const OFFICIAL_SMTP_PASS = 'dezymyybjgvuuiuk';
+export const OFFICIAL_SMTP_FROM = '"LTP Liceo Pro" <david.vidal@eduvallediguillin.gob.cl>';
+
 export interface SendMailResult {
   success: boolean;
   simulated: boolean;
@@ -13,11 +19,11 @@ export async function sendPasswordResetEmail(
   tempPassword: string,
   expiresInMinutes: number = 20
 ): Promise<SendMailResult> {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || '"LTP Liceo Pro" <soporte@liceoplp.cl>';
+  const host = process.env.SMTP_HOST || OFFICIAL_SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || String(OFFICIAL_SMTP_PORT), 10);
+  const user = process.env.SMTP_USER || OFFICIAL_SMTP_USER;
+  const pass = process.env.SMTP_PASS || OFFICIAL_SMTP_PASS;
+  const from = process.env.SMTP_FROM || OFFICIAL_SMTP_FROM;
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -131,11 +137,11 @@ export async function sendTeacherWelcomeEmail(
   loginUrl: string = 'https://ltp-v2.vercel.app',
   userRun?: string
 ): Promise<SendMailResult> {
-  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-  const port = parseInt(process.env.SMTP_PORT || '465', 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || `"LTP Liceo Pro" <${user}>`;
+  const host = process.env.SMTP_HOST || OFFICIAL_SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || String(OFFICIAL_SMTP_PORT), 10);
+  const user = process.env.SMTP_USER || OFFICIAL_SMTP_USER;
+  const pass = process.env.SMTP_PASS || OFFICIAL_SMTP_PASS;
+  const from = process.env.SMTP_FROM || OFFICIAL_SMTP_FROM;
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -287,11 +293,11 @@ export async function sendCourseBroadcastEmail(
     loginUrl = 'http://localhost:3000'
   } = options;
 
-  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || (user ? `"LTP Liceo Pro" <${user}>` : '"LTP Liceo Pro" <soporte@liceoplp.cl>');
+  const host = process.env.SMTP_HOST || OFFICIAL_SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || String(OFFICIAL_SMTP_PORT), 10);
+  const user = process.env.SMTP_USER || OFFICIAL_SMTP_USER;
+  const pass = process.env.SMTP_PASS || OFFICIAL_SMTP_PASS;
+  const from = process.env.SMTP_FROM || OFFICIAL_SMTP_FROM;
 
   const priorityColors = {
     normal: { bg: '#e0e7ff', text: '#3730a3', border: '#818cf8', label: 'Informativo / Normal' },

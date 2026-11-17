@@ -1511,6 +1511,7 @@ router.post('/auth/forgot-password', async (req: Request, res: Response) => {
   const { identifier } = req.body;
   const rawId = String(identifier || '').trim();
   const cleanRun = rawId.replace(/\./g, '').trim();
+  const cleanAlnumRun = cleanRun.replace(/[^0-9kK]/g, '').toLowerCase();
 
   if (!rawId) {
     return res.status(400).json({ error: 'Por favor ingrese su RUT o Correo Electrónico.' });
@@ -1518,8 +1519,13 @@ router.post('/auth/forgot-password', async (req: Request, res: Response) => {
 
   try {
     const userRes = await query(
-      'SELECT * FROM users WHERE REPLACE(run, \'.\', \'\') = $1 OR run = $2 OR LOWER(email) = LOWER($2)',
-      [cleanRun, rawId]
+      `SELECT * FROM users 
+       WHERE REPLACE(REPLACE(LOWER(run), '.', ''), '-', '') = $1 
+          OR REPLACE(LOWER(run), '.', '') = $2 
+          OR LOWER(run) = $3 
+          OR LOWER(email) = $3 
+          OR LOWER(id) = $3`,
+      [cleanAlnumRun, cleanRun.toLowerCase(), rawId.toLowerCase()]
     );
 
     if (userRes.rows.length === 0) {
@@ -1542,10 +1548,10 @@ router.post('/auth/forgot-password', async (req: Request, res: Response) => {
     const tempHash = await bcrypt.hash(tempPassword, salt);
     const resetId = `RST-${Date.now()}-${crypto.randomBytes(2).toString('hex')}`;
 
-    // Expiración estricta a 20 minutos en BD
+    // Expiración estricta a 20 minutos en BD (compatible con PostgreSQL)
     await query(
       `INSERT INTO password_resets (id, user_id, temp_password_hash, temp_password_plain, expires_at, used)
-       VALUES ($1, $2, $3, $4, NOW() + INTERVAL 20 MINUTE, 0)`,
+       VALUES ($1, $2, $3, $4, NOW() + INTERVAL '20 minutes', 0)`,
       [resetId, user.id, tempHash, tempPassword]
     );
 
@@ -1599,6 +1605,7 @@ router.post('/auth/reset-password-with-temp', async (req: Request, res: Response
   const { identifier, tempPassword, newPassword } = req.body;
   const rawId = String(identifier || '').trim();
   const cleanRun = rawId.replace(/\./g, '').trim();
+  const cleanAlnumRun = cleanRun.replace(/[^0-9kK]/g, '').toLowerCase();
   const rawTempPass = String(tempPassword || '').trim();
   // Normalizar: remover espacios y pasar a mayúsculas ("TP - XY1GX1" -> "TP-XY1GX1")
   const cleanTempPass = rawTempPass.replace(/\s+/g, '').toUpperCase();
@@ -1615,8 +1622,13 @@ router.post('/auth/reset-password-with-temp', async (req: Request, res: Response
 
   try {
     const userRes = await query(
-      'SELECT * FROM users WHERE REPLACE(run, \'.\', \'\') = $1 OR run = $2 OR LOWER(email) = LOWER($2)',
-      [cleanRun, rawId]
+      `SELECT * FROM users 
+       WHERE REPLACE(REPLACE(LOWER(run), '.', ''), '-', '') = $1 
+          OR REPLACE(LOWER(run), '.', '') = $2 
+          OR LOWER(run) = $3 
+          OR LOWER(email) = $3 
+          OR LOWER(id) = $3`,
+      [cleanAlnumRun, cleanRun.toLowerCase(), rawId.toLowerCase()]
     );
 
     if (userRes.rows.length === 0) {
@@ -1628,8 +1640,8 @@ router.post('/auth/reset-password-with-temp', async (req: Request, res: Response
     // Buscar TODOS los tokens vigentes de reseteo para el usuario (creados en los últimos 25 min y no usados)
     const resetRes = await query(
       `SELECT * FROM password_resets 
-       WHERE user_id = $1 AND (used = 0 OR used = false)
-         AND (expires_at > NOW() OR created_at >= NOW() - INTERVAL 25 MINUTE)
+       WHERE user_id = $1 AND (used = 0 OR used IS FALSE)
+         AND (expires_at > NOW() OR created_at >= NOW() - INTERVAL '25 minutes')
        ORDER BY created_at DESC`,
       [user.id]
     );
