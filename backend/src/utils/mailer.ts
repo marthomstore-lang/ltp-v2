@@ -17,13 +17,17 @@ export async function sendPasswordResetEmail(
   toEmail: string,
   userName: string,
   tempPassword: string,
-  expiresInMinutes: number = 20
+  expiresInMinutes: number = 20,
+  userRun?: string,
+  baseUrl: string = 'https://ltp-v2.vercel.app'
 ): Promise<SendMailResult> {
   const host = process.env.SMTP_HOST || OFFICIAL_SMTP_HOST;
   const port = parseInt(process.env.SMTP_PORT || String(OFFICIAL_SMTP_PORT), 10);
   const user = process.env.SMTP_USER || OFFICIAL_SMTP_USER;
   const pass = process.env.SMTP_PASS || OFFICIAL_SMTP_PASS;
   const from = process.env.SMTP_FROM || OFFICIAL_SMTP_FROM;
+
+  const directResetUrl = `${baseUrl}/?reset=${encodeURIComponent(tempPassword)}&id=${encodeURIComponent(userRun || toEmail)}`;
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -36,7 +40,8 @@ export async function sendPasswordResetEmail(
         .container { max-width: 550px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); border: 1px solid #e2e8f0; }
         .header { text-align: center; border-bottom: 2px solid #6366f1; padding-bottom: 15px; margin-bottom: 20px; }
         .header h2 { color: #4f46e5; margin: 0; font-size: 1.5rem; }
-        .code-box { background: #e0e7ff; color: #3730a3; border-radius: 8px; padding: 15px; text-align: center; font-size: 1.8rem; font-weight: 800; letter-spacing: 4px; margin: 20px 0; border: 1px dashed #6366f1; }
+        .code-box { background: #e0e7ff; color: #3730a3; border-radius: 8px; padding: 12px; text-align: center; font-size: 1.6rem; font-weight: 800; letter-spacing: 3px; margin: 15px 0; border: 1px dashed #6366f1; font-family: monospace; }
+        .btn-direct { display: inline-block; background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); color: #ffffff !important; padding: 14px 28px; font-size: 1rem; font-weight: 800; text-decoration: none; border-radius: 8px; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4); text-align: center; }
         .warning { background: #fffeb3; border-left: 4px solid #eab308; padding: 12px; font-size: 0.85rem; color: #854d0e; border-radius: 4px; margin-top: 20px; }
         .footer { text-align: center; margin-top: 30px; font-size: 0.75rem; color: #94a3b8; }
       </style>
@@ -49,21 +54,36 @@ export async function sendPasswordResetEmail(
         </div>
         
         <p>Estimado(a) <strong>${userName}</strong>,</p>
-        <p>Has solicitado el restablecimiento de tu contraseña de acceso a la plataforma.</p>
-        <p>A continuación se proporciona tu contraseña de carácter temporal:</p>
+        <p>Has solicitado el restablecimiento de tu contraseña para la plataforma institucional.</p>
         
-        <div class="code-box">${tempPassword}</div>
+        <div style="text-align: center; margin: 25px 0;">
+          <a href="${directResetUrl}" class="btn-direct">
+            👉 Cambiar Contraseña e Iniciar Sesión Directo
+          </a>
+          <p style="margin: 8px 0 0 0; font-size: 0.78rem; color: #64748b;">
+            Haz clic en el botón superior para ingresar tu nueva contraseña e iniciar sesión de inmediato sin tener que copiar códigos.
+          </p>
+        </div>
+
+        <div style="margin: 20px 0; padding: 12px 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+          <span style="font-size: 0.8rem; font-weight: 700; color: #475569;">O si prefieres ingresar el código manualmente:</span>
+          <div class="code-box">${tempPassword}</div>
+          <span style="font-size: 0.75rem; color: #64748b;">RUT de Acceso: <strong>${userRun || toEmail}</strong></span>
+        </div>
         
         <p>⚠️ <strong>Información Importante:</strong></p>
         <ul>
-          <li>Esta clave tiene una validez estricta de <strong>${expiresInMinutes} minutos</strong>.</li>
-          <li>Ingresa a la plataforma e inicia sesión utilizando tu RUT y esta contraseña temporal.</li>
-          <li>Inmediatamente después, el sistema te solicitará establecer tu nueva clave secreta definitiva.</li>
+          <li>Este enlace y clave tienen una validez estricta de <strong>${expiresInMinutes} minutos</strong>.</li>
+          <li>Al establecer tu nueva clave, ingresarás de forma automática a tu cuenta.</li>
         </ul>
         
         <div class="warning">
-          Si no has solicitado este cambio, favor ignora este correo o notifica inmediatamente al administrador de TI de la institución.
+          Si no has solicitado este cambio, por favor ignora este correo o notifica inmediatamente al administrador de TI.
         </div>
+        
+        <p style="font-size: 0.75rem; color: #94a3b8; word-break: break-all; margin-top: 20px;">
+          Enlace alternativo: <a href="${directResetUrl}" style="color: #4f46e5;">${directResetUrl}</a>
+        </p>
         
         <div class="footer">
           &copy; 2026 Liceo Técnico Profesional — Sistema Integral LTP v2.0

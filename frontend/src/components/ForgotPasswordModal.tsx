@@ -5,7 +5,7 @@ import Swal from 'sweetalert2';
 
 interface ForgotPasswordModalProps {
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (token?: string, user?: any) => void;
 }
 
 export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClose, onSuccess }) => {
@@ -29,6 +29,25 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
   const [loading, setLoading] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [devTempPass, setDevTempPass] = useState<string | null>(null);
+
+  // Detección automática de Magic Reset Link desde el correo
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const codeParam = urlParams.get('reset') || urlParams.get('temp') || urlParams.get('code') || '';
+      const idParam = urlParams.get('id') || urlParams.get('rut') || urlParams.get('identifier') || '';
+
+      if (idParam) {
+        setIdentifier(idParam.includes('@') ? idParam : formatRut(idParam));
+      }
+      if (codeParam) {
+        const cleanCode = codeParam.trim().toUpperCase();
+        setTempPassword(cleanCode.startsWith('TP-') ? cleanCode : `TP-${cleanCode}`);
+        setStep(2);
+        setInfoMessage('¡Enlace directo reconocido! Establece tu nueva contraseña para ingresar de inmediato.');
+      }
+    } catch (_) {}
+  }, []);
 
   const handleIdentifierChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -122,11 +141,14 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
       await Swal.fire({
         icon: 'success',
         title: '¡Contraseña Actualizada!',
-        text: 'Tu contraseña se ha cambiado exitosamente. Ya puedes iniciar sesión con tu nueva clave.',
-        confirmButtonColor: '#4f46e5'
+        text: 'Tu contraseña se ha cambiado exitosamente. Ingresando a la plataforma...',
+        timer: 1500,
+        showConfirmButton: false
       });
 
-      if (onSuccess) onSuccess();
+      if (onSuccess) {
+        onSuccess(data.token, data.user);
+      }
       onClose();
     } catch (err: any) {
       Swal.fire('Error al Cambiar Clave', err.message || 'No se pudo actualizar la contraseña', 'error');
@@ -388,7 +410,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
                   className="btn btn-primary"
                   style={{ flex: 2, padding: '0.75rem', fontWeight: 700, display: 'flex', justifyContent: 'center', alignItems: 'center' }}
                 >
-                  {loading ? 'Actualizando...' : 'Cambiar Contraseña'}
+                  {loading ? 'Actualizando...' : 'Actualizar Contraseña e Iniciar Sesión'}
                 </button>
               </div>
             </form>

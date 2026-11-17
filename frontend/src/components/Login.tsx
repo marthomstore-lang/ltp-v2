@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { formatRut } from '../utils/rut';
 import { Eye, EyeOff, KeyRound } from 'lucide-react';
@@ -164,6 +164,16 @@ export const Login: React.FC = () => {
 
   const [multiRoleUser, setMultiRoleUser] = useState<{ token: string; user: any; roles: string[] } | null>(null);
 
+  // Detección automática si el usuario abrió un enlace mágico de reseteo directo en el correo
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('reset') || urlParams.get('temp') || urlParams.get('code') || urlParams.get('id') || urlParams.get('rut')) {
+        setShowForgotPasswordModal(true);
+      }
+    } catch (_) {}
+  }, []);
+
   const handleRunChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value;
     const formatted = formatRut(rawValue);
@@ -257,7 +267,31 @@ export const Login: React.FC = () => {
       
       {showForgotPasswordModal && (
         <ForgotPasswordModal
-          onClose={() => setShowForgotPasswordModal(false)}
+          onClose={() => {
+            setShowForgotPasswordModal(false);
+            try {
+              window.history.replaceState(null, '', window.location.pathname);
+            } catch (_) {}
+          }}
+          onSuccess={(token?: string, user?: any) => {
+            setShowForgotPasswordModal(false);
+            try {
+              window.history.replaceState(null, '', window.location.pathname);
+            } catch (_) {}
+            if (token && user) {
+              const rawRoles: string[] = user.roles || (user.role ? [user.role] : ['Docente']);
+              const deduplicatedRoles = Array.from(new Set(rawRoles.map(normalizeRole))).sort((a, b) => {
+                const pA = ROLE_PRIORITY[a] ?? 99;
+                const pB = ROLE_PRIORITY[b] ?? 99;
+                return pA - pB;
+              });
+              if (deduplicatedRoles.length > 1) {
+                setMultiRoleUser({ token, user, roles: deduplicatedRoles });
+              } else {
+                executeLoginWithRole(token, user, deduplicatedRoles[0] || 'Docente');
+              }
+            }
+          }}
         />
       )}
 

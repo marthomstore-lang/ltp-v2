@@ -1559,7 +1559,7 @@ router.post('/auth/forgot-password', async (req: Request, res: Response) => {
     let mailResult: { success: boolean; simulated: boolean; error?: string } = { success: true, simulated: false };
     try {
       mailResult = await Promise.race([
-        sendPasswordResetEmail(user.email, user.name, tempPassword, 20),
+        sendPasswordResetEmail(user.email, user.name, tempPassword, 20, user.run, 'https://ltp-v2.vercel.app'),
         new Promise<{ success: boolean; simulated: boolean; error?: string }>((resolve) =>
           setTimeout(() => resolve({ success: true, simulated: false, error: 'background' }), 6000)
         )
@@ -1712,9 +1712,40 @@ router.post('/auth/reset-password-with-temp', async (req: Request, res: Response
       console.warn('Aviso: error al registrar notificación de éxito de reseteo:', auditErr);
     }
 
+    // Generar sesión de inicio inmediato ("iniciar sesión altiro")
+    const rolesList = parseRolesArray(user.roles, user.role);
+    const activeRole = user.role || rolesList[0] || 'Docente';
+    const allowedCustomize = canCustomizeProfileRole(activeRole);
+    const parsedTheme = allowedCustomize ? parseUserThemeConfig(user.theme_config) : null;
+    const safeAvatar = allowedCustomize ? normalizeAvatarDataUri(user.avatar) : null;
+
+    const token = jwt.sign(
+      { id: user.id, run: user.run, name: user.name, role: activeRole, roles: rolesList },
+      JWT_SECRET,
+      { expiresIn: '12h' }
+    );
+
     res.json({
       success: true,
-      message: '¡Tu contraseña ha sido actualizada con éxito! Ya puedes iniciar sesión con tu nueva clave.'
+      message: '¡Tu contraseña ha sido actualizada con éxito! Ingresando a tu cuenta...',
+      token,
+      perfil: activeRole,
+      role: activeRole,
+      roles: rolesList,
+      user: {
+        id: user.id,
+        username: user.id,
+        run: user.run,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || '',
+        perfil: activeRole,
+        role: activeRole,
+        roles: rolesList,
+        themeConfig: parsedTheme,
+        avatar: safeAvatar,
+        canCustomize: allowedCustomize
+      }
     });
   } catch (err: any) {
     console.error('Error en /auth/reset-password-with-temp:', err);
