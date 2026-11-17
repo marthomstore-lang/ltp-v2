@@ -90,11 +90,12 @@ app.get(['/health', '/api/health'], (req, res) => {
   });
 });
 
-// Middleware Global de Manejo de Errores (Previene Fuga de Información / Stack Traces)
+// Middleware Global de Manejo de Errores
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('❌ Error no controlado en backend:', err.stack || err);
   res.status(500).json({
-    error: 'Error interno del servidor. Por seguridad los detalles han sido registrados en la auditoría.'
+    error: err.message || 'Error interno del servidor.',
+    details: err.code || err.name
   });
 });
 
