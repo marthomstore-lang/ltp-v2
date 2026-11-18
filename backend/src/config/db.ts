@@ -59,6 +59,7 @@ const fallbackStore: {
   courses?: any[];
   subjects: any[];
   student_passes?: any[];
+  password_resets?: any[];
 } = {
   users: [],
   students: [],
@@ -73,6 +74,7 @@ const fallbackStore: {
   audit_logs: [],
   cra_books: [],
   cra_daily_materials: [],
+  password_resets: [],
   student_passes: []
 };
 
@@ -142,7 +144,36 @@ function executeFallbackQuery(text: string, params?: any[]): { rows: any[]; rowC
     return { rows: [], rowCount: 1 };
   }
 
+  if (upperSql.includes('INSERT INTO PASSWORD_RESETS')) {
+    if (!fallbackStore.password_resets) fallbackStore.password_resets = [];
+    const item = {
+      id: inputParams[0] || `RST-${Date.now()}`,
+      user_id: inputParams[1],
+      temp_password_hash: inputParams[2],
+      temp_password_plain: inputParams[3],
+      expires_at: new Date(Date.now() + 30 * 60 * 1000),
+      used: 0,
+      created_at: new Date()
+    };
+    fallbackStore.password_resets.push(item);
+    return { rows: [item], rowCount: 1 };
+  }
+
+  if (upperSql.includes('FROM PASSWORD_RESETS')) {
+    if (!fallbackStore.password_resets) fallbackStore.password_resets = [];
+    const targetUserId = inputParams[0];
+    const filtered = fallbackStore.password_resets.filter(r => !targetUserId || String(r.user_id) === String(targetUserId));
+    return { rows: filtered, rowCount: filtered.length };
+  }
+
   if (upperSql.includes('UPDATE PASSWORD_RESETS')) {
+    if (!fallbackStore.password_resets) fallbackStore.password_resets = [];
+    const targetUserId = inputParams[0];
+    fallbackStore.password_resets.forEach(r => {
+      if (!targetUserId || String(r.user_id) === String(targetUserId) || String(r.id) === String(targetUserId)) {
+        r.used = 1;
+      }
+    });
     return { rows: [], rowCount: 1 };
   }
 

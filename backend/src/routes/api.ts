@@ -1548,10 +1548,10 @@ router.post('/auth/forgot-password', async (req: Request, res: Response) => {
     const tempHash = await bcrypt.hash(tempPassword, salt);
     const resetId = `RST-${Date.now()}-${crypto.randomBytes(2).toString('hex')}`;
 
-    // Expiración estricta a 20 minutos en BD (compatible con PostgreSQL)
+    // Expiración a 30 minutos en BD (compatible con PostgreSQL)
     await query(
       `INSERT INTO password_resets (id, user_id, temp_password_hash, temp_password_plain, expires_at, used)
-       VALUES ($1, $2, $3, $4, NOW() + INTERVAL '20 minutes', 0)`,
+       VALUES ($1, $2, $3, $4, NOW() + INTERVAL '30 minutes', 0)`,
       [resetId, user.id, tempHash, tempPassword]
     );
 
@@ -1559,7 +1559,7 @@ router.post('/auth/forgot-password', async (req: Request, res: Response) => {
     let mailResult: { success: boolean; simulated: boolean; error?: string } = { success: true, simulated: false };
     try {
       mailResult = await Promise.race([
-        sendPasswordResetEmail(user.email, user.name, tempPassword, 20, user.run, 'https://ltp-v2.vercel.app'),
+        sendPasswordResetEmail(user.email, user.name, tempPassword, 30, user.run, 'https://ltp-v2.vercel.app'),
         new Promise<{ success: boolean; simulated: boolean; error?: string }>((resolve) =>
           setTimeout(() => resolve({ success: true, simulated: false, error: 'background' }), 6000)
         )
@@ -1572,7 +1572,7 @@ router.post('/auth/forgot-password', async (req: Request, res: Response) => {
     // Registrar Notificación de Sistema y Auditoría de forma no bloqueante
     try {
       const notifId = `NOTIF-${Date.now()}-${crypto.randomBytes(2).toString('hex')}`;
-      const notifMessage = `El usuario ${user.name} (RUT: ${user.run}) solicitó restablecimiento de contraseña. Se envió una clave temporal válida por 20 minutos a ${user.email}.`;
+      const notifMessage = `El usuario ${user.name} (RUT: ${user.run}) solicitó restablecimiento de contraseña. Se envió una clave temporal válida por 30 minutos a ${user.email}.`;
 
       await query(
         `INSERT INTO system_notifications (id, user_id, target_role, type, title, message)
@@ -1591,7 +1591,7 @@ router.post('/auth/forgot-password', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      message: `Se ha generado y enviado una clave temporal válida por 20 minutos al correo ${maskedEmail}.`,
+      message: `Se ha generado y enviado una clave temporal válida por 30 minutos al correo ${maskedEmail}.`,
       simulated: mailResult.simulated,
       email: maskedEmail
     });
@@ -1637,30 +1637,33 @@ router.post('/auth/reset-password-with-temp', async (req: Request, res: Response
 
     const user = userRes.rows[0];
 
-    // Buscar TODOS los tokens vigentes de reseteo para el usuario (creados en los últimos 25 min y no usados)
+    // Buscar todas las solicitudes de reseteo para el usuario ordenadas por fecha reciente
     const resetRes = await query(
       `SELECT * FROM password_resets 
-       WHERE user_id = $1 AND (used = 0 OR used IS FALSE)
-         AND (expires_at > NOW() OR created_at >= NOW() - INTERVAL '25 minutes')
-       ORDER BY created_at DESC`,
+       WHERE user_id = $1 
+       ORDER BY created_at DESC LIMIT 15`,
       [user.id]
     );
 
     if (resetRes.rows.length === 0) {
       return res.status(400).json({
-        error: 'La contraseña temporal ha expirado (más de 20 minutos) o ya fue utilizada. Solicita una nueva en el Paso 1.'
+        error: 'No se encontró ninguna solicitud de clave temporal para este usuario. Solicita una nueva en el Paso 1.'
       });
     }
 
-    // Verificar si la clave temporal ingresada coincide con cualquiera de los tokens activos del usuario
+    // Verificar si la clave temporal ingresada coincide con los registros del usuario
     let matchedRecord: any = null;
+    let isUsedRecord = false;
+    let isExpiredRecord = false;
+    const nowMs = Date.now();
+
     for (const record of resetRes.rows) {
       const recordPlain = String(record.temp_password_plain || '').replace(/\s+/g, '').toUpperCase();
       const recordCodeOnly = recordPlain.replace(/^TP-?/, '');
 
       const isPlainMatch = (cleanTempPass === recordPlain) || 
                            (cleanTempPass === recordCodeOnly) ||
-                           (codeOnly.length >= 5 && codeOnly === recordCodeOnly);
+                           (codeOnly.length >= 4 && codeOnly === recordCodeOnly);
 
       let isHashMatch = false;
       if (!isPlainMatch && record.temp_password_hash) {
@@ -1672,14 +1675,52 @@ router.post('/auth/reset-password-with-temp', async (req: Request, res: Response
       }
 
       if (isPlainMatch || isHashMatch) {
+        // Verificar si este token específico ya fue marcado como utilizado
+        const isUsed = record.used === 1 || record.used === true || String(record.used) === '1' || String(record.used) === 'true';
+        if (isUsed) {
+          isUsedRecord = true;
+          continue;
+        }
+
+        // Verificar expiración (tolerancia de 35 minutos desde creación o 5 min tras expires_at)
+        let isExpired = false;
+        if (record.expires_at) {
+          const expTime = new Date(record.expires_at).getTime();
+          if (!isNaN(expTime) && (nowMs - expTime) > (5 * 60 * 1000)) {
+            if (record.created_at) {
+              const createTime = new Date(record.created_at).getTime();
+              if (!isNaN(createTime) && (nowMs - createTime) > (35 * 60 * 1000)) {
+                isExpired = true;
+              }
+            } else {
+              isExpired = true;
+            }
+          }
+        }
+
+        if (isExpired) {
+          isExpiredRecord = true;
+          continue;
+        }
+
         matchedRecord = record;
         break;
       }
     }
 
     if (!matchedRecord) {
+      if (isUsedRecord) {
+        return res.status(400).json({
+          error: 'Esta contraseña temporal ya fue utilizada anteriormente. Por favor solicita una nueva en el Paso 1.'
+        });
+      }
+      if (isExpiredRecord) {
+        return res.status(400).json({
+          error: 'La contraseña temporal ha expirado (más de 30 minutos). Por favor solicita una nueva en el Paso 1.'
+        });
+      }
       return res.status(400).json({ 
-        error: 'La contraseña temporal ingresada es incorrecta o no coincide con los códigos vigentes.' 
+        error: 'La contraseña temporal ingresada es incorrecta o no coincide con los códigos enviados a tu correo.' 
       });
     }
 

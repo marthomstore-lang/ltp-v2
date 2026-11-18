@@ -17,7 +17,7 @@ export async function sendPasswordResetEmail(
   toEmail: string,
   userName: string,
   tempPassword: string,
-  expiresInMinutes: number = 20,
+  expiresInMinutes: number = 30,
   userRun?: string,
   baseUrl: string = 'https://ltp-v2.vercel.app'
 ): Promise<SendMailResult> {

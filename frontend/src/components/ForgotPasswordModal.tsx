@@ -254,10 +254,10 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
             <form onSubmit={handleRequestTempPassword}>
               <div style={{ marginBottom: '1rem', background: '#eef2ff', padding: '1rem', borderRadius: '10px', border: '1px solid #c7d2fe' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#3730a3', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.3rem' }}>
-                  <Clock size={18} /> Validez de 20 Minutos
+                  <Clock size={18} /> Validez de 30 Minutos
                 </div>
                 <p style={{ margin: 0, fontSize: '0.82rem', color: '#4338ca', lineHeight: '1.4' }}>
-                  Ingresa tu RUT o Correo Electrónico. Te enviaremos una clave de uso temporal que vencerá en 20 minutos para que puedas definir tu nueva contraseña.
+                  Ingresa tu RUT o Correo Electrónico. Te enviaremos una clave de uso temporal que vencerá en 30 minutos para que puedas definir tu nueva contraseña.
                 </p>
               </div>
 
@@ -343,7 +343,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
 
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                  Contraseña Temporal de 20 Minutos
+                  Contraseña Temporal de 30 Minutos
                 </label>
                 <input
                   type="text"
