@@ -163,6 +163,8 @@ export async function sendTeacherWelcomeEmail(
   const pass = process.env.SMTP_PASS || OFFICIAL_SMTP_PASS;
   const from = process.env.SMTP_FROM || OFFICIAL_SMTP_FROM;
 
+  const directActivationUrl = `${loginUrl}/?welcome=1&reset=${encodeURIComponent(tempPassword)}&id=${encodeURIComponent(userRun || toEmail)}`;
+
   const htmlContent = `
     <!DOCTYPE html>
     <html lang="es">
@@ -182,7 +184,7 @@ export async function sendTeacherWelcomeEmail(
         .card-label { font-weight: 700; color: #475569; font-size: 0.88rem; }
         .card-value { font-weight: 800; color: #0f172a; font-size: 0.95rem; font-family: monospace; }
         .btn-container { text-align: center; margin: 28px 0; }
-        .btn { display: inline-block; background: #4f46e5; color: #ffffff !important; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 1rem; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3); }
+        .btn { display: inline-block; background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); color: #ffffff !important; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 800; font-size: 1rem; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35); text-align: center; }
         .instructions { background: #fefce8; border-left: 4px solid #eab308; padding: 14px 18px; font-size: 0.86rem; color: #854d0e; border-radius: 6px; margin-top: 20px; line-height: 1.5; }
         .footer { text-align: center; margin-top: 32px; font-size: 0.78rem; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 16px; }
       </style>
@@ -192,11 +194,20 @@ export async function sendTeacherWelcomeEmail(
         <div class="header">
           <h1>Liceo Técnico Profesional</h1>
           <p>Plataforma Unificada Escolar y Académica (LTP v2.0)</p>
-          <span class="badge">Cuenta Oficial Habilitada</span>
+          <span class="badge">🎉 Cuenta Oficial Habilitada</span>
         </div>
 
         <p style="font-size: 1rem;">Estimado(a) <strong>${userName}</strong>,</p>
-        <p style="color: #475569; line-height: 1.5;">Le informamos que su cuenta institucional ha sido habilitada en la plataforma escolar del establecimiento. A continuación le entregamos sus credenciales oficiales para iniciar sesión por primera vez:</p>
+        <p style="color: #475569; line-height: 1.5;">Le informamos que su cuenta institucional ha sido habilitada en la plataforma escolar del establecimiento. Puede ingresar directamente desde el botón a continuación para definir su contraseña personalizada de acceso:</p>
+
+        <div class="btn-container">
+          <a href="${directActivationUrl}" class="btn" target="_blank" style="color: #ffffff !important;">
+            👉 Activar Cuenta y Elegir Mi Contraseña
+          </a>
+          <p style="margin: 10px 0 0 0; font-size: 0.82rem; color: #64748b;">
+            Haga clic aquí para ingresar directamente a la plataforma y definir la contraseña que usted prefiera.
+          </p>
+        </div>
 
         <div class="card">
           <div class="card-row">
@@ -213,23 +224,24 @@ export async function sendTeacherWelcomeEmail(
             <span class="card-value" style="color: #0284c7;">${toEmail}</span>
           </div>
           <div class="card-row">
-            <span class="card-label">🔑 Contraseña Inicial:</span>
+            <span class="card-label">🔑 Clave Inicial de Activación:</span>
             <span class="card-value" style="background: #eef2ff; padding: 2px 8px; border-radius: 4px; color: #4338ca;">${tempPassword}</span>
           </div>
         </div>
 
-        <div class="btn-container">
-          <a href="${loginUrl}" class="btn" target="_blank" style="color: #ffffff !important;">Ingresar a la Plataforma</a>
-        </div>
-
         <div class="instructions">
-          📌 <strong>Primeros Pasos al Ingresar:</strong>
+          📌 <strong>Primeros Pasos para Ingresar:</strong>
           <ol style="margin: 8px 0 0 0; padding-left: 20px;">
-            <li>Haga clic en el botón de arriba o ingrese a la dirección web indicada.</li>
-            <li>Inicie sesión con su <strong>Correo Oficial</strong> (o su RUT) y su <strong>Contraseña Inicial</strong>.</li>
-            <li>En su primer ingreso, puede configurar su contraseña personal definitiva para mayor comodidad y privacidad.</li>
+            <li>Haga clic en el botón de arriba <strong>«Activar Cuenta y Elegir Mi Contraseña»</strong>.</li>
+            <li>El sistema le solicitará definir la contraseña que usted desee para su cuenta.</li>
+            <li>Al confirmar su nueva clave, ingresará de forma automática e inmediata a la plataforma.</li>
+            <li>También puede ingresar de forma manual con su Correo Oficial (o RUT) y su Clave Inicial.</li>
           </ol>
         </div>
+
+        <p style="font-size: 0.75rem; color: #94a3b8; word-break: break-all; margin-top: 18px; text-align: center;">
+          Enlace alternativo directo: <a href="${directActivationUrl}" style="color: #4f46e5;">${directActivationUrl}</a>
+        </p>
 
         <div class="footer">
           Mensaje generado automáticamente por el Sistema de Gestión Escolar — Liceo Técnico Profesional.<br/>

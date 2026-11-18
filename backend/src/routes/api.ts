@@ -2541,7 +2541,8 @@ router.post('/users', authMiddleware, checkRoles(['Admin', 'Director']), async (
   const rawRun = String(run || '').trim();
   const cleanRun = rawRun.replace(/\./g, '').trim();
   const alnumRun = cleanRun.replace(/[^0-9kK]/g, '');
-  const passStr = String(password || 'Ltp2026.').trim();
+  const generatedAutoPass = `TP-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+  const passStr = String(password && String(password).trim() !== '' && String(password).trim() !== 'Ltp2026.' && String(password).trim() !== 'Profe2026!' ? password : generatedAutoPass).trim();
 
   if (!cleanRun || !name) {
     return res.status(400).json({ error: 'RUT y Nombre son requeridos.' });
@@ -2669,9 +2670,18 @@ router.post('/users', authMiddleware, checkRoles(['Admin', 'Director']), async (
       }
     }
 
-    // ENVÍO DE CORREO DE BIENVENIDA CON CREDENCIALES
+    // ENVÍO DE CORREO DE BIENVENIDA CON ENLACE DE ACTIVACIÓN DIRECTO Y REGISTRO EN password_resets
     let emailResult = null;
     if (send_welcome_email && safeEmail && !safeEmail.endsWith('@liceocampanario.cl')) {
+      const targetUserId = existingRes.rows[0]?.id || id;
+      const activationResetId = `RST-WELCOME-${Date.now()}-${crypto.randomBytes(2).toString('hex')}`;
+      const activationHash = await bcrypt.hash(passStr, salt);
+      await query(
+        `INSERT INTO password_resets (id, user_id, temp_password_hash, temp_password_plain, expires_at, used)
+         VALUES ($1, $2, $3, $4, NOW() + INTERVAL '7 days', 0)`,
+        [activationResetId, targetUserId, activationHash, passStr]
+      ).catch(err => console.warn('Aviso: error al registrar reset token para bienvenida:', err));
+
       const loginUrl = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://ltp-v2.vercel.app' : 'http://localhost:3000');
       emailResult = await sendTeacherWelcomeEmail(safeEmail, name.trim(), passStr, loginUrl, rawRun);
       console.log(`[Bienvenida Docente] Correo enviado a ${safeEmail}: success=${emailResult?.success}`);
@@ -2921,11 +2931,20 @@ router.put('/users/:id', authMiddleware, checkRoles(['Admin', 'Director']), asyn
       }
     }
 
-    // ENVÍO DE CORREO DE BIENVENIDA / CREDENCIALES
+    // ENVÍO DE CORREO DE BIENVENIDA / ACTIVACIÓN CON ENLACE DIRECTO
     let emailResult = null;
     const finalEmailToSend = cleanEmail || existingUserRes.rows[0]?.email;
-    const finalPassToSend = passStr || (existingUserRes.rows[0]?.id ? (await query('SELECT password_plain FROM users WHERE id = $1', [finalUserId])).rows[0]?.password_plain : null) || 'Profe2026!';
+    const finalPassToSend = passStr || (existingUserRes.rows[0]?.id ? (await query('SELECT password_plain FROM users WHERE id = $1', [finalUserId])).rows[0]?.password_plain : null) || `TP-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
     if (send_welcome_email && finalEmailToSend && !finalEmailToSend.endsWith('@liceocampanario.cl')) {
+      const activationResetId = `RST-WELCOME-${Date.now()}-${crypto.randomBytes(2).toString('hex')}`;
+      const actSalt = await bcrypt.genSalt(10);
+      const activationHash = await bcrypt.hash(finalPassToSend, actSalt);
+      await query(
+        `INSERT INTO password_resets (id, user_id, temp_password_hash, temp_password_plain, expires_at, used)
+         VALUES ($1, $2, $3, $4, NOW() + INTERVAL '7 days', 0)`,
+        [activationResetId, finalUserId, activationHash, finalPassToSend]
+      ).catch(err => console.warn('Aviso: error al registrar reset token para bienvenida en PUT:', err));
+
       const loginUrl = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://ltp-v2.vercel.app' : 'http://localhost:3000');
       emailResult = await sendTeacherWelcomeEmail(finalEmailToSend, finalUserName, finalPassToSend, loginUrl, rawRun || existingUserRes.rows[0]?.run);
       console.log(`[Bienvenida Docente PUT] Correo enviado a ${finalEmailToSend}: success=${emailResult?.success}`);
@@ -3264,7 +3283,16 @@ router.post('/users/send-credentials-batch', authMiddleware, checkRoles(['Admin'
 
     for (const target of targetsToNotify) {
       console.log(`📨 Enviando credenciales de acceso a: ${target.name} (${target.email}) con clave oficial: [${target.password}]...`);
-      const mailResult = await sendTeacherWelcomeEmail(target.email, target.name, target.password, loginUrl);
+      const activationResetId = `RST-WELCOME-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const actSalt = await bcrypt.genSalt(10);
+      const activationHash = await bcrypt.hash(target.password, actSalt);
+      await query(
+        `INSERT INTO password_resets (id, user_id, temp_password_hash, temp_password_plain, expires_at, used)
+         VALUES ($1, $2, $3, $4, NOW() + INTERVAL '7 days', 0)`,
+        [activationResetId, target.id, activationHash, target.password]
+      ).catch(() => {});
+
+      const mailResult = await sendTeacherWelcomeEmail(target.email, target.name, target.password, loginUrl, target.run);
       console.log(`  └─ Resultado: success=${mailResult.success}, messageId=${mailResult.messageId}`);
 
       sendResults.push({

@@ -29,6 +29,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
   const [loading, setLoading] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [devTempPass, setDevTempPass] = useState<string | null>(null);
+  const [isWelcomeMode, setIsWelcomeMode] = useState(false);
 
   // Detección automática de Magic Reset Link desde el correo
   useEffect(() => {
@@ -36,6 +37,12 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
       const urlParams = new URLSearchParams(window.location.search);
       const codeParam = urlParams.get('reset') || urlParams.get('temp') || urlParams.get('code') || '';
       const idParam = urlParams.get('id') || urlParams.get('rut') || urlParams.get('identifier') || '';
+      const welcomeParam = urlParams.get('welcome');
+      const isWelcome = welcomeParam === '1' || welcomeParam === 'true';
+
+      if (isWelcome) {
+        setIsWelcomeMode(true);
+      }
 
       if (idParam) {
         setIdentifier(idParam.includes('@') ? idParam : formatRut(idParam));
@@ -44,7 +51,11 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
         const cleanCode = codeParam.trim().toUpperCase();
         setTempPassword(cleanCode.startsWith('TP-') ? cleanCode : `TP-${cleanCode}`);
         setStep(2);
-        setInfoMessage('¡Enlace directo reconocido! Establece tu nueva contraseña para ingresar de inmediato.');
+        if (isWelcome) {
+          setInfoMessage('🎉 ¡Bienvenido(a) a LTP Liceo Pro! Tu cuenta oficial ha sido habilitada. Define a continuación la contraseña que deseas utilizar para acceder de inmediato.');
+        } else {
+          setInfoMessage('¡Enlace directo reconocido! Establece tu nueva contraseña para ingresar de inmediato.');
+        }
       }
     } catch (_) {}
   }, []);
@@ -140,8 +151,10 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
 
       await Swal.fire({
         icon: 'success',
-        title: '¡Contraseña Actualizada!',
-        text: 'Tu contraseña se ha cambiado exitosamente. Ingresando a la plataforma...',
+        title: isWelcomeMode ? '¡Cuenta Activada con Éxito!' : '¡Contraseña Actualizada!',
+        text: isWelcomeMode 
+          ? 'Tu contraseña ha sido establecida y tu cuenta oficial está habilitada. Ingresando a la plataforma...' 
+          : 'Tu contraseña se ha cambiado exitosamente. Ingresando a la plataforma...',
         timer: 1500,
         showConfirmButton: false
       });
@@ -190,7 +203,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <KeyRound size={22} color="#a5b4fc" />
             <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, fontFamily: 'Outfit, sans-serif' }}>
-              Restablecer Contraseña
+              {isWelcomeMode ? '🎉 Activar Cuenta y Crear Mi Contraseña' : 'Restablecer Contraseña'}
             </h3>
           </div>
           <button
@@ -244,7 +257,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
             justifyContent: 'center',
             gap: '0.4rem'
           }}>
-            <Lock size={16} /> 2. Cambiar Clave
+            <Lock size={16} /> {isWelcomeMode ? '2. Crear Mi Contraseña' : '2. Cambiar Clave'}
           </div>
         </div>
 
@@ -343,7 +356,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
 
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                  Contraseña Temporal de 30 Minutos
+                  {isWelcomeMode ? 'Clave Inicial de Activación' : 'Contraseña Temporal de 30 Minutos'}
                 </label>
                 <input
                   type="text"
@@ -354,20 +367,20 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
                   required
                 />
                 <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>
-                  Ingresa el código alfanumérico recibido en tu correo institucional (ej: TP-XY1GX1).
+                  {isWelcomeMode ? 'Código provisto en tu correo institucional de bienvenida.' : 'Ingresa el código alfanumérico recibido en tu correo institucional (ej: TP-XY1GX1).'}
                 </span>
               </div>
 
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                  Nueva Contraseña Definitiva
+                  {isWelcomeMode ? 'Elige tu Contraseña Definitiva' : 'Nueva Contraseña Definitiva'}
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showPass ? 'text' : 'password'}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder={isWelcomeMode ? 'Escribe la clave que prefieras (mín. 6 caracteres)' : 'Mínimo 6 caracteres'}
                     style={{ width: '100%', padding: '0.65rem 2.5rem 0.65rem 0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.9rem', boxSizing: 'border-box' }}
                     required
                   />
@@ -383,7 +396,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
 
               <div style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                  Confirmar Nueva Contraseña
+                  {isWelcomeMode ? 'Confirma tu Contraseña' : 'Confirmar Nueva Contraseña'}
                 </label>
                 <input
                   type={showPass ? 'text' : 'password'}
@@ -410,7 +423,9 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
                   className="btn btn-primary"
                   style={{ flex: 2, padding: '0.75rem', fontWeight: 700, display: 'flex', justifyContent: 'center', alignItems: 'center' }}
                 >
-                  {loading ? 'Actualizando...' : 'Actualizar Contraseña e Iniciar Sesión'}
+                  {loading 
+                    ? (isWelcomeMode ? 'Activando Cuenta...' : 'Actualizando...') 
+                    : (isWelcomeMode ? '🎉 Activar Cuenta e Iniciar Sesión' : 'Actualizar Contraseña e Iniciar Sesión')}
                 </button>
               </div>
             </form>

@@ -168,7 +168,7 @@ export const Login: React.FC = () => {
   useEffect(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('reset') || urlParams.get('temp') || urlParams.get('code') || urlParams.get('id') || urlParams.get('rut')) {
+      if (urlParams.get('reset') || urlParams.get('temp') || urlParams.get('code') || urlParams.get('id') || urlParams.get('rut') || urlParams.get('welcome')) {
         setShowForgotPasswordModal(true);
       }
     } catch (_) {}
