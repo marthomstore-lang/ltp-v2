@@ -85,6 +85,8 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
   const [selectedStudentId, setSelectedStudentId] = useState<string>(
     initialStudentId || (students.length > 0 ? students[0].id : '')
   );
+  // Escala de impresión interactiva (porcentaje, ej: 100%, 85%, 70%)
+  const [printScale, setPrintScale] = useState<number>(100);
 
   // Pauta oficial de Informe al Hogar / Personalidad según nivel del curso
   const [reportLevelKey, setReportLevelKey] = useState<ReportLevelKey>(() =>
@@ -387,8 +389,8 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
       <style>{`
         @media print {
           @page {
-            size: portrait;
-            margin: 6mm 6mm 6mm 6mm;
+            size: letter portrait;
+            margin: 5mm 6mm 5mm 6mm;
           }
 
           html, body {
@@ -483,11 +485,15 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
             break-inside: avoid !important;
             box-shadow: none !important;
             border: none !important;
-            margin: 0 auto 0 auto !important;
-            padding: 0.5cm !important;
+            margin: 0 auto !important;
+            padding: 3mm 5mm !important;
             width: 100% !important;
             max-width: 100% !important;
             background: #ffffff !important;
+            box-sizing: border-box !important;
+            zoom: ${printScale / 100} !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
 
           .printable-report-page:last-child {
@@ -673,6 +679,35 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                 </select>
               )}
 
+              {/* SELECTOR DE ESCALA DE IMPRESIÓN */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: '#e2e8f0', padding: '3px 8px', borderRadius: '8px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#334155' }}>
+                  📏 Escala:
+                </span>
+                <select
+                  value={printScale}
+                  onChange={e => setPrintScale(Number(e.target.value))}
+                  style={{
+                    padding: '0.36rem 0.5rem',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    fontWeight: 700,
+                    fontSize: '0.78rem',
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    cursor: 'pointer'
+                  }}
+                  title="Ajuste de escala para asegurar que el informe quepa en 1 sola hoja de papel"
+                >
+                  <option value={100}>100% (Ajuste 1 Hoja)</option>
+                  <option value={90}>90% (Compacto)</option>
+                  <option value={85}>85% (Recomendado TP)</option>
+                  <option value={80}>80% (Reducido)</option>
+                  <option value={75}>75% (Muy reducido)</option>
+                  <option value={70}>70% (Ultra compacto)</option>
+                </select>
+              </div>
+
               {/* BOTÓN IMPRIMIR */}
               <button
                 onClick={handleTriggerPrint}
@@ -712,6 +747,78 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
               >
                 <X size={18} />
               </button>
+            </div>
+          </div>
+
+          {/* BANNER INFORMATIVO DE IMPRESIÓN EN 1 HOJA */}
+          <div style={{
+            background: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            borderRadius: '8px',
+            padding: '0.45rem 0.85rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
+            fontSize: '0.74rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#166534', fontWeight: 700 }}>
+              <span>✅</span>
+              <span><strong>Diseño 1 Hoja por Alumno:</strong> Encabezado, notas, resumen y firmas compactados para entrar en 1 sola hoja Carta/A4.</span>
+            </div>
+            <div style={{ color: '#15803d', fontSize: '0.71rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>💡 En su impresora desmarque <em>"Encabezado y pie de página"</em>:</span>
+              <div style={{ display: 'flex', gap: '3px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPrintScale(100)}
+                  style={{
+                    border: '1px solid #86efac',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    background: printScale === 100 ? '#16a34a' : '#ffffff',
+                    color: printScale === 100 ? '#ffffff' : '#166534',
+                    fontWeight: 800,
+                    fontSize: '0.68rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  100%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrintScale(85)}
+                  style={{
+                    border: '1px solid #86efac',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    background: printScale === 85 ? '#16a34a' : '#ffffff',
+                    color: printScale === 85 ? '#ffffff' : '#166534',
+                    fontWeight: 800,
+                    fontSize: '0.68rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  85%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrintScale(70)}
+                  style={{
+                    border: '1px solid #86efac',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    background: printScale === 70 ? '#16a34a' : '#ffffff',
+                    color: printScale === 70 ? '#ffffff' : '#166534',
+                    fontWeight: 800,
+                    fontSize: '0.68rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  70%
+                </button>
+              </div>
             </div>
           </div>
 
@@ -915,75 +1022,76 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                   {/* =================================================================== */}
                   {(reportType === 'grades' || reportType === 'both') && (
                     <div
-                      className="printable-report-page"
+                      className="printable-report-page grade-report-page"
                       style={{
                         background: '#ffffff',
                         borderRadius: '8px',
-                        padding: '2rem',
-                        marginBottom: '2rem',
+                        padding: '1.25rem 1.5rem',
+                        marginBottom: '1.5rem',
                         boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)',
                         color: '#0f172a',
-                        fontFamily: 'Arial, sans-serif'
+                        fontFamily: 'Arial, sans-serif',
+                        zoom: printScale !== 100 ? `${printScale}%` : undefined
                       }}
                     >
                       {/* ENCABEZADO INSTITUCIONAL CON LOGOS Y FRANJA MINISTERIAL */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', paddingBottom: '0.65rem' }}>
-                        <div style={{ width: '120px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', paddingBottom: '0.35rem' }}>
+                        <div style={{ width: '105px' }}>
                           <img
                             src="/images/logo_mineduc.jpg"
                             alt="Ministerio de Educación"
-                            style={{ maxHeight: '48px', maxWidth: '120px', objectFit: 'contain' }}
+                            style={{ maxHeight: '42px', maxWidth: '105px', objectFit: 'contain' }}
                           />
                         </div>
 
                         <div style={{ flex: 1, textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#004b87', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#004b87', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                             REPÚBLICA DE CHILE • MINISTERIO DE EDUCACIÓN
                           </div>
-                          <div style={{ fontSize: '1.05rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.4px', color: '#1e293b' }}>
+                          <div style={{ fontSize: '0.98rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.3px', color: '#1e293b', lineHeight: 1.15 }}>
                             LICEO TÉCNICO PROFESIONAL CAMPANARIO MARCOS DELUCCHI FONCK
                           </div>
-                          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569' }}>
                             RBD: 3941-1 • Yungay, Región del Ñuble
                           </div>
-                          <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#004b87', textTransform: 'uppercase', marginTop: '3px' }}>
+                          <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#004b87', textTransform: 'uppercase', marginTop: '2px' }}>
                             INFORME DE CALIFICACIONES — {period} ({academicYear})
                           </div>
                         </div>
 
-                        <div style={{ width: '120px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                        <div style={{ width: '105px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                           <img
                             src="/images/logo_liceo.png"
                             alt="Insignia LTP Campanario"
-                            style={{ maxHeight: '52px', maxWidth: '75px', objectFit: 'contain' }}
+                            style={{ maxHeight: '46px', maxWidth: '68px', objectFit: 'contain' }}
                           />
-                          <span style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '2px' }}>
+                          <span style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '1px' }}>
                             {new Date().toLocaleDateString('es-CL')}
                           </span>
                         </div>
                       </div>
 
                       {/* Franja Bicolor Oficial */}
-                      <div style={{ display: 'flex', height: '3.5px', width: '100%', marginBottom: '1.25rem' }}>
+                      <div style={{ display: 'flex', height: '3px', width: '100%', marginBottom: '0.45rem' }}>
                         <div style={{ flex: '0 0 65%', background: '#004b87' }}></div>
                         <div style={{ flex: '0 0 35%', background: '#e2211c' }}></div>
                       </div>
 
                       {/* FICHA DEL ESTUDIANTE */}
-                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.85rem 1.25rem', marginBottom: '1.25rem', display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '0.75rem', fontSize: '0.85rem' }}>
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.35rem 0.8rem', marginBottom: '0.45rem', display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '0.5rem', fontSize: '0.8rem' }}>
                         <div>
-                          <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 700, display: 'block' }}>ESTUDIANTE</span>
-                          <strong style={{ fontSize: '1rem', color: '#0f172a', textTransform: 'uppercase' }}>{st.fullName}</strong>
+                          <span style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: 700, display: 'block' }}>ESTUDIANTE</span>
+                          <strong style={{ fontSize: '0.88rem', color: '#0f172a', textTransform: 'uppercase' }}>{st.fullName}</strong>
                         </div>
 
                         <div>
-                          <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 700, display: 'block' }}>RUN / RUT</span>
-                          <strong style={{ fontSize: '0.95rem', color: '#0f172a' }}>{st.run || 'Sin Registro'}</strong>
+                          <span style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: 700, display: 'block' }}>RUN / RUT</span>
+                          <strong style={{ fontSize: '0.85rem', color: '#0f172a' }}>{st.run || 'Sin Registro'}</strong>
                         </div>
 
                         <div>
-                          <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 700, display: 'block' }}>NIVEL / CURSO</span>
-                          <strong style={{ fontSize: '0.95rem', color: '#4f46e5' }}>{displayCourseName}</strong>
+                          <span style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: 700, display: 'block' }}>NIVEL / CURSO</span>
+                          <strong style={{ fontSize: '0.85rem', color: '#4f46e5' }}>{displayCourseName}</strong>
                         </div>
                       </div>
 
@@ -1018,7 +1126,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                           if (['MB', 'B', 'S', 'I'].includes(strVal)) {
                             const isRed = strVal === 'I';
                             return (
-                              <strong style={{ color: isRed ? '#dc2626' : '#15803d', fontWeight: 900, fontSize: '0.88rem' }}>
+                              <strong style={{ color: isRed ? '#dc2626' : '#15803d', fontWeight: 900, fontSize: '0.82rem' }}>
                                 {strVal}
                               </strong>
                             );
@@ -1027,7 +1135,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                           if (isNaN(num) || num <= 0) return '-';
                           const rounded = roundGrade(num);
                           return (
-                            <strong style={{ color: rounded < 4.0 ? '#dc2626' : '#1e40af', fontSize: '0.88rem', fontWeight: 900 }}>
+                            <strong style={{ color: rounded < 4.0 ? '#dc2626' : '#1e40af', fontSize: '0.82rem', fontWeight: 900 }}>
                               {rounded.toFixed(1)}
                             </strong>
                           );
@@ -1039,7 +1147,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                           if (['MB', 'B', 'S', 'I'].includes(strVal)) {
                             const isRed = strVal === 'I';
                             return (
-                              <strong style={{ color: isRed ? '#dc2626' : '#15803d', fontWeight: 900, fontSize: '0.95rem' }}>
+                              <strong style={{ color: isRed ? '#dc2626' : '#15803d', fontWeight: 900, fontSize: '0.88rem' }}>
                                 {strVal}
                               </strong>
                             );
@@ -1048,7 +1156,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                           if (isNaN(num) || num <= 0) return '-';
                           const rounded = roundGrade(num);
                           return (
-                            <strong style={{ color: rounded < 4.0 ? '#dc2626' : '#15803d', fontSize: '0.95rem', fontWeight: 900 }}>
+                            <strong style={{ color: rounded < 4.0 ? '#dc2626' : '#15803d', fontSize: '0.88rem', fontWeight: 900 }}>
                               {rounded.toFixed(1)}
                             </strong>
                           );
@@ -1058,51 +1166,51 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                           <>
                             {period === 'Anual' ? (
                               /* TABLA CONSOLIDADA ANUAL (1ER Y 2DO SEMESTRE LADO A LADO) */
-                              <div style={{ marginBottom: '1.25rem' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563eb', display: 'inline-block' }}></span>
+                              <div style={{ marginBottom: '0.45rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.3px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#2563eb', display: 'inline-block' }}></span>
                                     EVOLUCIÓN ACADÉMICA SEMESTRAL Y PROMEDIO ANUAL FINAL
                                   </span>
-                                  <span style={{ fontSize: '0.7rem', color: '#64748b', fontStyle: 'italic', fontWeight: 600 }}>
+                                  <span style={{ fontSize: '0.66rem', color: '#64748b', fontStyle: 'italic', fontWeight: 600 }}>
                                     Decreto 67/2018 MINEDUC
                                   </span>
                                 </div>
 
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', border: '1px solid #cbd5e1' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem', border: '1px solid #cbd5e1' }}>
                                   <thead>
-                                    <tr style={{ background: '#0f172a', color: '#ffffff', fontWeight: 800, textTransform: 'uppercase', fontSize: '0.74rem' }}>
-                                      <th rowSpan={2} style={{ padding: '0.55rem 0.6rem', textAlign: 'left', border: '1px solid #334155', background: '#0f172a', color: '#ffffff', width: '25%', fontWeight: 900 }}>
+                                    <tr style={{ background: '#0f172a', color: '#ffffff', fontWeight: 800, textTransform: 'uppercase', fontSize: '0.7rem' }}>
+                                      <th rowSpan={2} style={{ padding: '0.3rem 0.5rem', textAlign: 'left', border: '1px solid #334155', background: '#0f172a', color: '#ffffff', width: '25%', fontWeight: 900 }}>
                                         ASIGNATURA
                                       </th>
-                                      <th colSpan={7} style={{ padding: '0.42rem', textAlign: 'center', border: '1px solid #1e3a8a', background: '#1e3a8a', color: '#ffffff', fontWeight: 800, letterSpacing: '0.5px' }}>
+                                      <th colSpan={7} style={{ padding: '0.28rem', textAlign: 'center', border: '1px solid #1e3a8a', background: '#1e3a8a', color: '#ffffff', fontWeight: 800, letterSpacing: '0.4px' }}>
                                         1ER SEMESTRE (NOTAS PARCIALES & PROMEDIO)
                                       </th>
-                                      <th colSpan={7} style={{ padding: '0.42rem', textAlign: 'center', border: '1px solid #312e81', background: '#312e81', color: '#ffffff', fontWeight: 800, letterSpacing: '0.5px' }}>
+                                      <th colSpan={7} style={{ padding: '0.28rem', textAlign: 'center', border: '1px solid #312e81', background: '#312e81', color: '#ffffff', fontWeight: 800, letterSpacing: '0.4px' }}>
                                         2DO SEMESTRE (NOTAS PARCIALES & PROMEDIO)
                                       </th>
-                                      <th rowSpan={2} style={{ padding: '0.55rem 0.4rem', textAlign: 'center', border: '1px solid #b45309', background: '#d97706', color: '#ffffff', width: '9.5%', fontWeight: 900, fontSize: '0.8rem' }}>
+                                      <th rowSpan={2} style={{ padding: '0.3rem 0.35rem', textAlign: 'center', border: '1px solid #b45309', background: '#d97706', color: '#ffffff', width: '9.5%', fontWeight: 900, fontSize: '0.74rem' }}>
                                         PROM. ANUAL
                                       </th>
                                     </tr>
-                                    <tr style={{ fontWeight: 800, textTransform: 'uppercase', fontSize: '0.7rem' }}>
+                                    <tr style={{ fontWeight: 800, textTransform: 'uppercase', fontSize: '0.68rem' }}>
                                       {/* 1er Semestre */}
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#1e3a8a', width: '4.2%' }}>N1</th>
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#1e3a8a', width: '4.2%' }}>N2</th>
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#1e3a8a', width: '4.2%' }}>N3</th>
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#1e3a8a', width: '4.2%' }}>N4</th>
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#1e3a8a', width: '4.2%' }}>N5</th>
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#1e3a8a', width: '4.2%' }}>N6</th>
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #93c5fd', background: '#dbeafe', color: '#1e40af', width: '6.2%', fontWeight: 900 }}>PROM 1°</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#1e3a8a', width: '4.2%' }}>N1</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#1e3a8a', width: '4.2%' }}>N2</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#1e3a8a', width: '4.2%' }}>N3</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#1e3a8a', width: '4.2%' }}>N4</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#1e3a8a', width: '4.2%' }}>N5</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#1e3a8a', width: '4.2%' }}>N6</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #93c5fd', background: '#dbeafe', color: '#1e40af', width: '6.2%', fontWeight: 900 }}>PROM 1°</th>
 
                                       {/* 2do Semestre */}
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#312e81', width: '4.2%' }}>N1</th>
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#312e81', width: '4.2%' }}>N2</th>
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#312e81', width: '4.2%' }}>N3</th>
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#312e81', width: '4.2%' }}>N4</th>
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#312e81', width: '4.2%' }}>N5</th>
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#312e81', width: '4.2%' }}>N6</th>
-                                      <th style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #c4b5fd', background: '#ede9fe', color: '#5b21b6', width: '6.2%', fontWeight: 900 }}>PROM 2°</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#312e81', width: '4.2%' }}>N1</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#312e81', width: '4.2%' }}>N2</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#312e81', width: '4.2%' }}>N3</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#312e81', width: '4.2%' }}>N4</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#312e81', width: '4.2%' }}>N5</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#312e81', width: '4.2%' }}>N6</th>
+                                      <th style={{ padding: '0.22rem 0.15rem', textAlign: 'center', border: '1px solid #c4b5fd', background: '#ede9fe', color: '#5b21b6', width: '6.2%', fontWeight: 900 }}>PROM 2°</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -1113,29 +1221,29 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                                         const annVal = sub.annualAverage || sub.average;
                                         return (
                                           <tr key={subIdx} style={{ background: subIdx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
-                                            <td style={{ padding: '0.45rem 0.6rem', border: '1px solid #cbd5e1', fontWeight: 700, color: '#1e293b' }}>
+                                            <td style={{ padding: '0.2rem 0.45rem', border: '1px solid #cbd5e1', fontWeight: 700, color: '#1e293b', lineHeight: 1.2 }}>
                                               {sub.name}
                                             </td>
                                             {/* Semestre 1 */}
-                                            <td style={{ padding: '0.35rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n1)}</td>
-                                            <td style={{ padding: '0.35rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n2)}</td>
-                                            <td style={{ padding: '0.35rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n3)}</td>
-                                            <td style={{ padding: '0.35rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n4)}</td>
-                                            <td style={{ padding: '0.35rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n5)}</td>
-                                            <td style={{ padding: '0.35rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n6)}</td>
-                                            <td style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #93c5fd', background: '#eff6ff' }}>{avgFormatted(sem1?.average)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n1)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n2)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n3)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n4)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n5)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n6)}</td>
+                                            <td style={{ padding: '0.18rem 0.15rem', textAlign: 'center', border: '1px solid #93c5fd', background: '#eff6ff' }}>{avgFormatted(sem1?.average)}</td>
 
                                             {/* Semestre 2 */}
-                                            <td style={{ padding: '0.35rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n1)}</td>
-                                            <td style={{ padding: '0.35rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n2)}</td>
-                                            <td style={{ padding: '0.35rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n3)}</td>
-                                            <td style={{ padding: '0.35rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n4)}</td>
-                                            <td style={{ padding: '0.35rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n5)}</td>
-                                            <td style={{ padding: '0.35rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n6)}</td>
-                                            <td style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #c4b5fd', background: '#f5f3ff' }}>{avgFormatted(sem2?.average)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n1)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n2)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n3)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n4)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n5)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n6)}</td>
+                                            <td style={{ padding: '0.18rem 0.15rem', textAlign: 'center', border: '1px solid #c4b5fd', background: '#f5f3ff' }}>{avgFormatted(sem2?.average)}</td>
 
                                             {/* Promedio Anual Final */}
-                                            <td style={{ padding: '0.35rem 0.2rem', textAlign: 'center', border: '1px solid #fcd34d', background: '#fffbeb' }}>
+                                            <td style={{ padding: '0.18rem 0.15rem', textAlign: 'center', border: '1px solid #fcd34d', background: '#fffbeb' }}>
                                               {annualAvgFormatted(annVal)}
                                             </td>
                                           </tr>
@@ -1143,7 +1251,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                                       })
                                     ) : (
                                       <tr>
-                                        <td colSpan={16} style={{ padding: '1.25rem', textAlign: 'center', color: '#64748b', fontStyle: 'italic', fontWeight: 600 }}>
+                                        <td colSpan={16} style={{ padding: '1rem', textAlign: 'center', color: '#64748b', fontStyle: 'italic', fontWeight: 600 }}>
                                           El estudiante no registra asignaturas con notas ingresadas para este período anual.
                                         </td>
                                       </tr>
@@ -1153,22 +1261,22 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                               </div>
                             ) : (
                               /* TABLA ESTÁNDAR PARA PERÍODOS INDIVIDUALES (1ER O 2DO SEMESTRE) */
-                              <div style={{ marginBottom: '1.25rem' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', border: '1px solid #cbd5e1' }}>
+                              <div style={{ marginBottom: '0.45rem' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem', border: '1px solid #cbd5e1' }}>
                                   <thead>
                                     <tr style={{ background: '#e2e8f0', color: '#0f172a', fontWeight: 800, textTransform: 'uppercase' }}>
-                                      <th style={{ padding: '0.6rem', textAlign: 'left', border: '1px solid #cbd5e1', width: '32%' }}>ASIGNATURA</th>
-                                      <th style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N1</th>
-                                      <th style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N2</th>
-                                      <th style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N3</th>
-                                      <th style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N4</th>
-                                      <th style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N5</th>
-                                      <th style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N6</th>
-                                      <th style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N7</th>
-                                      <th style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N8</th>
-                                      <th style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N9</th>
-                                      <th style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N10</th>
-                                      <th style={{ padding: '0.6rem', textAlign: 'center', border: '1px solid #94a3b8', background: '#dbeafe', color: '#1e40af', width: '13%', fontWeight: 900 }}>PROM</th>
+                                      <th style={{ padding: '0.32rem 0.4rem', textAlign: 'left', border: '1px solid #cbd5e1', width: '32%', fontSize: '0.72rem' }}>ASIGNATURA</th>
+                                      <th style={{ padding: '0.32rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N1</th>
+                                      <th style={{ padding: '0.32rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N2</th>
+                                      <th style={{ padding: '0.32rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N3</th>
+                                      <th style={{ padding: '0.32rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N4</th>
+                                      <th style={{ padding: '0.32rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N5</th>
+                                      <th style={{ padding: '0.32rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N6</th>
+                                      <th style={{ padding: '0.32rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N7</th>
+                                      <th style={{ padding: '0.32rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N8</th>
+                                      <th style={{ padding: '0.32rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N9</th>
+                                      <th style={{ padding: '0.32rem 0.2rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '5.5%' }}>N10</th>
+                                      <th style={{ padding: '0.32rem 0.3rem', textAlign: 'center', border: '1px solid #94a3b8', background: '#dbeafe', color: '#1e40af', width: '13%', fontWeight: 900 }}>PROM</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -1176,26 +1284,26 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                                       activeSubjectGrades.map((sub, subIdx) => {
                                         return (
                                           <tr key={subIdx} style={{ background: subIdx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
-                                            <td style={{ padding: '0.5rem 0.6rem', border: '1px solid #cbd5e1', fontWeight: 700, color: '#334155' }}>
+                                            <td style={{ padding: '0.22rem 0.45rem', border: '1px solid #cbd5e1', fontWeight: 700, color: '#334155' }}>
                                               {sub.name}
                                             </td>
-                                            <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n1)}</td>
-                                            <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n2)}</td>
-                                            <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n3)}</td>
-                                            <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n4)}</td>
-                                            <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n5)}</td>
-                                            <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n6)}</td>
-                                            <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n7)}</td>
-                                            <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n8)}</td>
-                                            <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n9)}</td>
-                                            <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n10)}</td>
-                                            <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #94a3b8', background: '#eff6ff' }}>{avgFormatted(sub.average)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n1)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n2)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n3)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n4)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n5)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n6)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n7)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n8)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n9)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n10)}</td>
+                                            <td style={{ padding: '0.2rem 0.25rem', textAlign: 'center', border: '1px solid #94a3b8', background: '#eff6ff' }}>{avgFormatted(sub.average)}</td>
                                           </tr>
                                         );
                                       })
                                     ) : (
                                       <tr>
-                                        <td colSpan={12} style={{ padding: '1.25rem', textAlign: 'center', color: '#64748b', fontStyle: 'italic', fontWeight: 600 }}>
+                                        <td colSpan={12} style={{ padding: '1rem', textAlign: 'center', color: '#64748b', fontStyle: 'italic', fontWeight: 600 }}>
                                           El estudiante no registra asignaturas con notas ingresadas para este período.
                                         </td>
                                       </tr>
@@ -1207,63 +1315,65 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
 
                             {/* CUADRO DE RESUMEN Y PROMEDIO GENERAL */}
                             {period === 'Anual' ? (
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.85rem 1.25rem', marginBottom: '2.5rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.4rem 0.85rem', marginBottom: '0.65rem' }}>
                                 <div>
-                                  <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                                  <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
                                     RESUMEN ANUAL DE RENDIMIENTO
                                   </div>
-                                  <div style={{ fontSize: '0.85rem', color: '#334155', marginTop: '0.25rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+                                  <div style={{ fontSize: '0.78rem', color: '#334155', marginTop: '0.15rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
                                     <span>Promedio 1° Sem: <strong style={{ color: '#1e40af' }}>{st.promedioSem1 || '-'}</strong></span>
                                     <span>•</span>
                                     <span>Promedio 2° Sem: <strong style={{ color: '#5b21b6' }}>{st.promedioSem2 || '-'}</strong></span>
                                     <span>•</span>
                                     <span>Notas Azules: <strong style={{ color: '#1d4ed8' }}>{st.azules}</strong> | Rojas: <strong style={{ color: '#dc2626' }}>{st.rojas}</strong></span>
                                     <span>•</span>
-                                    <span>Situación: <span style={{ background: isApproved ? '#dcfce7' : '#fee2e2', color: isApproved ? '#166534' : '#991b1b', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>{isApproved ? 'PROMOVIDO(A)' : 'EN EVALUACIÓN'}</span></span>
+                                    <span>Situación: <span style={{ background: isApproved ? '#dcfce7' : '#fee2e2', color: isApproved ? '#166534' : '#991b1b', fontWeight: 800, padding: '1px 6px', borderRadius: '4px', fontSize: '0.72rem' }}>{isApproved ? 'PROMOVIDO(A)' : 'EN EVALUACIÓN'}</span></span>
                                   </div>
                                 </div>
 
-                                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
-                                    PROMEDIO GENERAL ANUAL:
+                                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                  <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', lineHeight: 1.15 }}>
+                                    PROMEDIO GENERAL<br />ANUAL:
                                   </div>
                                   <div style={{
-                                    fontSize: '1.6rem',
+                                    fontSize: '1.35rem',
                                     fontWeight: 900,
                                     color: isApproved ? '#15803d' : '#dc2626',
                                     background: '#ffffff',
-                                    padding: '0.25rem 0.9rem',
-                                    borderRadius: '8px',
-                                    border: '2px solid #b45309'
+                                    padding: '0.15rem 0.75rem',
+                                    borderRadius: '6px',
+                                    border: '2px solid #b45309',
+                                    lineHeight: 1.2
                                   }}>
                                     {typeof st.promedioGeneral === 'number' ? roundGrade(st.promedioGeneral).toFixed(1) : st.promedioGeneral}
                                   </div>
                                 </div>
                               </div>
                             ) : (
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.85rem 1.25rem', marginBottom: '2.5rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.4rem 0.85rem', marginBottom: '0.65rem' }}>
                                 <div>
-                                  <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
+                                  <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
                                     RESUMEN DE CALIFICACIONES
                                   </div>
-                                  <div style={{ fontSize: '0.85rem', color: '#334155', marginTop: '0.2rem', display: 'flex', gap: '1rem' }}>
+                                  <div style={{ fontSize: '0.78rem', color: '#334155', marginTop: '0.15rem', display: 'flex', gap: '0.75rem' }}>
                                     <span>Notas Azules (≥4.0): <strong style={{ color: '#1d4ed8' }}>{st.azules}</strong></span>
                                     <span>Notas Rojas (&lt;4.0): <strong style={{ color: '#dc2626' }}>{st.rojas}</strong></span>
                                   </div>
                                 </div>
 
-                                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                  <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#475569' }}>
+                                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                  <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
                                     PROMEDIO GENERAL:
                                   </div>
                                   <div style={{
-                                    fontSize: '1.6rem',
+                                    fontSize: '1.35rem',
                                     fontWeight: 900,
                                     color: isApproved ? '#1d4ed8' : '#dc2626',
                                     background: '#ffffff',
-                                    padding: '0.3rem 1rem',
-                                    borderRadius: '8px',
-                                    border: '2px solid #94a3b8'
+                                    padding: '0.15rem 0.75rem',
+                                    borderRadius: '6px',
+                                    border: '2px solid #94a3b8',
+                                    lineHeight: 1.2
                                   }}>
                                     {typeof st.promedioGeneral === 'number' ? roundGrade(st.promedioGeneral).toFixed(1) : st.promedioGeneral}
                                   </div>
@@ -1275,29 +1385,29 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                       })()}
 
                       {/* FIRMAS INSTITUCIONALES */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', marginTop: '3.5rem', textAlign: 'center', fontSize: '0.85rem', color: '#1e293b' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2.5rem', marginTop: '1.25rem', textAlign: 'center', fontSize: '0.8rem', color: '#1e293b', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                         <div>
-                          <div style={{ borderBottom: '1.5px solid #0f172a', marginBottom: '0.5rem', height: '45px' }}></div>
-                          <strong style={{ fontSize: '0.95rem', color: '#0f172a', display: 'block' }}>
+                          <div style={{ borderBottom: '1.5px solid #0f172a', marginBottom: '0.35rem', height: '32px' }}></div>
+                          <strong style={{ fontSize: '0.88rem', color: '#0f172a', display: 'block' }}>
                             {teacherInput || st.homeroomTeacher || 'Profesor(a) Jefe'}
                           </strong>
-                          <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
+                          <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
                             Profesor(a) Jefe - {displayCourseName}
                           </span>
                         </div>
 
                         <div>
-                          <div style={{ borderBottom: '1.5px solid #0f172a', marginBottom: '0.5rem', height: '45px' }}></div>
-                          <strong style={{ fontSize: '0.95rem', color: '#0f172a', display: 'block' }}>
+                          <div style={{ borderBottom: '1.5px solid #0f172a', marginBottom: '0.35rem', height: '32px' }}></div>
+                          <strong style={{ fontSize: '0.88rem', color: '#0f172a', display: 'block' }}>
                             {directorInput || 'Director(a) Establecimiento'}
                           </strong>
-                          <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
+                          <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
                             Director(a) Establecimiento Educacional
                           </span>
                         </div>
                       </div>
 
-                      <div style={{ marginTop: '2.5rem', textAlign: 'center', fontSize: '0.7rem', color: '#94a3b8', borderTop: '1px dashed #cbd5e1', paddingTop: '0.5rem' }}>
+                      <div style={{ marginTop: '0.65rem', textAlign: 'center', fontSize: '0.65rem', color: '#94a3b8', borderTop: '1px dashed #cbd5e1', paddingTop: '0.3rem' }}>
                         Documento oficial emitido por la Plataforma Unificada LTP v2.0 • Auditoría Silent-Watch Verificada
                       </div>
                     </div>
@@ -1308,15 +1418,16 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                   {/* =================================================================== */}
                   {(reportType === 'personality' || reportType === 'both') && (
                     <div
-                      className="printable-report-page"
+                      className="printable-report-page personality-report-page"
                       style={{
                         background: '#ffffff',
                         borderRadius: '8px',
-                        padding: '1.6rem 1.85rem',
-                        marginBottom: '2rem',
+                        padding: '1.25rem 1.5rem',
+                        marginBottom: '1.5rem',
                         boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)',
                         color: '#0f172a',
-                        fontFamily: 'Arial, sans-serif'
+                        fontFamily: 'Arial, sans-serif',
+                        zoom: printScale !== 100 ? `${printScale}%` : undefined
                       }}
                     >
                       {/* ENCABEZADO INSTITUCIONAL */}
@@ -1509,7 +1620,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                       ))}
 
                       {/* OBSERVACIONES */}
-                      <div style={{ marginTop: '0.6rem', marginBottom: '1.4rem' }}>
+                      <div style={{ marginTop: '0.4rem', marginBottom: '0.8rem' }}>
                         <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.2rem', textTransform: 'uppercase' }}>
                           Observaciones y Sugerencias al Hogar:
                         </div>
@@ -1530,25 +1641,25 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                             }}
                           />
                         </div>
-                        <div className="print-only" style={{ minHeight: '36px', padding: '0.45rem', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.75rem', color: '#0f172a', background: '#f8fafc' }}>
+                        <div className="print-only" style={{ minHeight: '32px', padding: '0.35rem 0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.73rem', color: '#0f172a', background: '#f8fafc' }}>
                           {studentEval.observations || 'Sin observaciones registradas.'}
                         </div>
                       </div>
 
                       {/* FIRMAS OFICIALES */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem', marginTop: '2rem', textAlign: 'center', fontSize: '0.75rem', color: '#1e293b' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem', marginTop: '1.25rem', textAlign: 'center', fontSize: '0.75rem', color: '#1e293b', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                         <div>
-                          <div style={{ borderBottom: '1.5px solid #0f172a', marginBottom: '0.35rem', height: '36px' }}></div>
+                          <div style={{ borderBottom: '1.5px solid #0f172a', marginBottom: '0.35rem', height: '28px' }}></div>
                           <strong style={{ display: 'block' }}>{teacherInput || st.homeroomTeacher || 'Profesor(a) Jefe'}</strong>
                           <span style={{ fontSize: '0.68rem', color: '#64748b' }}>Educador(a) / Profesor(a) Jefe</span>
                         </div>
                         <div>
-                          <div style={{ borderBottom: '1.5px solid #0f172a', marginBottom: '0.35rem', height: '36px' }}></div>
+                          <div style={{ borderBottom: '1.5px solid #0f172a', marginBottom: '0.35rem', height: '28px' }}></div>
                           <strong style={{ display: 'block' }}>{directorInput || 'Director(a) Establecimiento'}</strong>
                           <span style={{ fontSize: '0.68rem', color: '#64748b' }}>Dirección Académica</span>
                         </div>
                         <div>
-                          <div style={{ borderBottom: '1.5px solid #0f172a', marginBottom: '0.35rem', height: '36px' }}></div>
+                          <div style={{ borderBottom: '1.5px solid #0f172a', marginBottom: '0.35rem', height: '28px' }}></div>
                           <strong style={{ display: 'block' }}>Apoderado(a)</strong>
                           <span style={{ fontSize: '0.68rem', color: '#64748b' }}>Toma de Conocimiento</span>
                         </div>

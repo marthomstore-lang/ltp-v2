@@ -2240,7 +2240,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                     {s.list_number || idx + 1}
                   </td>
                   <td style={{ textAlign: 'center', padding: '0.65rem 0.5rem', color: retired ? '#dc2626' : '#4f46e5', fontWeight: 700, fontSize: '0.8rem', textDecoration: retired ? 'line-through' : 'none' }}>
-                    {s.enrollment_number || s.run || `MAT-${String(idx + 1).padStart(4, '0')}`}
+                    {s.enrollment_number || 'S/N'}
                   </td>
                   <td style={{ padding: '0.65rem 1rem', fontWeight: 700, color: retired ? '#dc2626' : '#0f172a', textTransform: 'uppercase' }}>
                     <span style={{ textDecoration: retired ? 'line-through' : 'none' }}>{s.full_name}</span>

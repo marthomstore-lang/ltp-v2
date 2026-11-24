@@ -851,7 +851,7 @@ export const CumulativeGradesModal: React.FC<CumulativeGradesModalProps> = ({
                           {st.list_number || idx + 1}
                         </td>
                         <td style={{ textAlign: 'center', padding: '0.55rem 0.5rem', fontSize: '0.8rem', color: retired ? '#dc2626' : '#4f46e5', fontWeight: 700, textDecoration: retired ? 'line-through' : 'none' }}>
-                          {st.enrollment_number || st.run || `MAT-${idx + 1}`}
+                          {st.enrollment_number || 'S/N'}
                         </td>
                         <td style={{ padding: '0.55rem 1rem', fontWeight: 700, color: retired ? '#dc2626' : '#0f172a', textTransform: 'uppercase' }}>
                           <span style={{ textDecoration: retired ? 'line-through' : 'none' }}>{st.full_name}</span>
