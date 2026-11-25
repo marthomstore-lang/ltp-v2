@@ -2,9 +2,9 @@ import nodemailer from 'nodemailer';
 
 export const OFFICIAL_SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
 export const OFFICIAL_SMTP_PORT = parseInt(process.env.SMTP_PORT || '465', 10);
-export const OFFICIAL_SMTP_USER = process.env.SMTP_USER || '';
-export const OFFICIAL_SMTP_PASS = process.env.SMTP_PASS || '';
-export const OFFICIAL_SMTP_FROM = process.env.SMTP_FROM || '"LTP Liceo Pro" <soporte@ltp.cl>';
+export const OFFICIAL_SMTP_USER = process.env.SMTP_USER || 'david.vidal@eduvallediguillin.gob.cl';
+export const OFFICIAL_SMTP_PASS = process.env.SMTP_PASS || 'dezymyybjgvuuiuc';
+export const OFFICIAL_SMTP_FROM = process.env.SMTP_FROM || '"LTP Liceo Pro" <david.vidal@eduvallediguillin.gob.cl>';
 
 export interface SendMailResult {
   success: boolean;
@@ -667,6 +667,174 @@ export async function sendPhotocopyReadyEmail(
     };
   } catch (err: any) {
     console.error(`❌ Error al enviar correo de fotocopias a ${toEmail}:`, err.message || err);
+    return {
+      success: false,
+      simulated: false,
+      error: err.message || 'Error al conectar con servidor SMTP'
+    };
+  }
+}
+
+export interface UtpReturnedEmailOptions {
+  toEmail: string;
+  teacherName: string;
+  evaluationTitle: string;
+  materialType?: string;
+  courseName: string;
+  subjectName: string;
+  notes: string;
+  reviewerName?: string;
+  loginUrl?: string;
+}
+
+export async function sendUtpReturnedEmail(
+  options: UtpReturnedEmailOptions
+): Promise<SendMailResult> {
+  const {
+    toEmail,
+    teacherName,
+    evaluationTitle,
+    materialType = 'Evaluación',
+    courseName,
+    subjectName,
+    notes,
+    reviewerName = 'Jefatura de UTP',
+    loginUrl = 'https://ltp-v2.vercel.app'
+  } = options;
+
+  const host = process.env.SMTP_HOST || OFFICIAL_SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || String(OFFICIAL_SMTP_PORT), 10);
+  const user = process.env.SMTP_USER || OFFICIAL_SMTP_USER;
+  const pass = process.env.SMTP_PASS || OFFICIAL_SMTP_PASS;
+  const from = process.env.SMTP_FROM || OFFICIAL_SMTP_FROM;
+
+  const nowFormatted = new Date().toLocaleDateString('es-CL', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <title>Observaciones en Visado UTP - LTP Liceo Pro</title>
+      <style>
+        body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; color: #1e293b; margin: 0; padding: 24px; }
+        .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 14px; padding: 32px; box-shadow: 0 10px 25px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+        .header { text-align: center; border-bottom: 2px solid #dc2626; padding-bottom: 18px; margin-bottom: 22px; }
+        .header h1 { color: #b91c1c; margin: 0; font-size: 1.55rem; font-weight: 800; }
+        .header p { margin: 6px 0 0 0; color: #64748b; font-size: 0.92rem; }
+        .badge { display: inline-block; background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; padding: 6px 16px; border-radius: 20px; font-weight: 800; font-size: 0.88rem; margin-top: 12px; }
+        .obs-box { background: #fff5f5; border-left: 5px solid #dc2626; padding: 18px 22px; border-radius: 8px; margin: 20px 0; border: 1px solid #fee2e2; border-left-width: 5px; }
+        .obs-title { font-weight: 800; color: #991b1b; font-size: 1rem; margin-bottom: 8px; }
+        .obs-text { font-size: 0.96rem; color: #450a0a; line-height: 1.6; font-style: italic; background: #ffffff; padding: 12px; border-radius: 6px; border: 1px dashed #fca5a5; }
+        .card { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 18px; margin: 20px 0; font-size: 0.88rem; }
+        .card-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+        .card-row:last-child { border-bottom: none; }
+        .card-label { color: #64748b; font-weight: 600; }
+        .card-value { color: #0f172a; font-weight: 800; }
+        .btn-container { text-align: center; margin: 28px 0 15px 0; }
+        .btn { display: inline-block; background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); color: #ffffff !important; padding: 13px 30px; border-radius: 8px; text-decoration: none; font-weight: 800; font-size: 0.96rem; box-shadow: 0 4px 14px rgba(220, 38, 38, 0.35); text-align: center; }
+        .footer { text-align: center; margin-top: 30px; font-size: 0.78rem; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 18px; line-height: 1.5; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Liceo Técnico Profesional</h1>
+          <p>Unidad Técnico Pedagógica (UTP) — Gestión de Evaluaciones</p>
+          <div style="text-align: center;">
+            <span class="badge">⚠️ Instrumento Devuelto con Observaciones</span>
+          </div>
+        </div>
+
+        <p style="font-size: 1rem;">Estimado(a) docente <strong>${teacherName}</strong>,</p>
+        <p style="color: #475569; line-height: 1.6;">
+          Le informamos que la Jefatura de UTP ha revisado su <strong>${materialType}: "${evaluationTitle}"</strong> (${courseName}) y ha solicitado realizar ajustes o correcciones antes de autorizar su visado y posterior fotocopiado.
+        </p>
+
+        <div class="obs-box">
+          <div class="obs-title">📝 Observaciones de UTP (${reviewerName}):</div>
+          <div class="obs-text">&quot;${notes}&quot;</div>
+        </div>
+
+        <div class="card">
+          <div class="card-row">
+            <span class="card-label">📄 Instrumento:</span>
+            <span class="card-value">${evaluationTitle}</span>
+          </div>
+          <div class="card-row">
+            <span class="card-label">🏫 Curso:</span>
+            <span class="card-value">${courseName}</span>
+          </div>
+          <div class="card-row">
+            <span class="card-label">📚 Asignatura:</span>
+            <span class="card-value">${subjectName}</span>
+          </div>
+          <div class="card-row">
+            <span class="card-label">👤 Revisado por:</span>
+            <span class="card-value">${reviewerName}</span>
+          </div>
+          <div class="card-row">
+            <span class="card-label">⏱️ Fecha:</span>
+            <span class="card-value">${nowFormatted}</span>
+          </div>
+        </div>
+
+        <p style="color: #475569; font-size: 0.9rem; line-height: 1.5;">
+          <strong>¿Qué debo hacer?</strong><br/>
+          Por favor acceda a la plataforma con el botón a continuación, diríjase a la sección de evaluaciones y presione <strong>«Subir Corrección»</strong> para adjuntar el nuevo archivo subsanado. Al subirlo, pasará automáticamente a <strong>segunda revisión</strong> de UTP.
+        </p>
+
+        <div class="btn-container">
+          <a href="${loginUrl}" class="btn" target="_blank" style="color: #ffffff !important;">
+            👉 Subir Instrumento Corregido
+          </a>
+        </div>
+
+        <div class="footer">
+          Mensaje generado automáticamente por el Sistema Integral de Gestión Escolar — Liceo Técnico Profesional.<br/>
+          &copy; ${new Date().getFullYear()} Liceo Técnico Profesional — Todos los derechos reservados.
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  try {
+    const isSecure = port === 465;
+    const transporter = nodemailer.createTransport({
+      host: host || 'smtp.gmail.com',
+      port,
+      secure: isSecure,
+      auth: { user, pass },
+      connectionTimeout: 7000,
+      greetingTimeout: 7000,
+      socketTimeout: 9000,
+      tls: { rejectUnauthorized: false }
+    });
+
+    const mailOptions = {
+      from,
+      to: toEmail,
+      subject: `⚠️ [Observación Visado UTP] "${evaluationTitle}" (${courseName}) devuelta para corrección`,
+      html: htmlContent
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Correo de observación UTP enviado a ${toEmail} (ID: ${info.messageId})`);
+    return {
+      success: true,
+      simulated: false,
+      messageId: info.messageId
+    };
+  } catch (err: any) {
+    console.error(`❌ Error al enviar correo de observación UTP a ${toEmail}:`, err.message || err);
     return {
       success: false,
       simulated: false,

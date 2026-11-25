@@ -982,7 +982,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
     return evaluations.filter(ev => {
       if (tableCourseFilter && !coursesMatchFrontend(ev.course_name, tableCourseFilter)) return false;
       if (tableSubjectFilter && ev.subject_name !== tableSubjectFilter) return false;
-      return ev.status === 'Pendiente de Archivo' || !ev.original_file_url;
+      return ev.status === 'Pendiente de Archivo' || !ev.original_file_url || ev.utp_status === 'Rechazado';
     });
   }, [evaluations, tableCourseFilter, tableSubjectFilter]);
 
@@ -2355,6 +2355,13 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                         <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>
                           <strong>{ev.evaluation_title}</strong>
                           <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{ev.subject_name} • Prof. {ev.teacher_name}</div>
+                          {ev.utp_status === 'Rechazado' && (
+                            <div style={{ marginTop: '3px' }}>
+                              <span style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800 }}>
+                                ⚠️ Observado UTP: &quot;{ev.utp_notes}&quot;
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap', fontWeight: 700 }}>
                           {ev.course_name}
@@ -2371,7 +2378,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                           <div style={{ fontSize: '0.7rem', color: '#475569', marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <Folder size={12} color="#4f46e5" /> {folderLabel}
                           </div>
-                          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
                             <span style={{
                               padding: '0.18rem 0.5rem',
                               borderRadius: '9999px',
@@ -2390,6 +2397,21 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                                 title="Abrir y descargar documento de la prueba"
                               >
                                 <Eye size={11} /> Ver Prueba
+                              </button>
+                            )}
+                            {ev.utp_status === 'Rechazado' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setUploadPendingEval(ev);
+                                  setPendingFileUrl(ev.original_file_url || '');
+                                  setPendingFileName(ev.original_file_name || '');
+                                  setPendingSelectedFile(null);
+                                }}
+                                style={{ background: '#d97706', color: '#ffffff', border: 'none', padding: '0.18rem 0.5rem', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px', boxShadow: '0 1px 3px rgba(217,119,6,0.3)' }}
+                                title="Subir corrección tras observación de UTP"
+                              >
+                                <Upload size={11} /> Subir Corrección
                               </button>
                             )}
                           </div>
@@ -2487,6 +2509,13 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                       <tr key={ev.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap', fontWeight: 700 }}>
                           {ev.evaluation_title}
+                          {ev.utp_status === 'Rechazado' && (
+                            <div style={{ marginTop: '4px' }}>
+                              <span style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', padding: '2px 6px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <AlertTriangle size={12} color="#dc2626" /> Devuelto UTP: &quot;{ev.utp_notes}&quot;
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>
                           <strong>{ev.course_name}</strong> • {ev.subject_name}
@@ -2538,9 +2567,22 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                               setPendingFileName(ev.original_file_name || '');
                               setPendingSelectedFile(null);
                             }}
-                            style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', borderRadius: '6px', padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                            style={{
+                              background: ev.utp_status === 'Rechazado' ? '#dc2626' : '#fef3c7',
+                              color: ev.utp_status === 'Rechazado' ? '#ffffff' : '#b45309',
+                              border: ev.utp_status === 'Rechazado' ? 'none' : '1px solid #fde68a',
+                              borderRadius: '6px',
+                              padding: '0.35rem 0.75rem',
+                              fontSize: '0.78rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              boxShadow: ev.utp_status === 'Rechazado' ? '0 2px 4px rgba(220,38,38,0.25)' : 'none'
+                            }}
                           >
-                            <Upload size={13} /> Subir a Drive
+                            <Upload size={13} /> {ev.utp_status === 'Rechazado' ? 'Subir Corrección' : 'Subir a Drive'}
                           </button>
                         </td>
                       </tr>
@@ -2599,6 +2641,13 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                         <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>
                           <strong>{ev.evaluation_title}</strong>
                           <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{ev.subject_name} • Prof. {ev.teacher_name}</div>
+                          {ev.utp_status === 'Rechazado' && (
+                            <div style={{ marginTop: '3px' }}>
+                              <span style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800 }}>
+                                ⚠️ Observado UTP: &quot;{ev.utp_notes}&quot;
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap', fontWeight: 700 }}>
                           {ev.course_name}
@@ -3440,6 +3489,36 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                               </span>
                             )}
 
+                            {isUtpRejected && (
+                              <div style={{ marginTop: '3px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUploadPendingEval(ev);
+                                    setPendingFileUrl(ev.original_file_url || '');
+                                    setPendingFileName(ev.original_file_name || '');
+                                    setPendingSelectedFile(null);
+                                  }}
+                                  style={{
+                                    padding: '0.22rem 0.55rem',
+                                    borderRadius: '5px',
+                                    background: '#fee2e2',
+                                    color: '#991b1b',
+                                    border: '1px solid #fecaca',
+                                    fontSize: '0.71rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px'
+                                  }}
+                                  title="Reemplazar archivo por versión corregida"
+                                >
+                                  <Upload size={11} /> Reemplazar Archivo
+                                </button>
+                              </div>
+                            )}
+
                             {ev.pie_file_name && (
                               <div style={{ display: 'flex', gap: '4px', marginTop: '2px' }}>
                                 <button
@@ -3517,25 +3596,55 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                             )}
 
                             {isUtpRejected && (
-                              <button
-                                type="button"
-                                onClick={() => handleUtpVisa(ev, 'approve')}
-                                style={{
-                                  padding: '0.35rem 0.65rem',
-                                  borderRadius: '6px',
-                                  background: '#059669',
-                                  color: '#ffffff',
-                                  border: 'none',
-                                  fontSize: '0.74rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px'
-                                }}
-                              >
-                                <Check size={13} /> Re-visar
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUploadPendingEval(ev);
+                                    setPendingFileUrl(ev.original_file_url || '');
+                                    setPendingFileName(ev.original_file_name || '');
+                                    setPendingSelectedFile(null);
+                                  }}
+                                  style={{
+                                    padding: '0.35rem 0.75rem',
+                                    borderRadius: '6px',
+                                    background: '#d97706',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    boxShadow: '0 2px 4px rgba(217,119,6,0.25)'
+                                  }}
+                                  title="Subir archivo corregido para segunda revisión de UTP"
+                                >
+                                  <Upload size={13} /> Subir Corrección
+                                </button>
+                                {(user?.role === 'Admin' || user?.role === 'Director') && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUtpVisa(ev, 'approve')}
+                                    style={{
+                                      padding: '0.35rem 0.65rem',
+                                      borderRadius: '6px',
+                                      background: '#059669',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      fontSize: '0.74rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}
+                                  >
+                                    <Check size={13} /> Re-visar
+                                  </button>
+                                )}
+                              </>
                             )}
 
                             {/* Botón para Encargado de Fotocopias / Administrador */}
@@ -3956,6 +4065,43 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
             </div>
 
             <form onSubmit={handleSaveEdit}>
+              {editingEval.utp_status === 'Rechazado' && (
+                <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '10px', padding: '0.85rem', marginBottom: '1.25rem', fontSize: '0.82rem' }}>
+                  <div style={{ color: '#991b1b', fontWeight: 800, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <AlertTriangle size={15} color="#dc2626" /> Observación de UTP (Instrumento Devuelto):
+                  </div>
+                  <div style={{ color: '#450a0a', fontStyle: 'italic', background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px dashed #fca5a5', marginBottom: '8px' }}>
+                    &quot;{editingEval.utp_notes}&quot;
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const evToUpload = { ...editingEval };
+                      setEditingEval(null);
+                      setUploadPendingEval(evToUpload);
+                      setPendingFileUrl(evToUpload.original_file_url || '');
+                      setPendingFileName(evToUpload.original_file_name || '');
+                      setPendingSelectedFile(null);
+                    }}
+                    style={{
+                      background: '#d97706',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '0.4rem 0.85rem',
+                      fontSize: '0.78rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      boxShadow: '0 2px 4px rgba(217,119,6,0.25)'
+                    }}
+                  >
+                    <Upload size={13} /> 🔄 Subir Instrumento Corregido
+                  </button>
+                </div>
+              )}
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontWeight: 700, fontSize: '0.82rem', color: '#334155', marginBottom: '0.35rem' }}>
                   Título / Nombre:
@@ -4069,13 +4215,28 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '1rem' }}>
           <div style={{ background: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '520px', padding: '1.5rem', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-              <h4 style={{ margin: 0, fontFamily: 'Outfit, sans-serif', color: '#b45309', fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Upload size={18} color="#b45309" /> Subir Prueba Original a Google Drive
+              <h4 style={{ margin: 0, fontFamily: 'Outfit, sans-serif', color: uploadPendingEval.utp_status === 'Rechazado' ? '#dc2626' : '#b45309', fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Upload size={18} color={uploadPendingEval.utp_status === 'Rechazado' ? '#dc2626' : '#b45309'} />
+                {uploadPendingEval.utp_status === 'Rechazado' ? 'Subir Versión Corregida (Segunda Revisión UTP)' : 'Subir Prueba Original a Google Drive'}
               </h4>
               <button onClick={() => setUploadPendingEval(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
                 <X size={20} />
               </button>
             </div>
+
+            {uploadPendingEval.utp_status === 'Rechazado' && (
+              <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '10px', padding: '0.85rem', marginBottom: '1rem', fontSize: '0.82rem' }}>
+                <div style={{ color: '#991b1b', fontWeight: 800, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <AlertTriangle size={15} color="#dc2626" /> Observación de UTP (Instrumento Devuelto):
+                </div>
+                <div style={{ color: '#450a0a', fontStyle: 'italic', background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px dashed #fca5a5', marginBottom: '6px' }}>
+                  &quot;{uploadPendingEval.utp_notes}&quot;
+                </div>
+                <div style={{ color: '#b91c1c', fontSize: '0.74rem', fontWeight: 600, lineHeight: 1.4 }}>
+                  ℹ️ Al subir el nuevo archivo subsanado, pasará automáticamente a <strong>Segunda Revisión de UTP</strong> para su visto bueno y posterior fotocopiado.
+                </div>
+              </div>
+            )}
 
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '0.75rem', marginBottom: '1rem', fontSize: '0.8rem' }}>
               <div><strong>Evaluación:</strong> {uploadPendingEval.evaluation_title}</div>
@@ -4136,8 +4297,22 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                 <button type="button" onClick={() => setUploadPendingEval(null)} className="btn btn-secondary" style={{ padding: '0.45rem 0.85rem' }}>
                   Cancelar
                 </button>
-                <button type="submit" disabled={uploadingPendingFile} className="btn btn-primary" style={{ padding: '0.45rem 1rem', fontWeight: 700, background: '#d97706' }}>
-                  {uploadingPendingFile ? 'Subiendo a Google Drive...' : 'Subir y Guardar en Google Drive'}
+                <button
+                  type="submit"
+                  disabled={uploadingPendingFile}
+                  className="btn btn-primary"
+                  style={{
+                    padding: '0.45rem 1rem',
+                    fontWeight: 700,
+                    background: uploadPendingEval.utp_status === 'Rechazado' ? '#dc2626' : '#d97706',
+                    borderColor: uploadPendingEval.utp_status === 'Rechazado' ? '#b91c1c' : '#d97706'
+                  }}
+                >
+                  {uploadingPendingFile
+                    ? 'Subiendo...'
+                    : uploadPendingEval.utp_status === 'Rechazado'
+                    ? 'Subir Versión Corregida (Segunda Revisión)'
+                    : 'Subir y Guardar en Google Drive'}
                 </button>
               </div>
             </form>
