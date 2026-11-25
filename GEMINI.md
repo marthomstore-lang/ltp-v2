@@ -16,7 +16,7 @@
 - **API URL (`SUPABASE_URL`):** `https://fuirjmpmrzhprbtbmxmi.supabase.co`
 - **Publishable Key (`SUPABASE_PUBLISHABLE_KEY`):** `sb_publishable_2g77rVrmE1_dVAnnbIQH9g_FjRfzwUk`
 - **Direct DB Host:** `db.fuirjmpmrzhprbtbmxmi.supabase.co:5432`
-- **Supavisor Pooler Host (`DATABASE_URL`):** `postgresql://postgres.fuirjmpmrzhprbtbmxmi:Mavu%40182011199420@aws-0-us-west-2.pooler.supabase.com:6543/postgres`
+- **Supavisor Pooler Host (`DATABASE_URL`):** Configurado en `.env` (Protegido / Nunca exponer contraseñas en Git)
 - **DB_TYPE:** `postgres`
 
 ## 3. GitHub (Repositorio de Código Fuente)

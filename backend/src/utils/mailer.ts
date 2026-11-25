@@ -1,10 +1,10 @@
 import nodemailer from 'nodemailer';
 
-export const OFFICIAL_SMTP_HOST = 'smtp.gmail.com';
-export const OFFICIAL_SMTP_PORT = 465;
-export const OFFICIAL_SMTP_USER = 'david.vidal@eduvallediguillin.gob.cl';
-export const OFFICIAL_SMTP_PASS = 'dezymyybjgvuuiuk';
-export const OFFICIAL_SMTP_FROM = '"LTP Liceo Pro" <david.vidal@eduvallediguillin.gob.cl>';
+export const OFFICIAL_SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
+export const OFFICIAL_SMTP_PORT = parseInt(process.env.SMTP_PORT || '465', 10);
+export const OFFICIAL_SMTP_USER = process.env.SMTP_USER || '';
+export const OFFICIAL_SMTP_PASS = process.env.SMTP_PASS || '';
+export const OFFICIAL_SMTP_FROM = process.env.SMTP_FROM || '"LTP Liceo Pro" <soporte@ltp.cl>';
 
 export interface SendMailResult {
   success: boolean;
