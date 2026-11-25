@@ -7,7 +7,7 @@ import crypto from 'crypto';
 import multer from 'multer';
 import { query, isMysql, checkDbConnection } from '../config/db';
 import { authMiddleware, checkRoles, logAudit } from '../middleware/auth';
-import { sendPasswordResetEmail, sendTeacherWelcomeEmail, sendCourseBroadcastEmail } from '../utils/mailer';
+import { sendPasswordResetEmail, sendTeacherWelcomeEmail, sendCourseBroadcastEmail, sendPhotocopyReadyEmail } from '../utils/mailer';
 import mineducReportsRouter from './mineducReports';
 import curriculumPlansRouter from './curriculumPlans';
 import schedulesRouter from './schedules';
@@ -12337,18 +12337,56 @@ router.post('/evaluations/:id/photocopy-status', authMiddleware, checkRoles(['Ad
       WHERE id = $3
     `, [status || 'Listo para Retiro', operatorName, id]);
 
-    if (status === 'Listo para Retiro' && ev.teacher_run) {
-      const notifTeach = `NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      await query(`
-        INSERT INTO system_notifications (id, target_run, type, title, message, reference_id, is_read, created_at)
-        VALUES ($1, $2, 'photocopy_ready_teacher', $3, $4, $5, 0, NOW())
-      `, [
-        notifTeach,
-        ev.teacher_run,
-        `🎉 ¡Fotocopias Listas para Retiro!`,
-        `Tus ${ev.copies_count || 0} copias de ${ev.material_type || 'evaluación'} "${ev.evaluation_title}" (${ev.course_name}) ya están impresas y listas para retiro.`,
-        id
-      ]).catch(() => {});
+    if (status === 'Listo para Retiro') {
+      if (ev.teacher_run) {
+        const notifTeach = `NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        await query(`
+          INSERT INTO system_notifications (id, target_run, type, title, message, reference_id, is_read, created_at)
+          VALUES ($1, $2, 'photocopy_ready_teacher', $3, $4, $5, 0, NOW())
+        `, [
+          notifTeach,
+          ev.teacher_run,
+          `🎉 ¡Fotocopias Listas para Retiro!`,
+          `Tus ${ev.copies_count || 0} copias de ${ev.material_type || 'evaluación'} "${ev.evaluation_title}" (${ev.course_name}) ya están impresas y listas para retiro.`,
+          id
+        ]).catch(() => {});
+      }
+
+      // Envío de correo electrónico al docente para constancia y retiro de fotocopias
+      try {
+        let recipientEmail = ev.teacher_email;
+        if (!recipientEmail && ev.teacher_run) {
+          const cleanT = String(ev.teacher_run).replace(/\./g, '').trim();
+          const cleanAlnum = cleanT.replace(/[^0-9kK]/g, '');
+          const uRes = await query(`
+            SELECT email FROM users 
+            WHERE REPLACE(REPLACE(run, '.', ''), '-', '') = $1 
+               OR REPLACE(run, '.', '') = $2 
+            LIMIT 1
+          `, [cleanAlnum, cleanT]);
+          if (uRes.rows.length > 0 && uRes.rows[0].email) {
+            recipientEmail = uRes.rows[0].email;
+          }
+        }
+
+        if (recipientEmail && recipientEmail.includes('@')) {
+          sendPhotocopyReadyEmail({
+            toEmail: recipientEmail,
+            teacherName: ev.teacher_name || 'Docente',
+            evaluationTitle: ev.evaluation_title,
+            materialType: ev.material_type || 'Evaluación',
+            courseName: ev.course_name,
+            subjectName: ev.subject_name,
+            copiesCount: Number(ev.copies_count || 0),
+            copiesDetails: ev.copies_details || 'Blanco y Negro, Doble Faz',
+            operatorName,
+            evaluationDate: ev.evaluation_date,
+            blockLabel: ev.block_label
+          }).catch(mailErr => console.error('Error enviando correo de fotocopias listas:', mailErr));
+        }
+      } catch (mailLookupErr) {
+        console.error('Error al resolver correo del docente:', mailLookupErr);
+      }
     }
 
     await logAudit(req, 'PHOTOCOPY_STATUS', `Material ${id} fotocopiado marcado como ${status} por ${operatorName}`);

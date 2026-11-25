@@ -629,7 +629,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
   const handlePhotocopyStatus = async (ev: Evaluation, status: 'Listo para Retiro') => {
     const confirm = await Swal.fire({
       title: '¿Confirmar Copias Listas?',
-      html: `¿Confirmas que las <strong>${ev.copies_count || 0} copias</strong> de <strong>"${ev.evaluation_title}"</strong> (${ev.course_name}) ya están impresas?<br/><br/><span style="color:#2563eb;font-weight:700">Se notificará automáticamente al docente (${ev.teacher_name}) para su retiro.</span>`,
+      html: `¿Confirmas que las <strong>${ev.copies_count || 0} copias</strong> de <strong>"${ev.evaluation_title}"</strong> (${ev.course_name}) ya están impresas?<br/><br/><span style="color:#2563eb;font-weight:700">Se enviará un correo electrónico oficial y una notificación al docente (${ev.teacher_name}) para su retiro y constancia de impresión.</span>`,
       icon: 'info',
       showCancelButton: true,
       confirmButtonText: 'Sí, Marcar Listo para Retiro',
@@ -647,7 +647,11 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
       });
       const data = await res.json();
       if (data.success) {
-        Swal.fire('¡Impresión Registrada!', data.message, 'success');
+        Swal.fire({
+          icon: 'success',
+          title: '¡Impresión Registrada!',
+          html: `Se ha marcado el material como <strong>Listo para Retiro</strong> y se envió un <strong>correo electrónico de confirmación</strong> al docente (${ev.teacher_name}).`
+        });
         await loadEvaluations();
       } else {
         Swal.fire('Error', data.error || 'No se pudo actualizar.', 'error');

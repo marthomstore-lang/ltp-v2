@@ -480,3 +480,198 @@ export async function sendCourseBroadcastEmail(
   }
 }
 
+export interface PhotocopyReadyEmailOptions {
+  toEmail: string;
+  teacherName: string;
+  evaluationTitle: string;
+  materialType?: string;
+  courseName: string;
+  subjectName: string;
+  copiesCount: number;
+  copiesDetails?: string;
+  operatorName?: string;
+  evaluationDate?: string;
+  blockLabel?: string;
+  loginUrl?: string;
+}
+
+export async function sendPhotocopyReadyEmail(
+  options: PhotocopyReadyEmailOptions
+): Promise<SendMailResult> {
+  const {
+    toEmail,
+    teacherName,
+    evaluationTitle,
+    materialType = 'Evaluación',
+    courseName,
+    subjectName,
+    copiesCount,
+    copiesDetails = 'Blanco y Negro, Doble Faz',
+    operatorName = 'Centro de Fotocopiado',
+    evaluationDate,
+    blockLabel,
+    loginUrl = 'https://ltp-v2.vercel.app'
+  } = options;
+
+  const host = process.env.SMTP_HOST || OFFICIAL_SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || String(OFFICIAL_SMTP_PORT), 10);
+  const user = process.env.SMTP_USER || OFFICIAL_SMTP_USER;
+  const pass = process.env.SMTP_PASS || OFFICIAL_SMTP_PASS;
+  const from = process.env.SMTP_FROM || OFFICIAL_SMTP_FROM;
+
+  const nowFormatted = new Date().toLocaleDateString('es-CL', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <title>Fotocopias Listas para Retiro - LTP Liceo Pro</title>
+      <style>
+        body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; color: #1e293b; margin: 0; padding: 24px; }
+        .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 14px; padding: 32px; box-shadow: 0 10px 25px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+        .header { text-align: center; border-bottom: 2px solid #2563eb; padding-bottom: 18px; margin-bottom: 22px; }
+        .header h1 { color: #1d4ed8; margin: 0; font-size: 1.55rem; font-weight: 800; }
+        .header p { margin: 6px 0 0 0; color: #64748b; font-size: 0.92rem; }
+        .badge { display: inline-block; background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 6px 16px; border-radius: 20px; font-weight: 800; font-size: 0.88rem; margin-top: 12px; }
+        .card { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px; margin: 22px 0; }
+        .card-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #e2e8f0; font-size: 0.88rem; }
+        .card-row:last-child { border-bottom: none; }
+        .card-label { color: #64748b; font-weight: 600; }
+        .card-value { color: #0f172a; font-weight: 800; }
+        .notice-box { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 14px 18px; border-radius: 6px; font-size: 0.86rem; color: #1e40af; margin: 20px 0; line-height: 1.5; }
+        .btn-container { text-align: center; margin: 28px 0 15px 0; }
+        .btn { display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff !important; padding: 13px 30px; border-radius: 8px; text-decoration: none; font-weight: 800; font-size: 0.96rem; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35); text-align: center; }
+        .footer { text-align: center; margin-top: 30px; font-size: 0.78rem; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 18px; line-height: 1.5; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Liceo Técnico Profesional</h1>
+          <p>Centro de Fotocopiado y Gestión Pedagógica (LTP v2.0)</p>
+          <div style="text-align: center;">
+            <span class="badge">🖨️ ¡Material Impreso y Listo para Retiro!</span>
+          </div>
+        </div>
+
+        <p style="font-size: 1rem;">Estimado(a) docente <strong>${teacherName}</strong>,</p>
+        <p style="color: #475569; line-height: 1.6;">
+          Le informamos que las fotocopias solicitadas para su <strong>${materialType}</strong> han sido procesadas exitosamente por el personal de fotocopiado y se encuentran disponibles para su retiro en la oficina correspondiente.
+        </p>
+
+        <div class="card">
+          <div class="card-row">
+            <span class="card-label">📄 Título del Material:</span>
+            <span class="card-value" style="color: #1d4ed8;">${evaluationTitle}</span>
+          </div>
+          <div class="card-row">
+            <span class="card-label">🏷️ Tipo de Instrumento:</span>
+            <span class="card-value">${materialType}</span>
+          </div>
+          <div class="card-row">
+            <span class="card-label">🏫 Curso Destino:</span>
+            <span class="card-value">${courseName}</span>
+          </div>
+          <div class="card-row">
+            <span class="card-label">📚 Asignatura:</span>
+            <span class="card-value">${subjectName}</span>
+          </div>
+          <div class="card-row">
+            <span class="card-label">🖨️ Cantidad Impresa:</span>
+            <span class="card-value" style="color: #15803d; font-size: 1.05rem;">${copiesCount} copias</span>
+          </div>
+          <div class="card-row">
+            <span class="card-label">📑 Formato / Detalles:</span>
+            <span class="card-value">${copiesDetails}</span>
+          </div>
+          ${evaluationDate ? `
+          <div class="card-row">
+            <span class="card-label">📅 Fecha de Aplicación:</span>
+            <span class="card-value">${evaluationDate} ${blockLabel ? `(${blockLabel})` : ''}</span>
+          </div>` : ''}
+          <div class="card-row">
+            <span class="card-label">👤 Impreso por:</span>
+            <span class="card-value">${operatorName}</span>
+          </div>
+          <div class="card-row">
+            <span class="card-label">⏱️ Fecha y Hora de Registro:</span>
+            <span class="card-value" style="font-size: 0.8rem; font-weight: 600;">${nowFormatted}</span>
+          </div>
+        </div>
+
+        <div class="notice-box">
+          📌 <strong>Comprobante Oficial:</strong> Este correo sirve como constancia y respaldo digital de que el material requerido para su clase se encuentra impreso y listo para su aplicación pedagógica. Puede retirarlo con el encargado de fotocopias o en Jefatura de UTP.
+        </div>
+
+        <div class="btn-container">
+          <a href="${loginUrl}" class="btn" target="_blank" style="color: #ffffff !important;">
+            👉 Ir al Portal de Evaluaciones
+          </a>
+        </div>
+
+        <div class="footer">
+          Mensaje generado automáticamente por el Sistema Integral de Gestión Escolar — Liceo Técnico Profesional.<br/>
+          &copy; ${new Date().getFullYear()} Liceo Técnico Profesional — Todos los derechos reservados.
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const isTemplate = !user || !pass || user.includes('tu_correo') || pass.includes('tu_clave');
+  if (!host || isTemplate) {
+    console.log(`\n📧 [SIMULACIÓN CORREO FOTOCOPIAS LISTAS] Para: ${teacherName} <${toEmail}> | ${copiesCount} copias de "${evaluationTitle}" (${courseName})`);
+    return {
+      success: true,
+      simulated: true,
+      messageId: `simulated-${Date.now()}`
+    };
+  }
+
+  try {
+    const isSecure = port === 465;
+    const transporter = nodemailer.createTransport({
+      host: host || 'smtp.gmail.com',
+      port,
+      secure: isSecure,
+      auth: { user, pass },
+      connectionTimeout: 7000,
+      greetingTimeout: 7000,
+      socketTimeout: 9000,
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+
+    const mailOptions = {
+      from,
+      to: toEmail,
+      subject: `🎉 [Fotocopias Listas] ${copiesCount} copias de "${evaluationTitle}" (${courseName}) listas para retiro`,
+      html: htmlContent
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Correo de fotocopias listas enviado a ${toEmail} (ID: ${info.messageId})`);
+    return {
+      success: true,
+      simulated: false,
+      messageId: info.messageId
+    };
+  } catch (err: any) {
+    console.error(`❌ Error al enviar correo de fotocopias a ${toEmail}:`, err.message || err);
+    return {
+      success: false,
+      simulated: false,
+      error: err.message || 'Error al conectar con servidor SMTP'
+    };
+  }
+}
+
