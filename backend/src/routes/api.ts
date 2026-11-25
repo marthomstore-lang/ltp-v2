@@ -1817,6 +1817,14 @@ router.get('/notifications', authMiddleware, async (req: Request, res: Response)
         target_run = $3 OR target_run = $4 OR REPLACE(REPLACE(LOWER(target_run), '.', ''), '-', '') = $5
       ))
       OR (target_role = $1 AND (target_run IS NULL OR target_run = '') AND (user_id IS NULL OR user_id = ''))
+      OR ($1 IN ('Admin', 'Director', 'UTP') AND (
+        target_role IN ('Admin', 'Director', 'UTP')
+        OR type IN ('utp_visa_pending', 'photocopy_ready', 'utp_approved_teacher', 'photocopy_ready_teacher', 'utp_rejected_teacher')
+      ))
+      OR ($1 IN ('Admin', 'Administrativo', 'Asistente', 'Director') AND (
+        target_role IN ('Administrativo', 'Fotocopias')
+        OR type = 'photocopy_ready'
+      ))
       OR ($1 IN ('Admin', 'Director', 'Comunicaciones') AND type IN ('COURSE_MESSAGE', 'COURSE_MESSAGE_REPLY') AND (id LIKE 'NOTIF-CRS-MASTER-%' OR type = 'COURSE_MESSAGE_REPLY'))
       OR ($1 IN ('Apoderado', 'Estudiante') AND type = 'COURSE_MESSAGE' AND (target_role IN ('Apoderado', 'Estudiante', 'Comunidad') OR reference_id = 'ALL'))
     `;
@@ -1981,6 +1989,14 @@ router.put('/notifications/read-all', authMiddleware, async (req: Request, res: 
         target_run = $3 OR target_run = $4 OR REPLACE(REPLACE(LOWER(target_run), '.', ''), '-', '') = $5
       ))
       OR (target_role = $1 AND (target_run IS NULL OR target_run = '') AND (user_id IS NULL OR user_id = ''))
+      OR ($1 IN ('Admin', 'Director', 'UTP') AND (
+        target_role IN ('Admin', 'Director', 'UTP')
+        OR type IN ('utp_visa_pending', 'photocopy_ready', 'utp_approved_teacher', 'photocopy_ready_teacher', 'utp_rejected_teacher')
+      ))
+      OR ($1 IN ('Admin', 'Administrativo', 'Asistente', 'Director') AND (
+        target_role IN ('Administrativo', 'Fotocopias')
+        OR type = 'photocopy_ready'
+      ))
       OR ($1 IN ('Admin', 'Director', 'Comunicaciones') AND type IN ('COURSE_MESSAGE', 'COURSE_MESSAGE_REPLY'))
       OR ($1 IN ('Apoderado', 'Estudiante') AND type = 'COURSE_MESSAGE')
     `;
@@ -11929,7 +11945,7 @@ router.post('/evaluations/sync-google', authMiddleware, async (_req: Request, re
   }
 });
 
-// Registrar nueva evaluación (con subida automática a carpeta Curso -> Asignatura en Google Drive y evento en Google Calendar)
+// Registrar nueva evaluación / material pedagógico (con validación de 2 evaluaciones max por día y derivación a visado/fotocopiado)
 router.post('/evaluations', authMiddleware, uploadMemory.single('file'), async (req: Request, res: Response) => {
   const {
     evaluation_title,
@@ -11941,7 +11957,11 @@ router.post('/evaluations', authMiddleware, uploadMemory.single('file'), async (
     original_file_name,
     teacher_name,
     teacher_email,
-    teacher_run
+    teacher_run,
+    material_type,
+    requires_copies,
+    copies_count,
+    copies_details
   } = req.body;
   const user = (req as any).user;
 
@@ -11951,6 +11971,29 @@ router.post('/evaluations', authMiddleware, uploadMemory.single('file'), async (
 
   if (!evaluation_title || !course_name || !subject_name || !evaluation_date) {
     return res.status(400).json({ error: 'Título, Curso, Asignatura y Fecha de Aplicación son requeridos.' });
+  }
+
+  const resolvedMaterialType = (material_type || 'Evaluación').trim();
+  const countsTowardsLimit = ['Evaluación', 'Rúbrica'].includes(resolvedMaterialType);
+
+  // REGLA ESTRICTA INSTITUCIONAL: Máximo 2 evaluaciones/rúbricas por día por curso
+  if (countsTowardsLimit) {
+    const existingCountRes = await query(`
+      SELECT COUNT(*) as total 
+      FROM pedagogical_evaluations 
+      WHERE course_name = $1 
+        AND evaluation_date = $2 
+        AND (material_type IN ('Evaluación', 'Rúbrica') OR material_type IS NULL)
+    `, [course_name.trim(), evaluation_date.trim()]);
+
+    const currentTotal = parseInt(existingCountRes.rows[0]?.total || '0', 10);
+    if (currentTotal >= 2) {
+      return res.status(400).json({
+        error: `Límite institucional alcanzado: El curso "${course_name}" ya tiene ${currentTotal} evaluaciones/rúbricas agendadas para el día ${evaluation_date}. La normativa escolar prohíbe más de 2 evaluaciones formales por día por curso. (Puedes registrar Guías, Material de Apoyo u Otros sin restricción de tope).`,
+        max_limit_reached: true,
+        current_count: currentTotal
+      });
+    }
   }
 
   try {
@@ -11963,7 +12006,7 @@ router.post('/evaluations', authMiddleware, uploadMemory.single('file'), async (
     let finalFileUrl = original_file_url ? String(original_file_url).trim() : null;
     let finalFileName = original_file_name ? String(original_file_name).trim() : (extractedFile?.originalName || null);
 
-    // 1. Si viene archivo físico/base64, guardarlo en secure_file_vault + subir directamente a Google Drive (Curso -> Asignatura)
+    // 1. Si viene archivo físico/base64, guardarlo en secure_file_vault + subir directamente a Google Drive
     let driveWebUrl: string | null = null;
     if (extractedFile) {
       const ext = path.extname(extractedFile.originalName).toLowerCase() || '.pdf';
@@ -11971,7 +12014,6 @@ router.post('/evaluations', authMiddleware, uploadMemory.single('file'), async (
       const vaultId = `VLT-EV-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
       const formattedDriveFileName = `[${sanitizeDriveFolderSegment(course_name, 'Curso')}][${sanitizeDriveFolderSegment(subject_name, 'Asignatura')}]_${extractedFile.originalName}`;
 
-      // Subir directamente a la carpeta bloqueada de Google Drive (13tWiU2Ot0Jn9S2vQZYrTT0eyBqGb5NC3 -> [Curso] -> [Asignatura]) vía API JSON v2.1
       const directDriveRes = await callGoogleDriveConnectorJson('upload_evaluation', {
         courseName: course_name,
         subjectName: subject_name,
@@ -11983,28 +12025,6 @@ router.post('/evaluations', authMiddleware, uploadMemory.single('file'), async (
 
       if (directDriveRes.ok && directDriveRes.data?.fileUrl) {
         driveWebUrl = directDriveRes.data.fileUrl;
-      }
-
-      // También sincronizar evento con Google Calendar si está disponible
-      const gUpload = await uploadToGoogleEvalScript3Step('registrarEvaluacion', [
-        { key: 'cursoDocente', value: course_name },
-        { key: 'asignaturaDocente', value: `${subject_name} - ${evaluation_title}` },
-        { key: 'fechaEval', value: evaluation_date },
-        { key: 'tipo', value: cleanBlock },
-        { key: 'archivo', value: { buffer: extractedFile.buffer, filename: formattedDriveFileName, mimeType: extractedFile.mimeType } }
-      ]).catch(() => ({ ok: false, result: null as any }));
-
-      if (gUpload.ok && gUpload.result?.exito) {
-        const idMatch = String(gUpload.result.mensaje || '').match(/ID:\s*(EV-\d+)/);
-        if (idMatch && idMatch[1]) {
-          id = idMatch[1];
-          if (!driveWebUrl) {
-            const det = await callGoogleEvalScriptRpc('obtenerDetalleEvaluacion', [id]);
-            if (det.ok && det.result?.urlOriginal && String(det.result.urlOriginal).startsWith('http')) {
-              driveWebUrl = det.result.urlOriginal;
-            }
-          }
-        }
       }
 
       finalFileUrl = driveWebUrl || `/api/drive/file/${storageCode}`;
@@ -12027,51 +12047,63 @@ router.post('/evaluations', authMiddleware, uploadMemory.single('file'), async (
         extractedFile.buffer.length,
         tName
       ]).catch(() => {});
-    } else {
-      // Sincronizar creación del evento en el Google Calendar Institucional aunque aún no adjunte archivo
-      const rpcRes = await callGoogleEvalScriptRpc('registrarEvaluacion', [{
-        cursoDocente: course_name,
-        asignaturaDocente: `${subject_name} - ${evaluation_title}`,
-        fechaEval: evaluation_date,
-        tipo: cleanBlock
-      }]);
-      if (rpcRes.ok && rpcRes.result?.exito) {
-        const idMatch = String(rpcRes.result.mensaje || '').match(/ID:\s*(EV-\d+)/);
-        if (idMatch && idMatch[1]) {
-          id = idMatch[1];
-        }
-      }
     }
 
     const initialStatus = finalFileUrl ? 'Completado' : 'Pendiente de Archivo';
     const originalUploadedAt = finalFileUrl ? new Date() : null;
+
+    const isCopiesNeeded = requires_copies === true || requires_copies === 'true' || requires_copies === 1 || requires_copies === '1';
+    const resolvedCopiesCount = isCopiesNeeded ? (parseInt(copies_count, 10) || 0) : 0;
+    const initialUtpStatus = 'Pendiente'; // Toda evaluación entra a revisión de UTP
+    const initialPhotocopyStatus = isCopiesNeeded ? 'Pendiente Visado' : 'No Aplica';
 
     await query(`
       INSERT INTO pedagogical_evaluations (
         id, teacher_name, teacher_email, teacher_run, evaluation_title,
         course_name, subject_name, evaluation_date, block_label, status,
         original_file_url, original_file_name, original_uploaded_at,
-        original_folder_path, pie_folder_path
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        original_folder_path, pie_folder_path,
+        material_type, requires_copies, copies_count, copies_details,
+        utp_status, photocopy_status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
       ON CONFLICT (id) DO UPDATE SET
         evaluation_title = EXCLUDED.evaluation_title,
         original_file_url = COALESCE(EXCLUDED.original_file_url, pedagogical_evaluations.original_file_url),
         original_file_name = COALESCE(EXCLUDED.original_file_name, pedagogical_evaluations.original_file_name),
         status = EXCLUDED.status,
-        original_folder_path = EXCLUDED.original_folder_path,
-        pie_folder_path = EXCLUDED.pie_folder_path
+        material_type = EXCLUDED.material_type,
+        requires_copies = EXCLUDED.requires_copies,
+        copies_count = EXCLUDED.copies_count,
+        copies_details = EXCLUDED.copies_details,
+        utp_status = EXCLUDED.utp_status,
+        photocopy_status = EXCLUDED.photocopy_status
     `, [
       id, tName, tEmail, tRun, evaluation_title,
       course_name, subject_name, evaluation_date, cleanBlock, initialStatus,
       finalFileUrl || null, finalFileName || null, originalUploadedAt,
-      origFolderPath, pieFolderPath
+      origFolderPath, pieFolderPath,
+      resolvedMaterialType, isCopiesNeeded, resolvedCopiesCount, copies_details || null,
+      initialUtpStatus, initialPhotocopyStatus
     ]);
 
-    await logAudit(req, 'CREATE_EVALUATION', `Evaluación creada: ${evaluation_title} para ${course_name} (${id}) en carpeta [${origFolderPath}]`);
+    // Notificación automática a Jefatura de UTP, Dirección y Administración
+    const notifId = `NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const copyDetailMsg = isCopiesNeeded ? ` (${resolvedCopiesCount} copias solicitadas). Requiere visado para fotocopiar.` : ' (Modalidad digital / sin fotocopias).';
+    await query(`
+      INSERT INTO system_notifications (id, target_role, type, title, message, reference_id, is_read, created_at)
+      VALUES ($1, 'Director', 'utp_visa_pending', $2, $3, $4, 0, NOW())
+    `, [
+      notifId,
+      `📄 Nueva Planificación de ${resolvedMaterialType}: ${course_name}`,
+      `El docente ${tName} ha registrado ${resolvedMaterialType} "${evaluation_title}" para ${course_name} (Fecha: ${evaluation_date}, ${cleanBlock}).${copyDetailMsg} Haz clic para revisar el documento y visar.`,
+      id
+    ]).catch((err) => console.error('Error insertando notificación UTP:', err));
+
+    await logAudit(req, 'CREATE_EVALUATION', `Evaluación creada: ${evaluation_title} (${resolvedMaterialType}) para ${course_name} (${id})`);
 
     res.json({
       success: true,
-      message: `¡Evaluación registrada y sincronizada con Google Calendar y Google Drive (${origFolderPath}) con ID: ${id}!`,
+      message: `¡${resolvedMaterialType} registrada exitosamente!`,
       evaluation: {
         id,
         evaluation_title,
@@ -12080,10 +12112,14 @@ router.post('/evaluations', authMiddleware, uploadMemory.single('file'), async (
         evaluation_date,
         block_label: cleanBlock,
         status: initialStatus,
+        material_type: resolvedMaterialType,
+        requires_copies: isCopiesNeeded,
+        copies_count: resolvedCopiesCount,
+        copies_details: copies_details || null,
+        utp_status: initialUtpStatus,
+        photocopy_status: initialPhotocopyStatus,
         original_file_url: finalFileUrl,
-        original_file_name: finalFileName,
-        original_folder_path: origFolderPath,
-        pie_folder_path: pieFolderPath
+        original_file_name: finalFileName
       }
     });
   } catch (err: any) {
@@ -12092,10 +12128,18 @@ router.post('/evaluations', authMiddleware, uploadMemory.single('file'), async (
   }
 });
 
-// Modificar fecha, título o bloque de evaluación (sincronizado con Google Calendar)
+// Modificar fecha, título, bloque o datos de fotocopiado de evaluación
 router.put('/evaluations/:id', authMiddleware, async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { evaluation_title, evaluation_date, block_label } = req.body;
+  const {
+    evaluation_title,
+    evaluation_date,
+    block_label,
+    material_type,
+    requires_copies,
+    copies_count,
+    copies_details
+  } = req.body;
 
   if (!evaluation_title || !evaluation_date) {
     return res.status(400).json({ error: 'Título y Fecha son requeridos.' });
@@ -12109,31 +12153,59 @@ router.put('/evaluations/:id', authMiddleware, async (req: Request, res: Respons
 
     const ev = check.rows[0];
     const cleanBlock = block_label || ev.block_label || '1° Bloque (08:30 - 10:00)';
+    const targetMatType = (material_type || ev.material_type || 'Evaluación').trim();
+
+    // Validar regla de 2 evaluaciones si cambia fecha o tipo
+    if (['Evaluación', 'Rúbrica'].includes(targetMatType) && (evaluation_date !== ev.evaluation_date || targetMatType !== ev.material_type)) {
+      const countRes = await query(`
+        SELECT COUNT(*) as total 
+        FROM pedagogical_evaluations 
+        WHERE course_name = $1 
+          AND evaluation_date = $2 
+          AND (material_type IN ('Evaluación', 'Rúbrica') OR material_type IS NULL)
+          AND id != $3
+      `, [ev.course_name, evaluation_date, id]);
+
+      if (parseInt(countRes.rows[0]?.total || '0', 10) >= 2) {
+        return res.status(400).json({
+          error: `Límite institucional alcanzado: El curso "${ev.course_name}" ya tiene 2 evaluaciones/rúbricas agendadas para el día ${evaluation_date}.`
+        });
+      }
+    }
+
+    const isCopiesNeeded = requires_copies !== undefined ? Boolean(requires_copies) : ev.requires_copies;
+    const resolvedCopies = copies_count !== undefined ? (parseInt(copies_count, 10) || 0) : ev.copies_count;
 
     await query(`
       UPDATE pedagogical_evaluations 
-      SET evaluation_title = $1, evaluation_date = $2, block_label = $3
-      WHERE id = $4
-    `, [evaluation_title, evaluation_date, cleanBlock, id]);
-
-    // Sincronizar cambio con Google Calendar Institucional
-    callGoogleEvalScriptRpc('modificarEvaluacion', [{
-      idModificar: id,
-      modCurso: ev.course_name,
-      modAsignatura: ev.subject_name,
-      modFecha: evaluation_date,
-      modTipo: cleanBlock
-    }]).catch(() => {});
+      SET evaluation_title = $1,
+          evaluation_date = $2,
+          block_label = $3,
+          material_type = $4,
+          requires_copies = $5,
+          copies_count = $6,
+          copies_details = $7
+      WHERE id = $8
+    `, [
+      evaluation_title,
+      evaluation_date,
+      cleanBlock,
+      targetMatType,
+      isCopiesNeeded,
+      resolvedCopies,
+      copies_details !== undefined ? copies_details : ev.copies_details,
+      id
+    ]);
 
     await logAudit(req, 'UPDATE_EVALUATION', `Evaluación modificada: ${evaluation_title} (${id})`);
-    res.json({ success: true, message: '¡Evaluación modificada y sincronizada con Google Calendar!' });
+    res.json({ success: true, message: '¡Evaluación modificada correctamente!' });
   } catch (err: any) {
     console.error('Error al modificar evaluación:', err);
     res.status(500).json({ error: 'Error al modificar la evaluación.' });
   }
 });
 
-// Eliminar evaluación (sincronizado con Google Calendar)
+// Eliminar evaluación
 router.delete('/evaluations/:id', authMiddleware, async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
@@ -12143,13 +12215,245 @@ router.delete('/evaluations/:id', authMiddleware, async (req: Request, res: Resp
     }
 
     await query('DELETE FROM pedagogical_evaluations WHERE id = $1', [id]);
-    callGoogleEvalScriptRpc('eliminarEvaluacion', [id]).catch(() => {});
-
     await logAudit(req, 'DELETE_EVALUATION', `Evaluación eliminada: ${id}`);
-    res.json({ success: true, message: 'Evaluación eliminada del sistema y de Google Calendar.' });
+    res.json({ success: true, message: 'Evaluación eliminada del sistema.' });
   } catch (err: any) {
     console.error('Error al eliminar evaluación:', err);
     res.status(500).json({ error: 'Error al eliminar la evaluación.' });
+  }
+});
+
+// POST /evaluations/:id/utp-visa - Visar o Rechazar material pedagógico (Jefe de UTP / Dirección)
+router.post('/evaluations/:id/utp-visa', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { action, notes } = req.body; // 'approve' | 'reject'
+    const user = (req as any).user;
+    const reviewerName = user?.name || 'Jefatura UTP';
+
+    const check = await query('SELECT * FROM pedagogical_evaluations WHERE id = $1', [id]);
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Evaluación no encontrada.' });
+    }
+    const ev = check.rows[0];
+
+    if (action === 'approve') {
+      const newPhotoStatus = ev.requires_copies ? 'En Cola' : 'No Aplica';
+      await query(`
+        UPDATE pedagogical_evaluations SET
+          utp_status = 'Visado',
+          utp_approved_by = $1,
+          utp_approved_at = NOW(),
+          utp_notes = $2,
+          photocopy_status = $3
+        WHERE id = $4
+      `, [reviewerName, notes || 'Aprobado sin observaciones', newPhotoStatus, id]);
+
+      // Si requiere copias, notificar al encargado de fotocopias / administrativo
+      if (ev.requires_copies) {
+        const notifId = `NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        await query(`
+          INSERT INTO system_notifications (id, target_role, type, title, message, reference_id, is_read, created_at)
+          VALUES ($1, 'Administrativo', 'photocopy_ready', $2, $3, $4, 0, NOW())
+        `, [
+          notifId,
+          `🖨️ Material VISADO listo para fotocopiar: ${ev.evaluation_title}`,
+          `Material ${ev.material_type || 'Evaluación'} para ${ev.course_name} visado por UTP (${ev.copies_count || 0} copias requeridas). Listo para imprimir.`,
+          id
+        ]).catch(() => {});
+      }
+
+      // Notificar al docente creador
+      if (ev.teacher_run) {
+        const notifTeach = `NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        await query(`
+          INSERT INTO system_notifications (id, target_run, type, title, message, reference_id, is_read, created_at)
+          VALUES ($1, $2, 'utp_approved_teacher', $3, $4, $5, 0, NOW())
+        `, [
+          notifTeach,
+          ev.teacher_run,
+          `✅ Material VISADO y Aprobado por UTP`,
+          `Tu ${ev.material_type || 'evaluación'} "${ev.evaluation_title}" (${ev.course_name}) ha sido visada exitosamente por UTP.`,
+          id
+        ]).catch(() => {});
+      }
+
+      await logAudit(req, 'UTP_VISA_APPROVE', `Material ${id} (${ev.evaluation_title}) visado por ${reviewerName}`);
+      return res.json({ success: true, message: '¡Material visado y derivado a fotocopiado exitosamente!' });
+    } else {
+      // Rechazo con observación
+      await query(`
+        UPDATE pedagogical_evaluations SET
+          utp_status = 'Rechazado',
+          utp_approved_by = $1,
+          utp_approved_at = NOW(),
+          utp_notes = $2,
+          photocopy_status = 'Rechazado'
+        WHERE id = $3
+      `, [reviewerName, notes || 'Rechazado por UTP', id]);
+
+      if (ev.teacher_run) {
+        const notifTeach = `NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        await query(`
+          INSERT INTO system_notifications (id, target_run, type, title, message, reference_id, is_read, created_at)
+          VALUES ($1, $2, 'utp_rejected_teacher', $3, $4, $5, 0, NOW())
+        `, [
+          notifTeach,
+          ev.teacher_run,
+          `⚠️ Observaciones en Visado UTP: ${ev.evaluation_title}`,
+          `UTP ha devuelto tu ${ev.material_type || 'evaluación'} con observaciones: "${notes || 'Requiere correcciones antes de fotocopiar'}".`,
+          id
+        ]).catch(() => {});
+      }
+
+      await logAudit(req, 'UTP_VISA_REJECT', `Material ${id} rechazado con observaciones por ${reviewerName}`);
+      return res.json({ success: true, message: 'Material devuelto al docente con observaciones.' });
+    }
+  } catch (err: any) {
+    console.error('Error en utp-visa:', err);
+    res.status(500).json({ error: 'Error al procesar visado de UTP.' });
+  }
+});
+
+// POST /evaluations/:id/photocopy-status - Marcar estado de fotocopiado (Encargado de fotocopias / Administrativo)
+router.post('/evaluations/:id/photocopy-status', authMiddleware, checkRoles(['Admin', 'Director', 'Administrativo', 'Asistente', 'Asistente de la Educación']), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // 'Listo para Retiro' | 'En Cola' | 'Entregado'
+    const user = (req as any).user;
+    const operatorName = user?.name || 'Encargado de Fotocopias';
+
+    const check = await query('SELECT * FROM pedagogical_evaluations WHERE id = $1', [id]);
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Evaluación no encontrada.' });
+    }
+    const ev = check.rows[0];
+
+    await query(`
+      UPDATE pedagogical_evaluations SET
+        photocopy_status = $1,
+        photocopied_by = $2,
+        photocopied_at = NOW()
+      WHERE id = $3
+    `, [status || 'Listo para Retiro', operatorName, id]);
+
+    if (status === 'Listo para Retiro' && ev.teacher_run) {
+      const notifTeach = `NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      await query(`
+        INSERT INTO system_notifications (id, target_run, type, title, message, reference_id, is_read, created_at)
+        VALUES ($1, $2, 'photocopy_ready_teacher', $3, $4, $5, 0, NOW())
+      `, [
+        notifTeach,
+        ev.teacher_run,
+        `🎉 ¡Fotocopias Listas para Retiro!`,
+        `Tus ${ev.copies_count || 0} copias de ${ev.material_type || 'evaluación'} "${ev.evaluation_title}" (${ev.course_name}) ya están impresas y listas para retiro.`,
+        id
+      ]).catch(() => {});
+    }
+
+    await logAudit(req, 'PHOTOCOPY_STATUS', `Material ${id} fotocopiado marcado como ${status} por ${operatorName}`);
+    res.json({ success: true, message: `Estado de fotocopiado actualizado a: ${status}` });
+  } catch (err: any) {
+    console.error('Error en photocopy-status:', err);
+    res.status(500).json({ error: 'Error al actualizar estado de fotocopiado.' });
+  }
+});
+
+// GET /evaluations/photocopy-queue - Cola completa de Visado UTP y Fotocopiado
+router.get('/evaluations/photocopy-queue', authMiddleware, async (_req: Request, res: Response) => {
+  try {
+    const result = await query(`
+      SELECT * FROM pedagogical_evaluations 
+      WHERE requires_copies = true
+      ORDER BY 
+        CASE 
+          WHEN utp_status = 'Pendiente' THEN 1
+          WHEN photocopy_status = 'En Cola' THEN 2
+          WHEN photocopy_status = 'Listo para Retiro' THEN 3
+          ELSE 4
+        END,
+        evaluation_date ASC,
+        created_at DESC
+    `);
+    res.json({ items: result.rows });
+  } catch (err: any) {
+    console.error('Error en photocopy-queue:', err);
+    res.status(500).json({ error: 'Error al consultar cola de fotocopias.' });
+  }
+});
+
+
+
+// GET /evaluations/:id/file - Descarga y previsualización directa y segura del instrumento de evaluación
+router.get('/evaluations/:id/file', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const fileType = String(req.query.type || 'original').toLowerCase();
+    const isPie = fileType === 'pie';
+
+    // 1. Buscar la evaluación en la base de datos
+    const evRes = await query('SELECT * FROM pedagogical_evaluations WHERE id = $1', [id]);
+    if (evRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Evaluación no encontrada.' });
+    }
+    const ev = evRes.rows[0];
+
+    const targetUrl = isPie ? ev.pie_file_url : ev.original_file_url;
+    const targetName = isPie ? (ev.pie_file_name || 'Adecuacion_PIE') : (ev.original_file_name || 'Evaluacion_Original');
+    const entityType = isPie ? 'evaluacion_pie' : 'evaluacion_original';
+
+    // 2. Buscar en secure_file_vault los bytes binarios en base64
+    const vaultRes = await query(`
+      SELECT * FROM secure_file_vault 
+      WHERE (entity_id = $1 AND entity_type = $2)
+         OR (entity_id = $1)
+         OR (file_url = $3 AND file_url IS NOT NULL)
+         OR (file_id = $3 AND file_id IS NOT NULL)
+      ORDER BY 
+        CASE WHEN file_data_base64 IS NOT NULL THEN 1 ELSE 2 END,
+        created_at DESC 
+      LIMIT 1
+    `, [id, entityType, targetUrl]);
+
+    const record = vaultRes.rows[0];
+
+    // 3. Si existe en el vault con data base64, servir directamente en línea
+    if (record && record.file_data_base64) {
+      let rawB64 = String(record.file_data_base64).replace(/&#x2F;/gi, '/');
+      let mime = record.mime_type || 'application/octet-stream';
+      const dataUriMatch = rawB64.match(/^data:([^;]+);base64,(.+)$/i);
+      if (dataUriMatch) {
+        mime = dataUriMatch[1];
+        rawB64 = dataUriMatch[2];
+      }
+      const buf = Buffer.from(rawB64, 'base64');
+      const filename = record.original_name || targetName || `Evaluacion_${id}`;
+
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Content-Length', buf.length);
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
+      return res.send(buf);
+    }
+
+    // 4. Si hay URL externa registrada (Google Drive), redirigir
+    if (targetUrl && String(targetUrl).startsWith('http')) {
+      return res.redirect(targetUrl);
+    }
+
+    return res.status(404).send(`
+      <!DOCTYPE html>
+      <html lang="es">
+        <head><meta charset="utf-8"><title>Archivo No Adjuntado</title></head>
+        <body style="font-family: system-ui, sans-serif; text-align: center; padding: 40px; color: #334155;">
+          <h2>⚠️ Archivo No Disponible</h2>
+          <p>Esta evaluación aún no tiene un archivo adjunto cargado.</p>
+          <button onclick="window.close()" style="padding: 8px 16px; border-radius: 6px; border: 1px solid #cbd5e1; cursor: pointer;">Cerrar ventana</button>
+        </body>
+      </html>
+    `);
+  } catch (err: any) {
+    console.error('Error al servir archivo de evaluación:', err);
+    res.status(500).json({ error: 'Error al obtener el archivo de evaluación.' });
   }
 });
 

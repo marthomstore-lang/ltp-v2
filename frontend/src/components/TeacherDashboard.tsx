@@ -574,7 +574,9 @@ export const TeacherDashboard: React.FC = () => {
               </span>
             </div>
             <button
-              onClick={restoreOriginalRole}
+              onClick={async () => {
+                await restoreOriginalRole();
+              }}
               style={{
                 background: '#ffffff',
                 color: '#92400e',

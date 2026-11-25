@@ -2252,11 +2252,11 @@ export const AdminDashboard: React.FC = () => {
                               <div style={{
                                 padding: '6px',
                                 borderRadius: '8px',
-                                background: n.type === 'COURSE_MESSAGE' || n.type === 'COURSE_MESSAGE_REPLY' ? '#e0e7ff' : n.type === 'INTERVIEW_STATEMENT_REQUEST' ? '#e0e7ff' : n.type === 'PASSWORD_RESET_SUCCESS' ? '#dcfce7' : n.type === 'PASSWORD_RESET_REQUEST' ? '#e0e7ff' : '#fef3c7',
-                                color: n.type === 'COURSE_MESSAGE' || n.type === 'COURSE_MESSAGE_REPLY' ? '#4338ca' : n.type === 'INTERVIEW_STATEMENT_REQUEST' ? '#4338ca' : n.type === 'PASSWORD_RESET_SUCCESS' ? '#166534' : n.type === 'PASSWORD_RESET_REQUEST' ? '#3730a3' : '#92400e',
+                                background: n.type === 'utp_visa_pending' || n.type === 'photocopy_ready' ? '#cffafe' : n.type === 'COURSE_MESSAGE' || n.type === 'COURSE_MESSAGE_REPLY' ? '#e0e7ff' : n.type === 'INTERVIEW_STATEMENT_REQUEST' ? '#e0e7ff' : n.type === 'PASSWORD_RESET_SUCCESS' ? '#dcfce7' : n.type === 'PASSWORD_RESET_REQUEST' ? '#e0e7ff' : '#fef3c7',
+                                color: n.type === 'utp_visa_pending' || n.type === 'photocopy_ready' ? '#0891b2' : n.type === 'COURSE_MESSAGE' || n.type === 'COURSE_MESSAGE_REPLY' ? '#4338ca' : n.type === 'INTERVIEW_STATEMENT_REQUEST' ? '#4338ca' : n.type === 'PASSWORD_RESET_SUCCESS' ? '#166534' : n.type === 'PASSWORD_RESET_REQUEST' ? '#3730a3' : '#92400e',
                                 marginTop: '2px'
                               }}>
-                                {n.type === 'COURSE_MESSAGE' || n.type === 'COURSE_MESSAGE_REPLY' ? <MessageSquare size={16} /> : n.type === 'INTERVIEW_STATEMENT_REQUEST' ? <PenTool size={16} /> : <KeyRound size={16} />}
+                                {n.type === 'utp_visa_pending' || n.type === 'photocopy_ready' ? <Printer size={16} /> : n.type === 'COURSE_MESSAGE' || n.type === 'COURSE_MESSAGE_REPLY' ? <MessageSquare size={16} /> : n.type === 'INTERVIEW_STATEMENT_REQUEST' ? <PenTool size={16} /> : <KeyRound size={16} />}
                               </div>
                               <div style={{ flex: 1 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.4rem', marginBottom: '0.2rem' }}>
@@ -2380,6 +2380,36 @@ export const AdminDashboard: React.FC = () => {
                                     </button>
                                   </div>
                                 )}
+                                {n.type === 'utp_visa_pending' || n.type === 'photocopy_ready' || n.type === 'utp_approved_teacher' || n.type === 'photocopy_ready_teacher' ? (
+                                  <div style={{ marginBottom: '0.4rem' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        markSingleNotificationAsRead(n);
+                                        setShowNotificationDropdown(false);
+                                        sessionStorage.setItem('ltp_evaluations_active_tab', 'visado_fotocopias');
+                                        setActiveTab('evaluations_pie');
+                                        window.dispatchEvent(new CustomEvent('ltp_evaluations_switch_tab', { detail: { tab: 'visado_fotocopias' } }));
+                                      }}
+                                      style={{
+                                        background: '#0891b2',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '0.35rem 0.75rem',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.4rem',
+                                        boxShadow: '0 1px 3px rgba(8,145,178,0.2)'
+                                      }}
+                                    >
+                                      <Printer size={13} /> 🔍 Ir a Visado y Fotocopias
+                                    </button>
+                                  </div>
+                                ) : null}
                                 {n.type === 'INTERVIEW_STATEMENT_REQUEST' && (
                                   <div style={{ marginBottom: '0.4rem' }}>
                                     <button
@@ -2683,7 +2713,9 @@ export const AdminDashboard: React.FC = () => {
               </span>
             </div>
             <button
-              onClick={restoreOriginalRole}
+              onClick={async () => {
+                await restoreOriginalRole();
+              }}
               style={{
                 background: '#ffffff',
                 color: '#92400e',

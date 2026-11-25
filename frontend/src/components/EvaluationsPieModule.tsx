@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Swal from 'sweetalert2';
 import {
   BookOpen,
+  Printer,
+  FileCheck,
+  Check,
   Calendar as CalendarIcon,
   Edit,
   Trash2,
@@ -141,6 +144,17 @@ interface Evaluation {
   pie_teacher_email?: string;
   pie_uploaded_at?: string;
   calendar_event_id?: string;
+  material_type?: string;
+  requires_copies?: boolean;
+  copies_count?: number;
+  copies_details?: string;
+  utp_status?: string;
+  utp_approved_by?: string;
+  utp_approved_at?: string;
+  utp_notes?: string;
+  photocopy_status?: string;
+  photocopied_by?: string;
+  photocopied_at?: string;
 }
 
 const DEFAULT_COURSES: string[] = [];
@@ -179,7 +193,7 @@ const readFileAsBase64 = (file: File): Promise<{ base64: string; mimeType: strin
 };
 
 export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ token, user }) => {
-  const [activeTab, setActiveTab] = useState<'nueva' | 'calendario' | 'modificar' | 'pendientes' | 'pie' | 'carpetas'>('nueva');
+  const [activeTab, setActiveTab] = useState<'nueva' | 'calendario' | 'modificar' | 'pendientes' | 'pie' | 'carpetas' | 'visado_fotocopias'>('nueva');
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [coursesList, setCoursesList] = useState<string[]>(DEFAULT_COURSES);
   const [subjectsList, setSubjectsList] = useState<string[]>(DEFAULT_SUBJECTS);
@@ -221,6 +235,13 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
   const [selectedFolderRoot, setSelectedFolderRoot] = useState<'originals' | 'pie' | 'profiles' | 'calendars'>('originals');
   const [selectedFolderCourse, setSelectedFolderCourse] = useState<string>('');
 
+  // Lista de estudiantes para cálculo automático de matrícula por curso
+  const [allStudents, setAllStudents] = useState<any[]>([]);
+
+  // Filtros de Tab 7: Visado y Fotocopias
+  const [visadoFilterStatus, setVisadoFilterStatus] = useState<'all' | 'with_copies' | 'pending_utp' | 'queue_copies' | 'ready_copies' | 'rejected'>('all');
+  const [visadoSearchQuery, setVisadoSearchQuery] = useState('');
+
   // Formulario Nueva Evaluación + Archivo directo desde computador
   const [newEvalForm, setNewEvalForm] = useState({
     evaluation_title: '',
@@ -229,13 +250,38 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
     evaluation_date: new Date().toISOString().split('T')[0],
     block_label: BLOCKS[0],
     original_file_name: '',
-    original_file_url: ''
+    original_file_url: '',
+    material_type: 'Evaluación',
+    requires_copies: false,
+    copies_count: 0,
+    copies_details: 'Blanco y Negro, Doble Faz'
   });
   const [newEvalSelectedFile, setNewEvalSelectedFile] = useState<File | null>(null);
   const newEvalFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Modal Edición
   const [editingEval, setEditingEval] = useState<Evaluation | null>(null);
+
+  // Modal de Previsualización y Descarga Directa de Instrumentos de Evaluación
+  const [previewFileModal, setPreviewFileModal] = useState<{
+    ev: Evaluation;
+    type: 'original' | 'pie';
+    fileUrl: string;
+    fileName: string;
+    isImage: boolean;
+    isPdf: boolean;
+  } | null>(null);
+
+  const handleOpenEvaluationDocument = (ev: Evaluation, type: 'original' | 'pie' = 'original') => {
+    const fileName = type === 'pie' 
+      ? (ev.pie_file_name || 'Adecuacion_PIE.docx') 
+      : (ev.original_file_name || 'Evaluacion_Original.pdf');
+    const ext = fileName.split('.').pop()?.toLowerCase() || '';
+    const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext);
+    const isPdf = ext === 'pdf';
+    const fileUrl = `/api/evaluations/${ev.id}/file?type=${type}`;
+    setPreviewFileModal({ ev, type, fileUrl, fileName, isImage, isPdf });
+  };
 
   // Modal Subir Archivo Pendiente (con selector de archivo físico)
   const [uploadPendingEval, setUploadPendingEval] = useState<Evaluation | null>(null);
@@ -294,13 +340,30 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
     loadSubjects();
     loadDriveFolders();
 
+    // Escuchar redirección directa desde notificaciones o campana superior
+    const handleSwitchTab = (e: any) => {
+      if (e.detail?.tab && ['nueva', 'calendario', 'modificar', 'pendientes', 'pie', 'carpetas', 'visado_fotocopias'].includes(e.detail.tab)) {
+        setActiveTab(e.detail.tab);
+      }
+    };
+    window.addEventListener('ltp_evaluations_switch_tab', handleSwitchTab);
+
+    const savedTab = sessionStorage.getItem('ltp_evaluations_active_tab');
+    if (savedTab && ['nueva', 'calendario', 'modificar', 'pendientes', 'pie', 'carpetas', 'visado_fotocopias'].includes(savedTab)) {
+      setActiveTab(savedTab as any);
+      sessionStorage.removeItem('ltp_evaluations_active_tab');
+    }
+
+
     Promise.all([
       fetch('/api/courses', { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.json()).catch(() => ({ courses: [] })),
       fetch('/api/students', { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.json()).catch(() => ([]))
     ]).then(([coursesRes, studentsData]) => {
+      const stds = Array.isArray(studentsData) ? studentsData : [];
+      setAllStudents(stds);
       const savedCourses = (coursesRes && Array.isArray(coursesRes.courses)) ? coursesRes.courses.map((c: any) => c.name) : [];
-      const studentCourses = (Array.isArray(studentsData) && studentsData.length > 0)
-        ? Array.from(new Set(studentsData.map((s: any) => s.desc_grado || s.level_name))).filter(Boolean)
+      const studentCourses = (stds.length > 0)
+        ? Array.from(new Set(stds.map((s: any) => s.desc_grado || s.level_name))).filter(Boolean)
         : [];
       const combined = Array.from(new Set([...savedCourses, ...studentCourses]));
       if (combined.length > 0) {
@@ -425,12 +488,190 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
     }
   };
 
+
+
+  const evaluationsWithCopies = useMemo(() => {
+    return evaluations.filter(e => e.requires_copies);
+  }, [evaluations]);
+
+  const pendingUtpCount = useMemo(() => {
+    return evaluations.filter(e => (e.utp_status || 'Pendiente') === 'Pendiente').length;
+  }, [evaluations]);
+
+  const queueCopiesCount = useMemo(() => {
+    return evaluations.filter(e => e.requires_copies && e.utp_status === 'Visado' && (e.photocopy_status === 'En Cola' || !e.photocopy_status || e.photocopy_status === 'Pendiente' || e.photocopy_status === 'Pendiente Visado')).length;
+  }, [evaluations]);
+
+  const readyCopiesCount = useMemo(() => {
+    return evaluations.filter(e => e.requires_copies && e.photocopy_status === 'Listo para Retiro').length;
+  }, [evaluations]);
+
+  const rejectedCount = useMemo(() => {
+    return evaluations.filter(e => e.utp_status === 'Rechazado').length;
+  }, [evaluations]);
+
+  const filteredVisadoList = useMemo(() => {
+    return evaluations.filter(ev => {
+      if (visadoFilterStatus === 'with_copies' && !ev.requires_copies) return false;
+      if (visadoFilterStatus === 'pending_utp' && (ev.utp_status || 'Pendiente') !== 'Pendiente') return false;
+      if (visadoFilterStatus === 'queue_copies' && (!ev.requires_copies || ev.utp_status !== 'Visado' || ev.photocopy_status === 'Listo para Retiro')) return false;
+      if (visadoFilterStatus === 'ready_copies' && (!ev.requires_copies || ev.photocopy_status !== 'Listo para Retiro')) return false;
+      if (visadoFilterStatus === 'rejected' && ev.utp_status !== 'Rechazado') return false;
+      if (visadoSearchQuery.trim()) {
+        const q = visadoSearchQuery.toLowerCase();
+        const match = (ev.evaluation_title || '').toLowerCase().includes(q) ||
+                      (ev.course_name || '').toLowerCase().includes(q) ||
+                      (ev.subject_name || '').toLowerCase().includes(q) ||
+                      (ev.teacher_name || '').toLowerCase().includes(q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [evaluations, visadoFilterStatus, visadoSearchQuery]);
+
+  // Helpers para regla institucional: Máx 2 evaluaciones por día y cálculo de matrícula
+  const getCourseStudentCount = (courseName: string): number => {
+    if (!courseName) return 0;
+    const trimmed = courseName.trim().toLowerCase();
+    const count = allStudents.filter(s => {
+      const stdCourse = (s.desc_grado || s.level_name || s.course_name || '').trim().toLowerCase();
+      return stdCourse === trimmed;
+    }).length;
+    return count > 0 ? count : 35; // Default 35 si no hay matrícula registrada
+  };
+
+  const getEvaluationsCountOnDate = (course: string, dateStr: string, excludeId?: string): number => {
+    if (!course || !dateStr) return 0;
+    const cleanCourse = course.trim().toLowerCase();
+    const cleanDate = dateStr.split('T')[0];
+    return evaluations.filter(ev => {
+      if (excludeId && ev.id === excludeId) return false;
+      const evCourse = (ev.course_name || '').trim().toLowerCase();
+      const evDate = (ev.evaluation_date || '').split('T')[0];
+      const matType = (ev.material_type || 'Evaluación').trim();
+      const countsTowardsLimit = ['Evaluación', 'Rúbrica'].includes(matType);
+      return evCourse === cleanCourse && evDate === cleanDate && countsTowardsLimit;
+    }).length;
+  };
+
+  const newEvalDailyCount = useMemo(() => {
+    return getEvaluationsCountOnDate(newEvalForm.course_name, newEvalForm.evaluation_date);
+  }, [evaluations, newEvalForm.course_name, newEvalForm.evaluation_date]);
+
+  const newEvalCountsTowardsLimit = ['Evaluación', 'Rúbrica'].includes(newEvalForm.material_type || 'Evaluación');
+  const isNewEvalBlocked = newEvalCountsTowardsLimit && newEvalDailyCount >= 2;
+
+  // Acciones de Visado UTP y Cola de Fotocopiado
+  const handleUtpVisa = async (ev: Evaluation, action: 'approve' | 'reject') => {
+    if (action === 'approve') {
+      const confirm = await Swal.fire({
+        title: '¿Visar Instrumento Pedagógico?',
+        html: `¿Confirmas el Visto Bueno (Visado) de la ${ev.material_type || 'evaluación'} <strong>"${ev.evaluation_title}"</strong> (${ev.course_name})?<br/><br/><span style="color:#059669;font-weight:700">Pasará de inmediato a la Cola de Fotocopiado con ${ev.copies_count || 0} copias requeridas.</span>`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, Visar y Derivar a Fotocopiado',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#059669'
+      });
+      if (!confirm.isConfirmed) return;
+
+      try {
+        const res = await fetch(`/api/evaluations/${ev.id}/utp-visa`, {
+          method: 'POST',
+          headers: authHeaders,
+          credentials: 'include',
+          body: JSON.stringify({ action: 'approve' })
+        });
+        const data = await res.json();
+        if (data.success) {
+          Swal.fire('¡Visado Exitoso!', data.message, 'success');
+          await loadEvaluations();
+        } else {
+          Swal.fire('Error', data.error || 'No se pudo visar.', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', 'Error al procesar visado.', 'error');
+      }
+    } else {
+      const { value: notes } = await Swal.fire({
+        title: 'Devolver / Observar Instrumento',
+        text: 'Ingresa las observaciones o correcciones pedagógicas que el docente debe subsanar antes de autorizar la impresión:',
+        input: 'textarea',
+        inputPlaceholder: 'Ej: Ajustar ponderación de ítems, verificar tiempo del bloque horario...',
+        showCancelButton: true,
+        confirmButtonText: 'Devolver con Observación',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#dc2626',
+        inputValidator: (val) => !val?.trim() && 'Debes ingresar un motivo u observación.'
+      });
+      if (!notes) return;
+
+      try {
+        const res = await fetch(`/api/evaluations/${ev.id}/utp-visa`, {
+          method: 'POST',
+          headers: authHeaders,
+          credentials: 'include',
+          body: JSON.stringify({ action: 'reject', notes })
+        });
+        const data = await res.json();
+        if (data.success) {
+          Swal.fire('Observaciones Enviadas', data.message, 'info');
+          await loadEvaluations();
+        } else {
+          Swal.fire('Error', data.error || 'No se pudo registrar la observación.', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', 'Error al devolver evaluación.', 'error');
+      }
+    }
+  };
+
+  const handlePhotocopyStatus = async (ev: Evaluation, status: 'Listo para Retiro') => {
+    const confirm = await Swal.fire({
+      title: '¿Confirmar Copias Listas?',
+      html: `¿Confirmas que las <strong>${ev.copies_count || 0} copias</strong> de <strong>"${ev.evaluation_title}"</strong> (${ev.course_name}) ya están impresas?<br/><br/><span style="color:#2563eb;font-weight:700">Se notificará automáticamente al docente (${ev.teacher_name}) para su retiro.</span>`,
+      icon: 'info',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, Marcar Listo para Retiro',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#2563eb'
+    });
+    if (!confirm.isConfirmed) return;
+
+    try {
+      const res = await fetch(`/api/evaluations/${ev.id}/photocopy-status`, {
+        method: 'POST',
+        headers: authHeaders,
+        credentials: 'include',
+        body: JSON.stringify({ status })
+      });
+      const data = await res.json();
+      if (data.success) {
+        Swal.fire('¡Impresión Registrada!', data.message, 'success');
+        await loadEvaluations();
+      } else {
+        Swal.fire('Error', data.error || 'No se pudo actualizar.', 'error');
+      }
+    } catch (err) {
+      Swal.fire('Error', 'Error al actualizar estado de fotocopias.', 'error');
+    }
+  };
+
   // 1. REGISTRAR EVALUACIÓN (Con subida directa de archivo e inserción automática en Carpeta Curso -> Asignatura y Google Calendar)
   const handleCreateEvaluation = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!newEvalForm.evaluation_title.trim() || !newEvalForm.course_name || !newEvalForm.subject_name) {
       Swal.fire('Atención', 'Por favor completa todos los campos obligatorios (Título, Curso y Asignatura).', 'warning');
+      return;
+    }
+
+    if (isNewEvalBlocked) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Tope Institucional Alcanzado (2/2)',
+        html: `El curso <strong>"${newEvalForm.course_name}"</strong> ya tiene <strong>${newEvalDailyCount} evaluaciones/rúbricas agendadas</strong> para el día <strong>${newEvalForm.evaluation_date}</strong>.<br/><br/>La normativa institucional prohíbe más de 2 evaluaciones formales el mismo día por curso. (Puedes registrar Guías, Material de Apoyo u Otros sin restricción).`
+      });
       return;
     }
 
@@ -469,7 +710,11 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
           evaluation_date: new Date().toISOString().split('T')[0],
           block_label: BLOCKS[0],
           original_file_name: '',
-          original_file_url: ''
+          original_file_url: '',
+          material_type: 'Evaluación',
+          requires_copies: false,
+          copies_count: 0,
+          copies_details: 'Blanco y Negro, Doble Faz'
         });
         setNewEvalSelectedFile(null);
         if (newEvalFileInputRef.current) newEvalFileInputRef.current.value = '';
@@ -500,7 +745,11 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
         body: JSON.stringify({
           evaluation_title: editingEval.evaluation_title,
           evaluation_date: editingEval.evaluation_date,
-          block_label: editingEval.block_label
+          block_label: editingEval.block_label,
+          material_type: editingEval.material_type || 'Evaluación',
+          requires_copies: editingEval.requires_copies || false,
+          copies_count: editingEval.copies_count || 0,
+          copies_details: editingEval.copies_details || ''
         })
       });
       const data = await res.json();
@@ -1099,6 +1348,41 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
           <FolderOpen size={16} /> 6. Carpetas Google Drive
         </button>
 
+                <button
+          type="button"
+          onClick={() => setActiveTab('visado_fotocopias')}
+          style={{
+            padding: '0.55rem 1rem',
+            borderRadius: '8px',
+            border: 'none',
+            fontWeight: 700,
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            background: activeTab === 'visado_fotocopias' ? '#0891b2' : '#f1f5f9',
+            color: activeTab === 'visado_fotocopias' ? '#ffffff' : '#64748b'
+          }}
+        >
+          <Printer size={16} /> 7. Visado y Fotocopias ({evaluations.length})
+          {pendingUtpCount > 0 && (
+            <span style={{ background: '#ef4444', color: '#ffffff', fontSize: '0.68rem', padding: '1px 6px', borderRadius: '9999px', fontWeight: 800 }}>
+              {pendingUtpCount} por visar
+            </span>
+          )}
+          {queueCopiesCount > 0 && (
+            <span style={{ background: '#f59e0b', color: '#ffffff', fontSize: '0.68rem', padding: '1px 6px', borderRadius: '9999px', fontWeight: 800 }}>
+              {queueCopiesCount} en cola
+            </span>
+          )}
+          {readyCopiesCount > 0 && (
+            <span style={{ background: '#10b981', color: '#ffffff', fontSize: '0.68rem', padding: '1px 6px', borderRadius: '9999px', fontWeight: 800 }}>
+              {readyCopiesCount} listas
+            </span>
+          )}
+        </button>
+
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
             onClick={() => {
@@ -1260,6 +1544,177 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                   ))}
                 </select>
               </div>
+
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.82rem', color: '#334155', marginBottom: '0.35rem' }}>
+                  🏷️ Tipo de Material / Asignación: *
+                </label>
+                <select
+                  value={newEvalForm.material_type}
+                  onChange={e => setNewEvalForm({ ...newEvalForm, material_type: e.target.value })}
+                  required
+                  style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1.5px solid #6366f1', fontSize: '0.85rem', fontWeight: 700, color: '#1e1b4b', background: '#f5f3ff' }}
+                >
+                  <option value="Evaluación">📝 Evaluación (Tope máx. 2/día por curso)</option>
+                  <option value="Rúbrica">📐 Rúbrica (Tope máx. 2/día por curso)</option>
+                  <option value="Guía">📄 Guía de Trabajo / Aprendizaje (Sin límite diario)</option>
+                  <option value="Material de Apoyo">📦 Material de Apoyo Pedagógico (Sin límite diario)</option>
+                  <option value="Otros">📌 Otros Instrumentos / Actividades (Sin límite diario)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* BANNER PREVENTIVO DE TOPE DIARIO DE EVALUACIONES (MÁXIMO 2 POR DÍA POR CURSO) */}
+            {newEvalForm.course_name && newEvalForm.evaluation_date && (
+              <div style={{ marginBottom: '1.25rem' }}>
+                {isNewEvalBlocked ? (
+                  <div style={{
+                    background: '#fef2f2',
+                    border: '1.5px solid #ef4444',
+                    borderRadius: '12px',
+                    padding: '0.85rem 1.15rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.85rem',
+                    boxShadow: '0 2px 4px rgba(239, 68, 68, 0.08)'
+                  }}>
+                    <AlertCircle size={28} color="#dc2626" style={{ flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#991b1b', marginBottom: '2px' }}>
+                        ⛔ Límite Máximo Alcanzado (2/2) para este Curso y Día
+                      </div>
+                      <div style={{ fontSize: '0.81rem', color: '#7f1d1d', lineHeight: '1.4' }}>
+                        El curso <strong>{newEvalForm.course_name}</strong> ya tiene <strong>{newEvalDailyCount} evaluaciones/rúbricas agendadas</strong> para el día <strong>{newEvalForm.evaluation_date}</strong>. La normativa escolar prohíbe más de 2 evaluaciones formales por día.
+                        <br />
+                        <span style={{ fontWeight: 600 }}>Sugerencia:</span> Selecciona otra fecha o cambia el tipo a <strong>Guía</strong>, <strong>Material de Apoyo</strong> u <strong>Otros</strong> (no sujetos a este tope).
+                      </div>
+                    </div>
+                  </div>
+                ) : newEvalCountsTowardsLimit && newEvalDailyCount === 1 ? (
+                  <div style={{
+                    background: '#fffbeb',
+                    border: '1.5px solid #f59e0b',
+                    borderRadius: '12px',
+                    padding: '0.75rem 1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem'
+                  }}>
+                    <AlertTriangle size={24} color="#d97706" style={{ flexShrink: 0 }} />
+                    <div style={{ fontSize: '0.81rem', color: '#92400e' }}>
+                      <strong>⚠️ Atención (1/2 evaluaciones agendadas):</strong> El curso <strong>{newEvalForm.course_name}</strong> ya registra 1 evaluación formal en esta fecha. Ésta será la <strong>2da y última evaluación permitida</strong> para este día según la normativa escolar.
+                    </div>
+                  </div>
+                ) : newEvalCountsTowardsLimit ? (
+                  <div style={{
+                    background: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    borderRadius: '10px',
+                    padding: '0.6rem 0.95rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.65rem'
+                  }}>
+                    <CheckCircle2 size={20} color="#16a34a" style={{ flexShrink: 0 }} />
+                    <div style={{ fontSize: '0.8rem', color: '#166534' }}>
+                      <strong>✓ Disponibilidad Completa (0/2 evaluaciones):</strong> El curso <strong>{newEvalForm.course_name}</strong> tiene disponibilidad total para evaluaciones en el día {newEvalForm.evaluation_date}.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    background: '#f0f9ff',
+                    border: '1px solid #bae6fd',
+                    borderRadius: '10px',
+                    padding: '0.6rem 0.95rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.65rem'
+                  }}>
+                    <CheckCircle2 size={20} color="#0284c7" style={{ flexShrink: 0 }} />
+                    <div style={{ fontSize: '0.8rem', color: '#0369a1' }}>
+                      <strong>ℹ️ Material No Sujeto a Tope:</strong> Las <strong>Guías</strong>, <strong>Material de Apoyo</strong> y <strong>Otros</strong> no descuentan cupo del límite institucional de 2 evaluaciones diarias por curso.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SECCIÓN DE DERIVACIÓN Y SOLICITUD DE FOTOCOPIADO INSTITUCIONAL */}
+            <div style={{
+              background: newEvalForm.requires_copies ? '#eff6ff' : '#f8fafc',
+              border: newEvalForm.requires_copies ? '1.5px solid #60a5fa' : '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '1.15rem',
+              marginBottom: '1.5rem',
+              transition: 'all 0.2s ease'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: newEvalForm.requires_copies ? '1rem' : '0' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={newEvalForm.requires_copies}
+                    onChange={e => {
+                      const checked = e.target.checked;
+                      const autoCount = getCourseStudentCount(newEvalForm.course_name);
+                      setNewEvalForm(prev => ({
+                        ...prev,
+                        requires_copies: checked,
+                        copies_count: checked ? (prev.copies_count > 0 ? prev.copies_count : autoCount) : prev.copies_count
+                      }));
+                    }}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#2563eb' }}
+                  />
+                  <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <Printer size={18} color="#2563eb" /> ¿Requiere fotocopias o impresión institucional?
+                  </span>
+                </label>
+                {newEvalForm.requires_copies && (
+                  <span style={{ background: '#dbeafe', color: '#1d4ed8', border: '1px solid #93c5fd', padding: '0.2rem 0.65rem', borderRadius: '6px', fontSize: '0.73rem', fontWeight: 800 }}>
+                    ⚡ Requiere Visado UTP previo
+                  </span>
+                )}
+              </div>
+
+              {newEvalForm.requires_copies && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', paddingTop: '0.5rem', borderTop: '1px dashed #bfdbfe' }}>
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 700, fontSize: '0.8rem', color: '#1e3a8a', marginBottom: '0.35rem' }}>
+                      📄 Cantidad de Copias Requeridas: *
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={newEvalForm.copies_count}
+                      onChange={e => setNewEvalForm({ ...newEvalForm, copies_count: parseInt(e.target.value, 10) || 0 })}
+                      style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #93c5fd', fontSize: '0.85rem', fontWeight: 700 }}
+                    />
+                    <small style={{ color: '#3b82f6', fontSize: '0.72rem', display: 'block', marginTop: '0.25rem' }}>
+                      👥 Matrícula estimada en {newEvalForm.course_name || 'este curso'}: <strong>{getCourseStudentCount(newEvalForm.course_name)} estudiantes</strong>.
+                    </small>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 700, fontSize: '0.8rem', color: '#1e3a8a', marginBottom: '0.35rem' }}>
+                      🖨️ Detalle de Impresión / Observaciones:
+                    </label>
+                    <input
+                      type="text"
+                      value={newEvalForm.copies_details}
+                      onChange={e => setNewEvalForm({ ...newEvalForm, copies_details: e.target.value })}
+                      placeholder="Ej: Blanco y Negro, Doble Faz, Corcheteada superior izq."
+                      style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #93c5fd', fontSize: '0.85rem' }}
+                    />
+                    <small style={{ color: '#64748b', fontSize: '0.72rem', display: 'block', marginTop: '0.25rem' }}>
+                      Indica formato: simple faz, doble faz, color/B&N o instrucciones especiales.
+                    </small>
+                  </div>
+
+                  <div style={{ gridColumn: '1 / -1', background: '#f8fafc', padding: '0.6rem 0.85rem', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.75rem', color: '#475569' }}>
+                    🔔 <strong>Circuito Institucional:</strong> Al guardar, la Jefatura de UTP recibirá una notificación con acceso directo a la prueba para su <strong>visado</strong>. Tras el visto bueno, pasará a la cola de fotocopiado y recibirás un aviso cuando estén impresas.
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* CAJA DE SUBIDA DE ARCHIVO A GOOGLE DRIVE CON RUTA AUTOMÁTICA POR CURSO Y ASIGNATURA */}
@@ -1330,11 +1785,18 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
             <div style={{ textAlign: 'right' }}>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || isNewEvalBlocked}
                 className="btn btn-primary"
-                style={{ padding: '0.65rem 1.5rem', fontSize: '0.9rem', fontWeight: 800 }}
+                style={{
+                  padding: '0.65rem 1.5rem',
+                  fontSize: '0.9rem',
+                  fontWeight: 800,
+                  opacity: isNewEvalBlocked ? 0.6 : 1,
+                  cursor: isNewEvalBlocked ? 'not-allowed' : 'pointer',
+                  background: isNewEvalBlocked ? '#94a3b8' : undefined
+                }}
               >
-                {loading ? 'Sincronizando con Google Drive y Calendar...' : '🚀 Guardar Planificación y Sincronizar con Google'}
+                {loading ? 'Sincronizando con Google Drive y Calendar...' : isNewEvalBlocked ? '⛔ No disponible (Límite 2/2 evaluaciones alcanzado)' : '🚀 Guardar Planificación y Sincronizar con Google'}
               </button>
             </div>
           </form>
@@ -1577,9 +2039,13 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis'
                                 }}
-                                title={`${ev.course_name} - ${ev.subject_name}: ${ev.evaluation_title} (${ev.teacher_name})`}
+                                title={`${ev.course_name} - ${ev.subject_name}: ${ev.evaluation_title} (${ev.material_type || 'Evaluación'})${ev.requires_copies ? ' • Requiere ' + (ev.copies_count || 0) + ' copias [' + (ev.photocopy_status || 'Pendiente') + ']' : ''}`}
                               >
+                                <span style={{ opacity: 0.85, fontSize: '0.62rem', marginRight: '3px' }}>
+                                  [{ev.material_type ? ev.material_type.slice(0, 3) : 'Ev'}]
+                                </span>
                                 {ev.course_name}: {ev.subject_name}
+                                {ev.requires_copies && (ev.photocopy_status === 'Listo para Retiro' ? ' 🖨️✓' : ' 🖨️')}
                               </div>
                             );
                           })}
@@ -1912,15 +2378,15 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                             }}>
                               {ev.status}
                             </span>
-                            {ev.original_file_url && (
-                              <a
-                                href={ev.original_file_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={{ fontSize: '0.72rem', color: '#4f46e5', fontWeight: 700, textDecoration: 'underline' }}
+                            {(ev.original_file_name || ev.original_file_url) && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEvaluationDocument(ev, 'original')}
+                                style={{ background: '#e0e7ff', color: '#4338ca', border: '1px solid #c7d2fe', padding: '0.15rem 0.45rem', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                title="Abrir y descargar documento de la prueba"
                               >
-                                Ver Prueba
-                              </a>
+                                <Eye size={11} /> Ver Prueba
+                              </button>
                             )}
                           </div>
                         </td>
@@ -2138,14 +2604,14 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                         </td>
                         <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>
                           {hasOriginal ? (
-                            <a
-                              href={ev.original_file_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', padding: '0.25rem 0.55rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, textDecoration: 'none' }}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEvaluationDocument(ev, 'original')}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', padding: '0.25rem 0.55rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                              title="Abrir instrumento original"
                             >
                               <FileText size={12} /> Ver Original
-                            </a>
+                            </button>
                           ) : (
                             <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontStyle: 'italic' }}>Sin Archivo</span>
                           )}
@@ -2219,14 +2685,14 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                             </button>
 
                             {hasPie && (
-                              <a
-                                href={ev.pie_file_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', padding: '0.3rem 0.55rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, textDecoration: 'none' }}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEvaluationDocument(ev, 'pie')}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', padding: '0.3rem 0.55rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                                title="Abrir adecuación PIE"
                               >
                                 <Eye size={13} /> Ver PIE
-                              </a>
+                              </button>
                             )}
                           </div>
                         </td>
@@ -2618,6 +3084,498 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
         </div>
       )}
 
+      {/* 7. VISADO UTP Y CENTRO DE FOTOCOPIADO */}
+      {activeTab === 'visado_fotocopias' && (
+        <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.5rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+          {/* Header y Descripción */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.25rem' }}>
+            <div>
+              <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#0891b2', margin: 0, fontSize: '1.2rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Printer size={22} color="#0891b2" /> 7. Visado UTP y Centro de Fotocopiado Institucional
+              </h3>
+              <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '0.25rem 0 0' }}>
+                Gestión integral del circuito pedagógico: revisión y visado por Jefatura de UTP / Dirección, y cola de impresión para el personal de fotocopiado con descarga directa de instrumentos.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={loadEvaluations}
+                style={{ padding: '0.45rem 0.9rem', borderRadius: '8px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <RefreshCw size={13} /> Actualizar Lista
+              </button>
+            </div>
+          </div>
+
+          {/* Tarjetas KPI de Estado / Filtros Rápidos */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+            <button
+              type="button"
+              onClick={() => setVisadoFilterStatus('all')}
+              style={{
+                background: visadoFilterStatus === 'all' ? '#0891b2' : '#f8fafc',
+                color: visadoFilterStatus === 'all' ? '#ffffff' : '#1e293b',
+                border: visadoFilterStatus === 'all' ? '2px solid #0e7490' : '1px solid #cbd5e1',
+                padding: '0.75rem 1rem',
+                borderRadius: '12px',
+                textAlign: 'left',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+              }}
+            >
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, opacity: 0.9 }}>🌐 Todas las Evaluaciones</span>
+              <span style={{ fontSize: '1.35rem', fontWeight: 900 }}>{evaluations.length}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setVisadoFilterStatus('with_copies')}
+              style={{
+                background: visadoFilterStatus === 'with_copies' ? '#2563eb' : '#f8fafc',
+                color: visadoFilterStatus === 'with_copies' ? '#ffffff' : '#1e293b',
+                border: visadoFilterStatus === 'with_copies' ? '2px solid #1d4ed8' : '1px solid #cbd5e1',
+                padding: '0.75rem 1rem',
+                borderRadius: '12px',
+                textAlign: 'left',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+              }}
+            >
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, opacity: 0.9 }}>🖨️ Con Fotocopias</span>
+              <span style={{ fontSize: '1.35rem', fontWeight: 900 }}>{evaluations.filter(e => e.requires_copies).length}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setVisadoFilterStatus('pending_utp')}
+              style={{
+                background: visadoFilterStatus === 'pending_utp' ? '#dc2626' : '#fff1f2',
+                color: visadoFilterStatus === 'pending_utp' ? '#ffffff' : '#991b1b',
+                border: visadoFilterStatus === 'pending_utp' ? '2px solid #b91c1c' : '1px solid #fecaca',
+                padding: '0.75rem 1rem',
+                borderRadius: '12px',
+                textAlign: 'left',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+              }}
+            >
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, opacity: 0.9 }}>⏳ Por Visar UTP</span>
+              <span style={{ fontSize: '1.35rem', fontWeight: 900 }}>{pendingUtpCount}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setVisadoFilterStatus('queue_copies')}
+              style={{
+                background: visadoFilterStatus === 'queue_copies' ? '#d97706' : '#fffbeb',
+                color: visadoFilterStatus === 'queue_copies' ? '#ffffff' : '#92400e',
+                border: visadoFilterStatus === 'queue_copies' ? '2px solid #b45309' : '1px solid #fde68a',
+                padding: '0.75rem 1rem',
+                borderRadius: '12px',
+                textAlign: 'left',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+              }}
+            >
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, opacity: 0.9 }}>📑 En Cola Fotocopiado</span>
+              <span style={{ fontSize: '1.35rem', fontWeight: 900 }}>{queueCopiesCount}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setVisadoFilterStatus('ready_copies')}
+              style={{
+                background: visadoFilterStatus === 'ready_copies' ? '#16a34a' : '#f0fdf4',
+                color: visadoFilterStatus === 'ready_copies' ? '#ffffff' : '#166534',
+                border: visadoFilterStatus === 'ready_copies' ? '2px solid #15803d' : '1px solid #bbf7d0',
+                padding: '0.75rem 1rem',
+                borderRadius: '12px',
+                textAlign: 'left',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+              }}
+            >
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, opacity: 0.9 }}>✅ Fotocopias Listas</span>
+              <span style={{ fontSize: '1.35rem', fontWeight: 900 }}>{readyCopiesCount}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setVisadoFilterStatus('rejected')}
+              style={{
+                background: visadoFilterStatus === 'rejected' ? '#64748b' : '#f8fafc',
+                color: visadoFilterStatus === 'rejected' ? '#ffffff' : '#475569',
+                border: visadoFilterStatus === 'rejected' ? '2px solid #475569' : '1px solid #cbd5e1',
+                padding: '0.75rem 1rem',
+                borderRadius: '12px',
+                textAlign: 'left',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+              }}
+            >
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, opacity: 0.9 }}>⚠️ Devueltas / Obs.</span>
+              <span style={{ fontSize: '1.35rem', fontWeight: 900 }}>{rejectedCount}</span>
+            </button>
+          </div>
+
+          {/* Barra de Búsqueda */}
+          <div style={{ marginBottom: '1.25rem', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <input
+                type="text"
+                placeholder="Buscar por título de evaluación, curso, asignatura o docente..."
+                value={visadoSearchQuery}
+                onChange={(e) => setVisadoSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem 1rem',
+                  borderRadius: '10px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.85rem'
+                }}
+              />
+              {visadoSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setVisadoSearchQuery('')}
+                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
+                >
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Tabla de Evaluaciones para Visado y Fotocopias */}
+          <div className="table-container" style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left' }}>
+                  <th style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>Instrumento / Tipo</th>
+                  <th style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>Curso y Asignatura</th>
+                  <th style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>Fecha / Bloque</th>
+                  <th style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>Docente</th>
+                  <th style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>Fotocopias</th>
+                  <th style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>Estado Visado UTP</th>
+                  <th style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>Documento</th>
+                  <th style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap', textAlign: 'center' }}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredVisadoList.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#94a3b8' }}>
+                      <Printer size={32} style={{ margin: '0 auto 0.5rem', opacity: 0.4, display: 'block' }} />
+                      No se encontraron evaluaciones con el filtro seleccionado.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredVisadoList.map(ev => {
+                    const matType = ev.material_type || 'Evaluación';
+                    const hasFile = Boolean(ev.original_file_name || ev.original_file_url);
+                    const isUtpApproved = ev.utp_status === 'Visado';
+                    const isUtpRejected = ev.utp_status === 'Rechazado';
+                    const isUtpPending = !ev.utp_status || ev.utp_status === 'Pendiente';
+                    const isCopiesReady = ev.photocopy_status === 'Listo para Retiro';
+
+                    return (
+                      <tr key={ev.id} style={{ borderBottom: '1px solid #f1f5f9', background: isUtpRejected ? '#fff5f5' : 'transparent' }}>
+                        {/* 1. Título y Tipo */}
+                        <td style={{ padding: '0.85rem 1rem', verticalAlign: 'middle' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                            <span style={{
+                              padding: '2px 7px',
+                              borderRadius: '4px',
+                              fontSize: '0.68rem',
+                              fontWeight: 800,
+                              background: matType === 'Evaluación' ? '#fee2e2' : matType === 'Rúbrica' ? '#fef3c7' : '#e0e7ff',
+                              color: matType === 'Evaluación' ? '#991b1b' : matType === 'Rúbrica' ? '#92400e' : '#3730a3'
+                            }}>
+                              {matType}
+                            </span>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                              {ev.status === 'Adecuado PIE' ? '🧩 PIE' : '📘 Regular'}
+                            </span>
+                          </div>
+                          <strong style={{ fontSize: '0.88rem', color: '#0f172a' }}>{ev.evaluation_title}</strong>
+                        </td>
+
+                        {/* 2. Curso y Asignatura */}
+                        <td style={{ padding: '0.85rem 1rem', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                          <strong style={{ color: '#1e293b' }}>{ev.course_name}</strong>
+                          <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{ev.subject_name}</div>
+                        </td>
+
+                        {/* 3. Fecha y Bloque */}
+                        <td style={{ padding: '0.85rem 1rem', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontWeight: 700, color: '#0f172a' }}>{ev.evaluation_date}</div>
+                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{ev.block_label}</div>
+                        </td>
+
+                        {/* 4. Docente */}
+                        <td style={{ padding: '0.85rem 1rem', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontWeight: 600, color: '#334155' }}>{ev.teacher_name}</div>
+                        </td>
+
+                        {/* 5. Fotocopias Solicitadas */}
+                        <td style={{ padding: '0.85rem 1rem', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                          {ev.requires_copies ? (
+                            <div>
+                              <span style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '2px 6px', borderRadius: '6px', fontWeight: 800, fontSize: '0.75rem' }}>
+                                🖨️ {ev.copies_count || 0} copias
+                              </span>
+                              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                                {ev.copies_details || 'B&N Doble Faz'}
+                              </div>
+                              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: isCopiesReady ? '#16a34a' : '#d97706', marginTop: '2px' }}>
+                                {isCopiesReady ? '✓ Listas para retiro' : isUtpApproved ? '⏳ En cola de fotocopiado' : '⏳ Esperando visado'}
+                              </div>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                              No requiere fotocopias
+                            </span>
+                          )}
+                        </td>
+
+                        {/* 6. Estado Visado UTP */}
+                        <td style={{ padding: '0.85rem 1rem', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                          {isUtpApproved ? (
+                            <div>
+                              <span style={{ background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0', padding: '3px 8px', borderRadius: '6px', fontWeight: 800, fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <Check size={13} /> Visado por UTP
+                              </span>
+                              {ev.utp_approved_by && (
+                                <div style={{ fontSize: '0.68rem', color: '#15803d', marginTop: '2px' }}>
+                                  Por: {ev.utp_approved_by}
+                                </div>
+                              )}
+                            </div>
+                          ) : isUtpRejected ? (
+                            <div>
+                              <span style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', padding: '3px 8px', borderRadius: '6px', fontWeight: 800, fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <X size={13} /> Observado / Devuelto
+                              </span>
+                              {ev.utp_notes && (
+                                <div style={{ fontSize: '0.7rem', color: '#b91c1c', marginTop: '3px', maxWidth: '200px', whiteSpace: 'normal', fontStyle: 'italic' }}>
+                                  &quot;{ev.utp_notes}&quot;
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span style={{ background: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3', padding: '3px 8px', borderRadius: '6px', fontWeight: 800, fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Clock size={13} /> Pendiente Visado
+                            </span>
+                          )}
+                        </td>
+
+                        {/* 7. Documento / Descarga */}
+                        <td style={{ padding: '0.85rem 1rem', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {hasFile ? (
+                              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEvaluationDocument(ev, 'original')}
+                                  style={{
+                                    padding: '0.35rem 0.65rem',
+                                    borderRadius: '6px',
+                                    background: '#0284c7',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                  title="Abrir visor interactivo del documento"
+                                >
+                                  <Eye size={13} /> Ver / Abrir
+                                </button>
+                                <a
+                                  href={`/api/evaluations/${ev.id}/file?type=original`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  download={ev.original_file_name || 'instrumento.docx'}
+                                  style={{
+                                    padding: '0.35rem 0.55rem',
+                                    borderRadius: '6px',
+                                    background: '#f1f5f9',
+                                    color: '#334155',
+                                    border: '1px solid #cbd5e1',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    textDecoration: 'none',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px'
+                                  }}
+                                  title="Descargar archivo físico directo"
+                                >
+                                  <FileText size={12} /> Descargar
+                                </a>
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '0.73rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                                Sin archivo subido
+                              </span>
+                            )}
+
+                            {ev.pie_file_name && (
+                              <div style={{ display: 'flex', gap: '4px', marginTop: '2px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEvaluationDocument(ev, 'pie')}
+                                  style={{
+                                    padding: '0.25rem 0.55rem',
+                                    borderRadius: '5px',
+                                    background: '#ecfdf5',
+                                    color: '#047857',
+                                    border: '1px solid #a7f3d0',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px'
+                                  }}
+                                >
+                                  <Puzzle size={11} /> Ver PIE
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 8. Acciones de Visado UTP y Fotocopiado */}
+                        <td style={{ padding: '0.85rem 1rem', verticalAlign: 'middle', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'inline-flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                            {/* Botones para Jefe de UTP / Administrador / Director */}
+                            {isUtpPending && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUtpVisa(ev, 'approve')}
+                                  style={{
+                                    padding: '0.35rem 0.75rem',
+                                    borderRadius: '6px',
+                                    background: '#059669',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    boxShadow: '0 2px 4px rgba(5,150,105,0.2)'
+                                  }}
+                                  title="Dar Visto Bueno Pedagógico y derivar a Fotocopiado"
+                                >
+                                  <Check size={13} /> Visar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUtpVisa(ev, 'reject')}
+                                  style={{
+                                    padding: '0.35rem 0.65rem',
+                                    borderRadius: '6px',
+                                    background: '#fee2e2',
+                                    color: '#991b1b',
+                                    border: '1px solid #fecaca',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                  title="Devolver al docente con observaciones"
+                                >
+                                  <X size={13} /> Devolver
+                                </button>
+                              </>
+                            )}
+
+                            {isUtpRejected && (
+                              <button
+                                type="button"
+                                onClick={() => handleUtpVisa(ev, 'approve')}
+                                style={{
+                                  padding: '0.35rem 0.65rem',
+                                  borderRadius: '6px',
+                                  background: '#059669',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                <Check size={13} /> Re-visar
+                              </button>
+                            )}
+
+                            {/* Botón para Encargado de Fotocopias / Administrador */}
+                            {ev.requires_copies && isUtpApproved && !isCopiesReady && (
+                              <button
+                                type="button"
+                                onClick={() => handlePhotocopyStatus(ev, 'Listo para Retiro')}
+                                style={{
+                                  padding: '0.35rem 0.75rem',
+                                  borderRadius: '6px',
+                                  background: '#2563eb',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
+                                }}
+                                title="Notificar al docente que sus copias están impresas y listas para retiro"
+                              >
+                                <Printer size={13} /> Marcar Listas ({ev.copies_count || 0})
+                              </button>
+                            )}
+
+                            {ev.requires_copies && isCopiesReady && (
+                              <span style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <CheckCircle2 size={14} color="#16a34a" /> Retiro disponible
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* MODAL DETALLE DE EVALUACIONES DE UN DÍA DEL CALENDARIO */}
       {selectedDayEvaluations && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '1rem' }}>
@@ -2636,11 +3594,21 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                 <div key={ev.id} style={{ padding: '0.95rem', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
                     <div>
-                      <strong style={{ fontSize: '0.92rem', color: '#0f172a' }}>{ev.course_name} — {ev.subject_name}</strong>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '2px' }}>
+                        <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800 }}>
+                          {ev.material_type || 'Evaluación'}
+                        </span>
+                        <strong style={{ fontSize: '0.92rem', color: '#0f172a' }}>{ev.course_name} — {ev.subject_name}</strong>
+                      </div>
                       <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>
                         {ev.evaluation_title} • <strong>{ev.block_label}</strong>
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                      {ev.requires_copies && (
+                        <div style={{ fontSize: '0.74rem', color: '#2563eb', fontWeight: 700, marginTop: '2px' }}>
+                          🖨️ {ev.copies_count || 0} copias ({ev.copies_details || 'B&N Doble Faz'}) • Visado: <strong>{ev.utp_status || 'Pendiente'}</strong> • Impresión: <strong>{ev.photocopy_status || 'En Espera'}</strong>
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.73rem', color: '#64748b', marginTop: '2px' }}>
                         Docente: {ev.teacher_name} | Carpeta Drive: <code>Evaluaciones Originales / {ev.course_name} / {ev.subject_name}</code>
                       </div>
                     </div>
@@ -2656,16 +3624,29 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                     </span>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-                    {ev.original_file_url ? (
-                      <a
-                        href={ev.original_file_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ padding: '0.32rem 0.7rem', borderRadius: '6px', background: '#e0e7ff', color: '#3730a3', fontSize: '0.76rem', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                      >
-                        <FileText size={13} /> Ver Prueba Original en Drive
-                      </a>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {ev.original_file_name || ev.original_file_url ? (
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDayEvaluations(null);
+                            handleOpenEvaluationDocument(ev, 'original');
+                          }}
+                          style={{ padding: '0.32rem 0.7rem', borderRadius: '6px', background: '#0284c7', color: '#ffffff', border: 'none', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <Eye size={13} /> Ver Instrumento
+                        </button>
+                        <a
+                          href={`/api/evaluations/${ev.id}/file?type=original`}
+                          target="_blank"
+                          rel="noreferrer"
+                          download={ev.original_file_name || true}
+                          style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', fontSize: '0.74rem', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                        >
+                          <FileText size={12} /> Descargar
+                        </a>
+                      </div>
                     ) : (
                       <button
                         type="button"
@@ -2737,6 +3718,226 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
         </div>
       )}
 
+
+      {/* MODAL DE PREVISUALIZACIÓN Y DESCARGA DIRECTA DE INSTRUMENTOS */}
+      {previewFileModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15,23,42,0.75)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 999999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: previewFileModal.isImage || previewFileModal.isPdf ? '880px' : '620px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)'
+          }}>
+            {/* Header del modal */}
+            <div style={{
+              padding: '1rem 1.25rem',
+              background: '#f8fafc',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  <FileText size={18} color="#0284c7" />
+                  {previewFileModal.type === 'pie' ? 'Adecuación Curricular PIE' : 'Instrumento de Evaluación Original'}
+                </h4>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  {previewFileModal.ev.course_name} — {previewFileModal.ev.subject_name} ({previewFileModal.fileName})
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <a
+                  href={previewFileModal.fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  download={previewFileModal.fileName}
+                  style={{
+                    padding: '0.38rem 0.8rem',
+                    borderRadius: '8px',
+                    background: '#16a34a',
+                    color: '#ffffff',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                  title="Descargar archivo directo a tu equipo"
+                >
+                  <FileText size={13} /> ⬇️ Descargar
+                </a>
+
+                {previewFileModal.ev.original_file_url && (
+                  <a
+                    href={previewFileModal.ev.original_file_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      padding: '0.38rem 0.75rem',
+                      borderRadius: '8px',
+                      background: '#e0e7ff',
+                      color: '#3730a3',
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <ExternalLink size={13} /> Google Drive
+                  </a>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setPreviewFileModal(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px' }}
+                >
+                  <X size={22} />
+                </button>
+              </div>
+            </div>
+
+            {/* Contenido del modal */}
+            <div style={{ padding: '1.25rem', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>
+              {previewFileModal.isImage ? (
+                <div style={{ textAlign: 'center', background: '#ffffff', padding: '0.75rem', borderRadius: '12px', border: '1px solid #cbd5e1', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                  <img
+                    src={previewFileModal.fileUrl}
+                    alt={previewFileModal.fileName}
+                    style={{ maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain', borderRadius: '8px' }}
+                  />
+                  <div style={{ marginTop: '0.5rem', fontSize: '0.76rem', color: '#64748b' }}>
+                    Archivo: <strong>{previewFileModal.fileName}</strong> • Docente: {previewFileModal.ev.teacher_name}
+                  </div>
+                </div>
+              ) : previewFileModal.isPdf ? (
+                <iframe
+                  src={previewFileModal.fileUrl}
+                  title={previewFileModal.fileName}
+                  style={{ width: '100%', height: '68vh', border: 'none', borderRadius: '8px', background: '#ffffff' }}
+                />
+              ) : (
+                <div style={{
+                  background: '#ffffff',
+                  borderRadius: '14px',
+                  padding: '2rem 1.5rem',
+                  textAlign: 'center',
+                  maxWidth: '480px',
+                  border: '1px solid #cbd5e1',
+                  boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)'
+                }}>
+                  <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>📄</div>
+                  <h4 style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', color: '#0f172a', fontWeight: 800 }}>
+                    {previewFileModal.fileName}
+                  </h4>
+                  <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '1.25rem', lineHeight: '1.4' }}>
+                    Documento Word / Office cargado por el docente <strong>{previewFileModal.ev.teacher_name}</strong> para el curso <strong>{previewFileModal.ev.course_name}</strong>.
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                    <a
+                      href={previewFileModal.fileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      download={previewFileModal.fileName}
+                      style={{
+                        padding: '0.65rem 1.25rem',
+                        borderRadius: '8px',
+                        background: '#0284c7',
+                        color: '#ffffff',
+                        fontSize: '0.85rem',
+                        fontWeight: 800,
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <FileText size={16} /> ⬇️ Descargar Documento Original (.docx)
+                    </a>
+
+                    {previewFileModal.ev.original_file_url && (
+                      <a
+                        href={previewFileModal.ev.original_file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          padding: '0.55rem 1rem',
+                          borderRadius: '8px',
+                          background: '#f8fafc',
+                          color: '#475569',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <ExternalLink size={14} /> Abrir en Google Drive / Docs
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer con controles */}
+            <div style={{
+              padding: '0.75rem 1.25rem',
+              background: '#f8fafc',
+              borderTop: '1px solid #e2e8f0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                Almacenamiento seguro interno del Liceo Técnico Profesional
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewFileModal(null)}
+                style={{
+                  padding: '0.4rem 0.85rem',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL 1: EDITAR EVALUACIÓN */}
       {editingEval && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '1rem' }}>
@@ -2777,7 +3978,7 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                 />
               </div>
 
-              <div style={{ marginBottom: '1.25rem' }}>
+              <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontWeight: 700, fontSize: '0.82rem', color: '#334155', marginBottom: '0.35rem' }}>
                   Bloque Horario:
                 </label>
@@ -2790,6 +3991,60 @@ export const EvaluationsPieModule: React.FC<EvaluationsPieModuleProps> = ({ toke
                     <option key={b} value={b}>{b}</option>
                   ))}
                 </select>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.82rem', color: '#334155', marginBottom: '0.35rem' }}>
+                  Tipo de Material:
+                </label>
+                <select
+                  value={editingEval.material_type || 'Evaluación'}
+                  onChange={e => setEditingEval({ ...editingEval, material_type: e.target.value })}
+                  style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 700 }}
+                >
+                  <option value="Evaluación">📝 Evaluación (Tope máx. 2/día por curso)</option>
+                  <option value="Rúbrica">📐 Rúbrica (Tope máx. 2/día por curso)</option>
+                  <option value="Guía">📄 Guía de Trabajo / Aprendizaje</option>
+                  <option value="Material de Apoyo">📦 Material de Apoyo Pedagógico</option>
+                  <option value="Otros">📌 Otros Instrumentos / Actividades</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '1.25rem', background: '#f8fafc', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', margin: 0, fontWeight: 700, fontSize: '0.82rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={editingEval.requires_copies || false}
+                    onChange={e => setEditingEval({ ...editingEval, requires_copies: e.target.checked })}
+                    style={{ accentColor: '#2563eb' }}
+                  />
+                  <span>🖨️ Requiere fotocopias o impresión institucional</span>
+                </label>
+
+                {editingEval.requires_copies && (
+                  <div style={{ marginTop: '0.65rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.74rem', color: '#475569', fontWeight: 600 }}>N° Copias:</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={editingEval.copies_count || 0}
+                        onChange={e => setEditingEval({ ...editingEval, copies_count: parseInt(e.target.value, 10) || 0 })}
+                        style={{ width: '100%', padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.74rem', color: '#475569', fontWeight: 600 }}>Detalle Impresión:</label>
+                      <input
+                        type="text"
+                        value={editingEval.copies_details || ''}
+                        onChange={e => setEditingEval({ ...editingEval, copies_details: e.target.value })}
+                        placeholder="Ej: B&N Doble Faz"
+                        style={{ width: '100%', padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>

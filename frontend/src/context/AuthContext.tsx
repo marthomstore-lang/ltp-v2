@@ -310,7 +310,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const restoreOriginalRole = () => {
+  const restoreOriginalRole = async () => {
+    const savedMasterRaw = sessionStorage.getItem('ltp_master_admin_session');
+    if (savedMasterRaw || masterAdminSession || user?.impersonatedBy) {
+      await revertImpersonation();
+      return;
+    }
     const orig = user?.originalRole || 'Admin';
     switchRole(orig as UserRole);
   };
@@ -380,11 +385,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sessionStorage.setItem('ltp_user', JSON.stringify(savedMaster.user));
           applyUserThemeToDocument(savedMaster.user.themeConfig || null, savedMaster.user.role);
         }
+      } else if (user?.originalRole) {
+        switchRole(user.originalRole as UserRole);
+      } else {
+        switchRole('Admin' as UserRole);
       }
-      sessionStorage.removeItem('ltp_master_admin_session');
-      setMasterAdminSession(null);
     } catch (e) {
       console.error('Error revirtiendo impersonación:', e);
+    } finally {
+      sessionStorage.removeItem('ltp_master_admin_session');
+      setMasterAdminSession(null);
     }
   };
 
@@ -414,8 +424,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const cleanUserRun = user?.run?.replace(/\./g, '');
   const isSuperAdmin = cleanUserRun === '18803735-6' || user?.originalRole === 'Admin' || user?.role === 'Admin' || (Array.isArray(user?.roles) && user.roles.includes('Admin')) || Boolean(masterAdminSession);
-  const isMasterImpersonating = Boolean(masterAdminSession || user?.impersonatedBy);
-  const isImpersonating = isMasterImpersonating || (!!user?.originalRole && user.originalRole !== user.role) || (isSuperAdmin && user?.role !== 'Admin');
+  const isMasterImpersonating = Boolean(
+    user?.impersonatedBy ||
+    (masterAdminSession && user && (masterAdminSession.user.id !== user.id || masterAdminSession.user.run !== user.run || user.role !== 'Admin'))
+  );
+  const isRoleSwitched = Boolean((user?.originalRole && user.originalRole !== user.role) || (isSuperAdmin && user?.role !== 'Admin'));
+  const isImpersonating = isMasterImpersonating || isRoleSwitched;
   const canCustomizeProfile = canUserCustomizeAppearance(user?.role);
 
   return (
