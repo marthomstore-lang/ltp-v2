@@ -1,13 +1,30 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Printer, X, FileText, CheckCircle2, Award, ShieldCheck, Save } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Swal from 'sweetalert2';
+import { getStudentCourse, getStudentYear } from '../utils/course';
 import {
   PERSONALITY_REPORT_TEMPLATES,
   ReportLevelKey,
   detectReportTemplateKey,
   getQualifierStyle
 } from '../utils/personalityIndicators';
+
+function formatDisplayDate(val: any): string {
+  if (!val) return '';
+  const str = String(val).trim();
+  if (!str || str === 'null' || str === 'undefined') return '';
+  if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(str)) {
+    return str.replace(/-/g, '/');
+  }
+  const datePart = str.includes('T') ? str.split('T')[0] : str;
+  if (/^\d{4}-\d{2}-\d{2}/.test(datePart)) {
+    const [y, m, d] = datePart.slice(0, 10).split('-');
+    return `${d}/${m}/${y}`;
+  }
+  return str;
+}
 
 interface OfficialFormProps {
   student: any;
@@ -21,17 +38,20 @@ export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, o
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.stopPropagation();
         onClose();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [onClose]);
 
   const [docType, setDocType] = useState<'fide_ficha' | 'alumno_regular' | 'informe_hogar' | 'rice_compromiso' | 'checklist'>('fide_ficha');
-  const [checklistType, setChecklistType] = useState<'nuevo' | 'antiguo' | 'retiro'>('nuevo');
+  const [checklistType, setChecklistType] = useState<'nuevo' | 'antiguo' | 'retiro'>(() =>
+    student?._isContinuityFromPreviousYear ? 'antiguo' : 'nuevo'
+  );
 
-  const studentCourse = student.level_name || student.course || '1° Medio A';
+  const studentCourse = getStudentCourse(student) || 'Sin Curso';
   const studentKey = String(student.id || student.run || student.RUT || student.full_name || 'student').trim();
   const [reportLevelKey, setReportLevelKey] = useState<ReportLevelKey>(() => detectReportTemplateKey(studentCourse));
   const [sem1Values, setSem1Values] = useState<Record<string, string>>({});
@@ -39,7 +59,7 @@ export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, o
   const [reportObservations, setReportObservations] = useState<string>('');
   const [savingReport, setSavingReport] = useState<boolean>(false);
 
-  const schoolYear = student.anno || student.academic_year || student.entry_year || 2026;
+  const schoolYear = getStudentYear(student);
   const officerName = student.enrolled_by_name || user?.name || 'Funcionario Responsable de Matrícula';
   const officerRun = student.enrolled_by_run || user?.run || '';
   const officerRole = student.enrolled_by_role || user?.role || 'Encargado de Matrícula';
@@ -166,13 +186,62 @@ export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, o
     text = text.replace(/{MOTHER_RUN}/g, student.mother_run || 'S/R');
     text = text.replace(/{STUDENT_NAME}/g, student.full_name || student.Nombres || '-');
     text = text.replace(/{STUDENT_RUN}/g, student.run || student.RUT || 'S/R');
-    text = text.replace(/{LEVEL_NAME}/g, student.level_name || '-');
+    text = text.replace(/{LEVEL_NAME}/g, studentCourse);
     return text;
   };
 
-  return (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.85)', zIndex: 3000, overflowY: 'auto', padding: '2rem', display: 'flex', justifyContent: 'center' }}>
-      <div style={{ background: '#ffffff', width: '100%', maxWidth: '850px', borderRadius: '16px', padding: '2rem', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', height: 'fit-content' }}>
+  const modalContent = (
+    <div className="official-form-print-portal" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.85)', zIndex: 999999, overflowY: 'auto', padding: '2rem', display: 'flex', justifyContent: 'center' }}>
+      <style>{`
+        @media print {
+          @page {
+            size: letter portrait;
+            margin: 8mm 10mm;
+          }
+          html, body {
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            overflow: visible !important;
+          }
+          #root, #root *, body > *:not(.official-form-print-portal) {
+            display: none !important;
+            visibility: hidden !important;
+          }
+          .official-form-print-portal {
+            position: static !important;
+            display: block !important;
+            background: #ffffff !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            overflow: visible !important;
+            width: 100% !important;
+          }
+          .official-form-print-dialog {
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+          .no-print, .no-print * {
+            display: none !important;
+            visibility: hidden !important;
+          }
+          #official-document {
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            border-color: #000000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+        }
+      `}</style>
+      <div className="official-form-print-dialog" style={{ background: '#ffffff', width: '100%', maxWidth: '850px', borderRadius: '16px', padding: '2rem', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', height: 'fit-content' }}>
         
         {/* ENCABEZADO Y SELECTOR DE DOCUMENTO (NO IMPRESO) */}
         <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
@@ -269,42 +338,42 @@ export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, o
                 1. ANTECEDENTES DEL ALUMNO(A)
               </h4>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem 1rem', marginBottom: '0.5rem' }}>
-                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>RUN</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.run || student.RUT || '23621969-0'}</span></div>
-                <div style={{ gridColumn: 'span 2' }}><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>NOMBRE COMPLETO</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.full_name || student.Nombres || 'Agüero Contreras Juan Pablo'}</span></div>
-                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>CURSO {schoolYear}</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.level_name || '1° Medio'}</span></div>
+                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>RUN</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.run || student.RUT || 'S/R'}</span></div>
+                <div style={{ gridColumn: 'span 2' }}><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>NOMBRE COMPLETO</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.full_name || student.Nombres || '-'}</span></div>
+                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>CURSO {schoolYear}</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{studentCourse}</span></div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem 1rem', marginBottom: '0.5rem' }}>
-                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>FECHA INGRESO</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.entry_date || `01/03/${schoolYear}`}</span></div>
-                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>F. NACIMIENTO</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.birth_date || '16/04/2011'}</span></div>
-                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>SEXO</span> <span style={{ textDecoration: 'underline', fontWeight: 600, textTransform: 'uppercase' }}>{student.gender || 'MASCULINO'}</span></div>
+                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>FECHA INGRESO</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{formatDisplayDate(student.incorporation_date || student.enrollment_date || student.entry_date) || `01/03/${schoolYear}`}</span></div>
+                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>F. NACIMIENTO</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{formatDisplayDate(student.birth_date) || '-'}</span></div>
+                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>SEXO</span> <span style={{ textDecoration: 'underline', fontWeight: 600, textTransform: 'uppercase' }}>{student.gender === 'M' ? 'MASCULINO' : student.gender === 'F' ? 'FEMENINO' : (student.gender || '-')}</span></div>
                 <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>NACIONALIDAD</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.nationality || 'Chilena'}</span></div>
               </div>
 
               {config.show_religion_ethnicity && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem 1rem', marginBottom: '0.5rem' }}>
                   <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>ESTADO CIVIL</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.marital_status || 'Soltero/a'}</span></div>
-                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>RELIGIÓN</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.religion || 'Evangélica'}</span></div>
+                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>RELIGIÓN</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.religion || 'Ninguna'}</span></div>
                   <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>ETNIA/PUEBLO</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.ethnicity || 'No pertenece'}</span></div>
                 </div>
               )}
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem 1rem', marginBottom: '0.5rem' }}>
-                <div style={{ gridColumn: 'span 2' }}><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>DIRECCIÓN</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.address || 'Ranchillo Bajo S/N'}</span></div>
+                <div style={{ gridColumn: 'span 2' }}><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>DIRECCIÓN</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.address || '-'}</span></div>
                 <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>REGIÓN</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.region || 'Región de Ñuble'}</span></div>
-                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>COMUNA</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.commune || 'Alto Biobío'}</span></div>
+                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>COMUNA</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.commune || 'Yungay'}</span></div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem 1rem' }}>
                 <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>COLEGIO PROCEDENCIA</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.previous_school || '-'}</span></div>
                 {config.show_student_contacts && (
                   <>
-                    <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>TELÉFONO ALUMNO</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.student_phone || '-'}</span></div>
-                    <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>EMAIL ALUMNO</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.student_email || '-'}</span></div>
+                    <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>TELÉFONO ALUMNO</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.phone || student.mobile_phone || student.student_phone || '-'}</span></div>
+                    <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>EMAIL ALUMNO</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.email || student.student_email || '-'}</span></div>
                   </>
                 )}
                 <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>PREVISIÓN (SALUD)</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.health_system || 'Fonasa A'}</span></div>
-                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>N° MATRÍCULA</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.enrollment_number || student.numero_matricula || student.list_number || '001'}</span></div>
+                <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>N° MATRÍCULA</span> <span style={{ textDecoration: 'underline', fontWeight: 700 }}>{student.enrollment_number || student.numero_matricula || 'S/N'}</span></div>
               </div>
 
               {/* REGISTRO OFICIAL DEL FUNCIONARIO MATRICULADOR */}
@@ -329,13 +398,13 @@ export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, o
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem 1rem', marginBottom: '0.5rem' }}>
                   <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>VIVE CON</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.lives_with || 'Ambos Padres'}</span></div>
-                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>GRUPO FAMILIAR (INTEGRANTES)</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.family_members || '4'}</span></div>
+                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>GRUPO FAMILIAR (INTEGRANTES)</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.family_members ?? student.family_count ?? '-'}</span></div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem 1rem' }}>
-                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>TOTAL HERMANOS</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.total_siblings || '2'}</span></div>
-                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>HERMANOS ESCOLARES</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.school_siblings || '1'}</span></div>
-                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>HERMANOS EN ESTE LICEO</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.siblings_in_school || '0'}</span></div>
-                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>LUGAR ENTRE HERMANOS</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.sibling_position || '1'}</span></div>
+                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>TOTAL HERMANOS</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.total_siblings ?? 0}</span></div>
+                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>HERMANOS ESCOLARES</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.school_siblings ?? 0}</span></div>
+                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>HERMANOS EN ESTE LICEO</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.liceo_siblings ?? student.siblings_in_school ?? 0}</span></div>
+                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>LUGAR ENTRE HERMANOS</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.sibling_position ?? 1}</span></div>
                 </div>
               </div>
             )}
@@ -380,9 +449,9 @@ export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, o
                   4. SALUD Y OBSERVACIONES
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem 1rem', marginBottom: '0.5rem' }}>
-                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>SANGRE</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.blood_type || 'ORH+'}</span></div>
-                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>ALERGIAS</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.allergies || 'Ninguna'}</span></div>
-                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>ENFERMEDADES/CRÓNICOS</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.chronic_conditions || 'Ninguna'}</span></div>
+                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>SANGRE</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.blood_type || 'No informado'}</span></div>
+                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>ALERGIAS</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.allergies_detail || student.allergies || 'Ninguna'}</span></div>
+                  <div><span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>ENFERMEDADES/CRÓNICOS</span> <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.chronic_disease_detail || student.chronic_conditions || 'Ninguna'}</span></div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem 1rem', marginTop: '0.5rem', marginBottom: '0.5rem' }}>
                   <div>
@@ -400,7 +469,7 @@ export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, o
                 </div>
                 <div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', color: '#444' }}>OBSERVACIONES GENERALES</span>
-                  <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.general_observations || 'Sin observaciones registradas'}</span>
+                  <span style={{ textDecoration: 'underline', fontWeight: 600 }}>{student.health_observations || student.observaciones || student.general_observations || 'Sin observaciones registradas'}</span>
                 </div>
               </div>
             )}
@@ -508,7 +577,7 @@ export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, o
 
             <div style={{ fontSize: '1.05rem', lineHeight: 2, textAlign: 'justify', marginBottom: '4rem' }}>
               <p>
-                La Dirección del <strong>Liceo Técnico Profesional Campanario Marcos Delucchi Fonck (RBD 3941-1)</strong> certifica que el/la estudiante <strong>{student.full_name || student.Nombres}</strong>, Cédula de Identidad RUT <strong>{student.run || student.RUT}</strong>, se encuentra oficialmente matriculado/a y cursa estudios como <strong>ALUMNO REGULAR</strong> en el nivel <strong>{student.level_name || '1° Medio A'}</strong> durante el Año Lectivo <strong>{schoolYear}</strong>.
+                La Dirección del <strong>Liceo Técnico Profesional Campanario Marcos Delucchi Fonck (RBD 3941-1)</strong> certifica que el/la estudiante <strong>{student.full_name || student.Nombres}</strong>, Cédula de Identidad RUT <strong>{student.run || student.RUT}</strong>, se encuentra oficialmente matriculado/a y cursa estudios como <strong>ALUMNO REGULAR</strong> en el nivel <strong>{studentCourse}</strong> durante el Año Lectivo <strong>{schoolYear}</strong>.
               </p>
               <p style={{ marginTop: '1.5rem' }}>
                 Se extiende el presente certificado a petición del apoderado para los fines que estime convenientes.
@@ -916,7 +985,7 @@ export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, o
 
             <div style={{ fontSize: '0.95rem', lineHeight: 1.8, textAlign: 'justify', marginBottom: '3rem' }}>
               <p>
-                Yo, <strong>{student.guardian_name || 'Apoderado Responsable'}</strong>, apoderado del estudiante <strong>{student.full_name || student.Nombres}</strong> (RUT: {student.run || student.RUT}), matriculado en el nivel <strong>{student.level_name || '1° Medio A'}</strong>, declaro haber recibido el Reglamento Interno de Convivencia Escolar (RICE) y acepto colaborar activamente en la formación ética y disciplinaria de mi pupilo/a.
+                Yo, <strong>{student.guardian_name || 'Apoderado Responsable'}</strong>, apoderado del estudiante <strong>{student.full_name || student.Nombres}</strong> (RUT: {student.run || student.RUT}), matriculado en el nivel <strong>{studentCourse}</strong>, declaro haber recibido el Reglamento Interno de Convivencia Escolar (RICE) y acepto colaborar activamente en la formación ética y disciplinaria de mi pupilo/a.
               </p>
             </div>
 
@@ -1035,7 +1104,7 @@ export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, o
             }}>
               <div><strong>Estudiante:</strong> {student.full_name || student.Nombres}</div>
               <div><strong>RUT / RUN:</strong> {student.run || student.RUT}</div>
-              <div><strong>Curso:</strong> {student.level_name || student.desc_grado || '-'}</div>
+              <div><strong>Curso:</strong> {studentCourse}</div>
               <div><strong>Apoderado:</strong> {student.guardian_name || '-'}</div>
             </div>
 
@@ -1101,4 +1170,10 @@ export const OfficialEnrollmentForm: React.FC<OfficialFormProps> = ({ student, o
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(modalContent, document.body);
 };

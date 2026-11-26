@@ -19,7 +19,9 @@ import {
   isStudentRetired,
   getStudentWithdrawalDate,
   sortStudentsList,
-  getStudentYear
+  getStudentYear,
+  getNextEnrollmentNumberForYear,
+  prepareStudentForYearEnrollment
 } from '../utils/course';
 import {
   Button,
@@ -32,6 +34,7 @@ import {
 import { StudentWindow } from './StudentWindow';
 import { OfficialEnrollmentForm } from './OfficialEnrollmentForm';
 import { ReorderStudentsModal } from './ReorderStudentsModal';
+import { EnrollmentSelectorModal } from './EnrollmentSelectorModal';
 
 export interface StudentsModuleProps {
   students: any[];
@@ -65,6 +68,106 @@ export const StudentsModule: React.FC<StudentsModuleProps> = ({
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
   const [printStudent, setPrintStudent] = useState<any | null>(null);
   const [showReorderModal, setShowReorderModal] = useState<boolean>(false);
+  const [showEnrollmentSelector, setShowEnrollmentSelector] = useState<boolean>(false);
+  const [enrollmentQueue, setEnrollmentQueue] = useState<any[]>([]);
+  const [enrollmentQueueIndex, setEnrollmentQueueIndex] = useState<number>(0);
+  const [sessionSavedStudents, setSessionSavedStudents] = useState<any[]>([]);
+
+  const mergedAllStudents = useMemo(() => {
+    const map = new Map<string, any>();
+    sessionSavedStudents.forEach((s: any) => {
+      if (s?.id) map.set(String(s.id), s);
+    });
+    (students || []).forEach((s: any) => {
+      if (s?.id) map.set(String(s.id), s);
+    });
+    return Array.from(map.values());
+  }, [students, sessionSavedStudents]);
+
+  const previousYearStudents = useMemo(() => {
+    const prevYear = selectedYear - 1;
+    return (students || []).filter(s => {
+      if (getStudentYear(s) !== prevYear) return false;
+      const g = String(s.desc_grado || '').toLowerCase();
+      return !g.includes('egresado 2025');
+    });
+  }, [students, selectedYear]);
+
+  const hasPreviousYearStudents = selectedYear >= 2027 && previousYearStudents.length > 0;
+
+  const previousYearPendingCount = useMemo(() => {
+    if (!hasPreviousYearStudents) return 0;
+    const enrolledRuns = new Set(
+      mergedAllStudents
+        .filter(s => getStudentYear(s) === selectedYear)
+        .map(s => String(s.run || s.RUT || '').replace(/[^0-9kK]/g, '').toLowerCase())
+        .filter(Boolean)
+    );
+    return previousYearStudents.filter(s => {
+      const r = String(s.run || s.RUT || '').replace(/[^0-9kK]/g, '').toLowerCase();
+      return !r || !enrolledRuns.has(r);
+    }).length;
+  }, [hasPreviousYearStudents, mergedAllStudents, previousYearStudents, selectedYear]);
+
+  const nextEnrollmentNumber = useMemo(
+    () => getNextEnrollmentNumberForYear(mergedAllStudents, selectedYear),
+    [mergedAllStudents, selectedYear]
+  );
+
+  const openNewBlankStudent = () => {
+    setEnrollmentQueue([]);
+    setEnrollmentQueueIndex(0);
+    setSelectedStudent({ anno: selectedYear, academic_year: selectedYear });
+  };
+
+  const handleOpenNewEnrollmentFlow = () => {
+    if (hasPreviousYearStudents) {
+      setShowEnrollmentSelector(true);
+    } else {
+      openNewBlankStudent();
+    }
+  };
+
+  const handleSelectSingleFromPrevious = (studentPrev: any, existingTarget?: any) => {
+    setEnrollmentQueue([]);
+    setEnrollmentQueueIndex(0);
+    setShowEnrollmentSelector(false);
+    if (existingTarget) {
+      setSelectedStudent({ ...existingTarget, anno: getStudentYear(existingTarget) });
+    } else {
+      setSelectedStudent(prepareStudentForYearEnrollment(studentPrev, selectedYear, mergedAllStudents));
+    }
+  };
+
+  const handleSelectMultipleFromPrevious = (pickedStudents: any[]) => {
+    if (!pickedStudents || pickedStudents.length === 0) return;
+    setShowEnrollmentSelector(false);
+    setEnrollmentQueue(pickedStudents);
+    setEnrollmentQueueIndex(0);
+    setSelectedStudent(
+      prepareStudentForYearEnrollment(pickedStudents[0], selectedYear, mergedAllStudents, {
+        batchIndex: 1,
+        batchTotal: pickedStudents.length
+      })
+    );
+  };
+
+  const handleAdvanceQueue = () => {
+    const nextIdx = enrollmentQueueIndex + 1;
+    if (nextIdx >= enrollmentQueue.length) {
+      setEnrollmentQueue([]);
+      setEnrollmentQueueIndex(0);
+      setSelectedStudent(null);
+      return;
+    }
+    setEnrollmentQueueIndex(nextIdx);
+    setSelectedStudent(
+      prepareStudentForYearEnrollment(enrollmentQueue[nextIdx], selectedYear, mergedAllStudents, {
+        batchIndex: nextIdx + 1,
+        batchTotal: enrollmentQueue.length
+      })
+    );
+  };
 
   // Años disponibles ordenados descendentemente
   const availableYears = useMemo(() => {
@@ -255,11 +358,21 @@ export const StudentsModule: React.FC<StudentsModuleProps> = ({
                 >
                   Reordenar A-Z
                 </Button>
+                {hasPreviousYearStudents && (
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    leftIcon={<Users size={15} color="#4f46e5" />}
+                    onClick={() => setShowEnrollmentSelector(true)}
+                  >
+                    Nómina {selectedYear - 1} ({previousYearPendingCount} pend.)
+                  </Button>
+                )}
                 <Button
                   variant="primary"
                   size="md"
                   leftIcon={<Plus size={16} />}
-                  onClick={() => setSelectedStudent({ anno: selectedYear, academic_year: selectedYear })}
+                  onClick={handleOpenNewEnrollmentFlow}
                 >
                   Nueva Matrícula {selectedYear}
                 </Button>
@@ -308,6 +421,54 @@ export const StudentsModule: React.FC<StudentsModuleProps> = ({
           <Button variant="danger" size="sm" onClick={() => onDataReload()}>
             Reintentar Conexión
           </Button>
+        </div>
+      )}
+
+      {/* PANEL DE PROCESO DE MATRÍCULA PARA NUEVO AÑO LECTIVO (EJ. 2027) */}
+      {!dbDisconnected && canEdit && hasPreviousYearStudents && (
+        <div
+          style={{
+            background: 'linear-gradient(90deg, #eef2ff 0%, #f0fdf4 100%)',
+            border: '1.5px solid #c7d2fe',
+            borderRadius: '14px',
+            padding: '1rem 1.25rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '1rem',
+            flexWrap: 'wrap',
+            boxShadow: '0 2px 6px rgba(79, 70, 229, 0.06)'
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '0.96rem', color: '#312e81', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              🎓 Proceso de Matrícula Escolar {selectedYear}
+              <span style={{ background: '#4f46e5', color: '#ffffff', fontSize: '0.74rem', padding: '0.18rem 0.6rem', borderRadius: '9999px', fontWeight: 800 }}>
+                Próximo N°: {nextEnrollmentNumber}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.82rem', color: '#334155', marginTop: '0.25rem' }}>
+              <strong>{matriculaActiva}</strong> matriculados en {selectedYear} • <strong>{previousYearPendingCount}</strong> pendientes desde nómina {selectedYear - 1} ({previousYearStudents.length} totales). Selecciona estudiantes del {selectedYear - 1} para actualizar sus datos o ingresa un estudiante nuevo.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <Button
+              variant="primary"
+              size="md"
+              leftIcon={<Users size={16} />}
+              onClick={() => setShowEnrollmentSelector(true)}
+            >
+              📋 Seleccionar de Nómina {selectedYear - 1}
+            </Button>
+            <Button
+              variant="secondary"
+              size="md"
+              leftIcon={<Plus size={16} color="#16a34a" />}
+              onClick={openNewBlankStudent}
+            >
+              ✨ Estudiante Nuevo {selectedYear}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -467,12 +628,14 @@ export const StudentsModule: React.FC<StudentsModuleProps> = ({
                       description={
                         courseFilter !== 'Todos'
                           ? `No se registran matrículas para el curso "${courseFilter}" en el año lectivo ${selectedYear}.`
+                          : hasPreviousYearStudents
+                          ? `El año académico ${selectedYear} comienza desde el N° ${nextEnrollmentNumber}. Selecciona estudiantes del ${selectedYear - 1} para actualizar datos o matricula estudiantes nuevos.`
                           : `El año académico ${selectedYear} aún no tiene nómina importada o activa.`
                       }
-                      actionLabel={canEdit ? `+ Iniciar Nueva Matrícula ${selectedYear}` : undefined}
+                      actionLabel={canEdit ? (hasPreviousYearStudents ? `📋 Seleccionar de Nómina ${selectedYear - 1} / Nuevo ${selectedYear}` : `+ Iniciar Nueva Matrícula ${selectedYear}`) : undefined}
                       onAction={
                         canEdit
-                          ? () => setSelectedStudent({ anno: selectedYear, academic_year: selectedYear })
+                          ? handleOpenNewEnrollmentFlow
                           : undefined
                       }
                     />
@@ -583,12 +746,52 @@ export const StudentsModule: React.FC<StudentsModuleProps> = ({
       {/* MODAL FICHA DE ESTUDIANTE */}
       {selectedStudent && (
         <StudentWindow
+          key={selectedStudent.id || selectedStudent._clonedFromStudentId || `new-${selectedYear}-${enrollmentQueueIndex}`}
           student={selectedStudent}
           token={token}
           readOnly={!canEdit}
-          onClose={() => setSelectedStudent(null)}
-          onSave={() => onDataReload()}
+          onClose={() => {
+            setSelectedStudent(null);
+            setEnrollmentQueue([]);
+            setEnrollmentQueueIndex(0);
+          }}
+          onSave={savedStudent => {
+            if (savedStudent) {
+              setSessionSavedStudents(prev => {
+                const filtered = prev.filter(item => item.id !== savedStudent.id);
+                return [...filtered, savedStudent];
+              });
+            }
+            onDataReload();
+          }}
           onPrint={s => setPrintStudent(s)}
+          batchInfo={
+            enrollmentQueue.length > 1
+              ? {
+                  current: enrollmentQueueIndex + 1,
+                  total: enrollmentQueue.length,
+                  nextStudentName: enrollmentQueue[enrollmentQueueIndex + 1]?.full_name,
+                  onNextStudent:
+                    enrollmentQueueIndex + 1 < enrollmentQueue.length ? handleAdvanceQueue : undefined
+                }
+              : undefined
+          }
+        />
+      )}
+
+      {/* MODAL SELECTOR DE ESTUDIANTES DEL AÑO ANTERIOR Y NUEVO INGRESO */}
+      {showEnrollmentSelector && (
+        <EnrollmentSelectorModal
+          isOpen={showEnrollmentSelector}
+          onClose={() => setShowEnrollmentSelector(false)}
+          allStudents={mergedAllStudents}
+          targetYear={selectedYear}
+          onSelectSingleFromPrevious={handleSelectSingleFromPrevious}
+          onSelectMultipleFromPrevious={handleSelectMultipleFromPrevious}
+          onSelectNewStudent={() => {
+            setShowEnrollmentSelector(false);
+            openNewBlankStudent();
+          }}
         />
       )}
 

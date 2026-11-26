@@ -3376,11 +3376,7 @@ router.get('/students', authMiddleware, async (req: Request, res: Response) => {
     if (targetYear) {
       const yearInt = parseInt(String(targetYear), 10) || 2026;
       params.push(yearInt);
-      if (yearInt === 2026) {
-        conditions.push(`(anno = $${params.length} OR academic_year = $${params.length} OR entry_year = $${params.length} OR (anno IS NULL AND academic_year IS NULL))`);
-      } else {
-        conditions.push(`(anno = $${params.length} OR academic_year = $${params.length} OR entry_year = $${params.length})`);
-      }
+      conditions.push(`COALESCE(anno, academic_year, entry_year, 2026) = $${params.length}`);
     }
 
     // Aislamiento de privacidad (Ley 19.628): Apoderados solo ven a sus pupilos, Alumnos solo ven su propia ficha
@@ -3629,10 +3625,14 @@ router.post('/students/reorder', authMiddleware, checkRoles(['Admin', 'Docente',
   try {
     for (const item of reorderedStudents) {
       if (item.id && typeof item.list_number === 'number') {
-        await query('UPDATE students SET list_number = $1 WHERE id = $2 OR run = $3', [
+        await query('UPDATE students SET list_number = $1 WHERE id = $2', [
           item.list_number,
-          item.id,
-          item.run || ''
+          item.id
+        ]);
+      } else if (item.run && typeof item.list_number === 'number') {
+        await query('UPDATE students SET list_number = $1 WHERE run = $2', [
+          item.list_number,
+          item.run
         ]);
       }
     }
@@ -7783,13 +7783,23 @@ router.post('/students', authMiddleware, checkMatrixPermission('enrollment'), as
       return res.status(400).json({ error: 'RUT o identificador del estudiante es requerido.' });
     }
 
-    const studentId = std.id || `STU-${cleanRun.replace(/[^0-9kK]/g, '') || Date.now()}`;
+    const targetYear = Number(std.anno || std.academic_year || std.entry_year || 2026) || 2026;
+    const cleanDigits = cleanRun.replace(/[^0-9kK]/g, '') || String(Date.now());
+    const studentId = std.id
+      ? String(std.id).trim()
+      : (targetYear === 2026 ? `STU-${cleanDigits}` : `STU-${cleanDigits}-${targetYear}`);
+
     const fullName = std.full_name || `${std.paternal_surname || ''} ${std.maternal_surname || ''} ${std.first_name || ''}`.trim() || std.Nombres || 'Estudiante';
     const isRetired = std.is_retired ? 1 : (std.status === 'Retirado' ? 1 : 0);
     const status = isRetired ? 'Retirado' : (std.status || 'Active');
 
-    // Verificar si ya existe en la base de datos
-    const checkRes = await query('SELECT id FROM students WHERE id = $1 OR run = $2 LIMIT 1', [studentId, cleanRun]);
+    // Verificar si ya existe en el MISMO año lectivo (no sobreescribir registros de años anteriores)
+    const checkRes = std.id
+      ? await query('SELECT id FROM students WHERE id = $1 LIMIT 1', [studentId])
+      : await query(
+          'SELECT id FROM students WHERE id = $1 OR (run = $2 AND COALESCE(anno, academic_year, entry_year, 2026) = $3) LIMIT 1',
+          [studentId, cleanRun, targetYear]
+        );
 
     const booleanFields = [
       'has_religion', 'father_living', 'mother_living', 'guardian_is_financial', 'guardian_is_health_load',
@@ -7824,15 +7834,20 @@ router.post('/students', authMiddleware, checkMatrixPermission('enrollment'), as
     const numberFields = [
       'edad', 'entry_year', 'academic_year', 'anno', 'list_number', 'family_members',
       'total_siblings', 'school_siblings', 'school_age_siblings', 'liceo_siblings',
-      'sibling_position', 'porcentaje_asistencia', 'promedio_final'
+      'sibling_position', 'porcentaje_asistencia', 'promedio_final',
+      'cod_tipo_ensenanza', 'cod_grado'
     ];
 
+    const effectiveId = checkRes.rows.length > 0 ? checkRes.rows[0].id : studentId;
+
     const studentData: Record<string, any> = {
-      id: studentId,
+      id: effectiveId,
       run: cleanRun,
       full_name: fullName,
       status,
-      is_retired: isRetired
+      is_retired: isRetired,
+      anno: targetYear,
+      academic_year: targetYear
     };
 
     stringFields.forEach(f => {
@@ -7840,6 +7855,44 @@ router.post('/students', authMiddleware, checkMatrixPermission('enrollment'), as
         studentData[f] = std[f] === '' ? null : String(std[f]).trim();
       }
     });
+
+    // Asegurar desc_grado, letra_curso y códigos MINEDUC si viene level_name/desc_grado
+    const rawCourseInput = String(std.desc_grado || std.level_name || std.course || '').trim();
+    if (rawCourseInput) {
+      studentData.desc_grado = rawCourseInput;
+      const parts = rawCourseInput.split(' ');
+      const lastWord = (parts[parts.length - 1] || '').toUpperCase();
+      if (['A', 'B', 'C', 'D'].includes(lastWord)) {
+        studentData.letra_curso = lastWord;
+      } else if (!studentData.letra_curso) {
+        studentData.letra_curso = 'A';
+      }
+      const lowC = rawCourseInput.toLowerCase();
+      if (lowC.includes('pre-kinder') || lowC.includes('prekinder') || lowC.includes('1er nivel')) {
+        studentData.cod_tipo_ensenanza = 10;
+        studentData.cod_grado = 4;
+      } else if (lowC.includes('kinder') || lowC.includes('2° nivel')) {
+        studentData.cod_tipo_ensenanza = 10;
+        studentData.cod_grado = 5;
+      } else if (lowC.includes('laboral')) {
+        studentData.cod_tipo_ensenanza = 299;
+        studentData.cod_grado = 31;
+      } else if (lowC.includes('básico') || lowC.includes('basico')) {
+        studentData.cod_tipo_ensenanza = 110;
+        const m = lowC.match(/([1-8])°?\s*b[aá]sico/);
+        if (m) studentData.cod_grado = parseInt(m[1], 10);
+      } else if (lowC.includes('medio')) {
+        if (lowC.includes('610') || lowC.includes('párvulo') || lowC.includes('parvulo') || lowC.includes('técnico niños')) {
+          studentData.cod_tipo_ensenanza = 610;
+        } else if (lowC.includes('510') || lowC.includes('industrial') || lowC.includes('mecánica') || lowC.includes('mecanica')) {
+          studentData.cod_tipo_ensenanza = 510;
+        } else {
+          studentData.cod_tipo_ensenanza = 310;
+        }
+        const m = lowC.match(/([1-4])°?\s*medio/);
+        if (m) studentData.cod_grado = parseInt(m[1], 10);
+      }
+    }
 
     // Auto-completar funcionario responsable de matrícula desde la sesión activa si no viene especificado
     if (!studentData.enrolled_by_name && req.user) {
@@ -7860,37 +7913,68 @@ router.post('/students', authMiddleware, checkMatrixPermission('enrollment'), as
       }
     });
 
-    // Auto-generación de N° de Matrícula único (ej: 2026-004) si viene nulo, vacío o 'null'
-    if (!studentData.enrollment_number || studentData.enrollment_number === 'null' || studentData.enrollment_number === 'undefined') {
-      const allStdsRes = await query('SELECT enrollment_number FROM students');
-      let maxSeq = 0;
-      allStdsRes.rows.forEach((r: any) => {
-        const str = String(r.enrollment_number || '').trim();
-        if (str && str !== 'null' && str !== 'undefined') {
-          const parts = str.split('-');
-          let lastPart = parts[parts.length - 1].replace(/[^0-9]/g, '');
-          if (lastPart.startsWith('2026') && lastPart.length > 4) {
-            lastPart = lastPart.slice(4);
-          }
-          const num = parseInt(lastPart, 10);
-          if (!isNaN(num) && num > maxSeq) maxSeq = num;
-        }
-      });
-      const year = new Date().getFullYear();
-      const nextSeq = String(maxSeq + 1).padStart(3, '0');
-      studentData.enrollment_number = `${year}-${nextSeq}`;
+    // Mantener consistencia del año académico principal
+    studentData.anno = targetYear;
+    studentData.academic_year = targetYear;
+    if (!studentData.entry_year) {
+      studentData.entry_year = targetYear;
+    }
+
+    // Auto-generación de N° de Matrícula único por año lectivo (ej: 2027-001 desde el 1 en adelante)
+    const yearPrefix = `${targetYear}-`;
+    const allStdsRes = await query(
+      'SELECT id, enrollment_number FROM students WHERE COALESCE(anno, academic_year, entry_year, 2026) = $1 OR enrollment_number LIKE $2',
+      [targetYear, `${yearPrefix}%`]
+    );
+    let maxSeq = 0;
+    const usedNumbersInYear = new Set<string>();
+    allStdsRes.rows.forEach((r: any) => {
+      if (checkRes.rows.length > 0 && r.id === effectiveId) return;
+      const str = String(r.enrollment_number || '').trim();
+      if (!str || str === 'null' || str === 'undefined') return;
+      usedNumbersInYear.add(str);
+      if (str.startsWith(yearPrefix)) {
+        const suffix = str.slice(yearPrefix.length).replace(/[^0-9]/g, '');
+        const num = parseInt(suffix, 10);
+        if (!isNaN(num) && num > maxSeq) maxSeq = num;
+      } else {
+        const parts = str.split('-');
+        const lastPart = parts[parts.length - 1].replace(/[^0-9]/g, '');
+        const num = parseInt(lastPart, 10);
+        if (!isNaN(num) && num > maxSeq && str.includes(String(targetYear))) maxSeq = num;
+      }
+    });
+
+    const isMissingMat = !studentData.enrollment_number || studentData.enrollment_number === 'null' || studentData.enrollment_number === 'undefined';
+    const isCollisionOnNew = checkRes.rows.length === 0 && usedNumbersInYear.has(String(studentData.enrollment_number || ''));
+    if (isMissingMat || isCollisionOnNew) {
+      let candidateSeq = maxSeq + 1;
+      let candidateMat = `${targetYear}-${String(candidateSeq).padStart(3, '0')}`;
+      while (usedNumbersInYear.has(candidateMat)) {
+        candidateSeq++;
+        candidateMat = `${targetYear}-${String(candidateSeq).padStart(3, '0')}`;
+      }
+      studentData.enrollment_number = candidateMat;
+    }
+
+    // Calcular N° de Lista dentro del año y curso si es nuevo y viene vacío o <= 0
+    if (checkRes.rows.length === 0 && (!studentData.list_number || Number(studentData.list_number) <= 0) && studentData.desc_grado) {
+      const courseRes = await query(
+        'SELECT COALESCE(MAX(list_number), 0) AS max_list FROM students WHERE COALESCE(anno, academic_year, entry_year, 2026) = $1 AND desc_grado = $2',
+        [targetYear, studentData.desc_grado]
+      );
+      studentData.list_number = Number(courseRes.rows[0]?.max_list || 0) + 1;
     }
 
     if (checkRes.rows.length > 0) {
       // UPDATE
-      const targetId = checkRes.rows[0].id;
       const keys = Object.keys(studentData).filter(k => k !== 'id');
       const setClauses = keys.map((k, idx) => `${k} = $${idx + 1}`).join(', ');
       const values = keys.map(k => studentData[k]);
-      values.push(targetId);
+      values.push(effectiveId);
 
       await query(`UPDATE students SET ${setClauses} WHERE id = $${values.length}`, values);
-      await logAudit(req, 'UPDATE_STUDENT', `Ficha del estudiante ${fullName} (${cleanRun}) actualizada`);
+      await logAudit(req, 'UPDATE_STUDENT', `Ficha del estudiante ${fullName} (${cleanRun}) actualizada (Año ${targetYear})`);
     } else {
       // INSERT
       const keys = Object.keys(studentData);
@@ -7899,7 +7983,7 @@ router.post('/students', authMiddleware, checkMatrixPermission('enrollment'), as
       const values = keys.map(k => studentData[k]);
 
       await query(`INSERT INTO students (${cols}) VALUES (${placeholders})`, values);
-      await logAudit(req, 'CREATE_STUDENT', `Nuevo estudiante ${fullName} (${cleanRun}) registrado`);
+      await logAudit(req, 'CREATE_STUDENT', `Nuevo estudiante ${fullName} (${cleanRun}) matriculado en Año ${targetYear} con N° ${studentData.enrollment_number}`);
     }
 
     // Sincronización masiva de datos de apoderado en cascada para todos los demás alumnos vinculados al mismo RUT
@@ -7975,7 +8059,10 @@ router.post('/students', authMiddleware, checkMatrixPermission('enrollment'), as
       await updateGuardianCascade(studentData.father_run, studentData.father_name, studentData.father_phone, studentData.father_email, studentData.father_occupation, '', 'father');
     }
 
-    res.json({ success: true, student: studentData });
+    const savedRowRes = await query('SELECT * FROM students WHERE id = $1 LIMIT 1', [effectiveId]).catch(() => ({ rows: [] }));
+    const savedStudent = savedRowRes.rows[0] || studentData;
+
+    res.json({ success: true, student: savedStudent });
   } catch (err: any) {
     console.error('Error al registrar/actualizar alumno:', err);
     res.status(500).json({ error: `Error al registrar alumno: ${err.message}` });

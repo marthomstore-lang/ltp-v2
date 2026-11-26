@@ -414,4 +414,300 @@ export const getDefaultSubjectsForCourse = (courseName: string): string[] => {
   ];
 };
 
+export const OFFICIAL_SCHOOL_COURSES: string[] = [
+  '1er nivel de Transición (Pre-kinder) A',
+  '2° nivel de Transición (Kinder) A',
+  '1° Básico A',
+  '2° Básico A',
+  '3° Básico A',
+  '4° Básico A',
+  '5° Básico A',
+  '6° Básico A',
+  '7° Básico A',
+  '8° Básico A',
+  'Laboral 1 A',
+  '1° Medio A',
+  '2° Medio A',
+  '2° Medio B',
+  '3° Medio Industrial (Mecánica Industrial) A',
+  '3° Medio Técnico Niños (Atención de Párvulos) A',
+  '4° Medio Industrial (Mecánica Industrial) A',
+  '4° Medio Técnico Niños (Atención de Párvulos) A'
+];
+
+export const parseCourseMetadata = (courseName: string): {
+  desc_grado: string;
+  level_name: string;
+  letra_curso: string;
+  cod_tipo_ensenanza?: number;
+  cod_grado?: number;
+} => {
+  const clean = String(courseName || '').trim();
+  if (!clean || clean === 'Sin Curso') {
+    return { desc_grado: '', level_name: '', letra_curso: 'A' };
+  }
+  const parts = clean.split(' ');
+  const lastWord = (parts[parts.length - 1] || '').toUpperCase();
+  const letra_curso = ['A', 'B', 'C', 'D'].includes(lastWord) ? lastWord : 'A';
+  const low = clean.toLowerCase();
+
+  let cod_tipo_ensenanza: number | undefined;
+  let cod_grado: number | undefined;
+
+  if (low.includes('pre-kinder') || low.includes('prekinder') || low.includes('1er nivel')) {
+    cod_tipo_ensenanza = 10;
+    cod_grado = 4;
+  } else if (low.includes('kinder') || low.includes('2° nivel')) {
+    cod_tipo_ensenanza = 10;
+    cod_grado = 5;
+  } else if (low.includes('laboral')) {
+    cod_tipo_ensenanza = 299;
+    cod_grado = 31;
+  } else if (low.includes('básico') || low.includes('basico')) {
+    cod_tipo_ensenanza = 110;
+    const m = low.match(/([1-8])°?\s*b[aá]sico/);
+    if (m) cod_grado = parseInt(m[1], 10);
+  } else if (low.includes('medio')) {
+    if (low.includes('párvulo') || low.includes('parvulo') || low.includes('técnico niños') || low.includes('tecnico ninos') || low.includes('610')) {
+      cod_tipo_ensenanza = 610;
+    } else if (low.includes('industrial') || low.includes('mecánica') || low.includes('mecanica') || low.includes('510')) {
+      cod_tipo_ensenanza = 510;
+    } else {
+      cod_tipo_ensenanza = 310;
+    }
+    const m = low.match(/([1-4])°?\s*medio/);
+    if (m) cod_grado = parseInt(m[1], 10);
+  }
+
+  return {
+    desc_grado: clean,
+    level_name: clean,
+    letra_curso,
+    cod_tipo_ensenanza,
+    cod_grado
+  };
+};
+
+/**
+ * Calcula el próximo número de matrícula correlativo (ej: 2027-001) estrictamente
+ * dentro del año académico destino, partiendo desde 1 si aún no hay matriculados en ese año.
+ */
+export const getNextEnrollmentNumberForYear = (
+  students: any[],
+  targetYear: number,
+  excludeStudentId?: string
+): string => {
+  const yearInt = Number(targetYear) || new Date().getFullYear();
+  const prefix = `${yearInt}-`;
+  let maxSeq = 0;
+
+  (students || []).forEach((s: any) => {
+    if (!s) return;
+    if (excludeStudentId && s.id === excludeStudentId) return;
+    const raw = String(s.enrollment_number || s.numero_matricula || '').trim();
+    if (!raw || raw === 'null' || raw === 'undefined') return;
+
+    const sYear = getStudentYear(s);
+    const belongsToTargetYear = sYear === yearInt || raw.startsWith(prefix);
+    if (!belongsToTargetYear) return;
+
+    if (raw.startsWith(prefix)) {
+      const suffix = raw.slice(prefix.length).replace(/[^0-9]/g, '');
+      const n = parseInt(suffix, 10);
+      if (!isNaN(n) && n > maxSeq) maxSeq = n;
+    } else if (sYear === yearInt) {
+      const parts = raw.split('-');
+      const lastPart = parts[parts.length - 1].replace(/[^0-9]/g, '');
+      const n = parseInt(lastPart, 10);
+      if (!isNaN(n) && n > maxSeq) maxSeq = n;
+    }
+  });
+
+  return `${yearInt}-${String(maxSeq + 1).padStart(3, '0')}`;
+};
+
+/**
+ * Proyecta el curso sugerido para el año siguiente manteniendo el estándar oficial MINEDUC/LTP.
+ */
+export const getSuggestedNextCourse = (
+  studentOrCourse: any
+): {
+  currentCourse: string;
+  nextCourse: string;
+  isGraduating: boolean;
+  is2doMedioBranchChoice: boolean;
+} => {
+  const currentCourse =
+    typeof studentOrCourse === 'string'
+      ? studentOrCourse
+      : getStudentCourse(studentOrCourse);
+
+  const low = (currentCourse || '').toLowerCase();
+  const letterMatch = currentCourse.match(/\b([A-D])$/i);
+  const letter = letterMatch ? letterMatch[1].toUpperCase() : 'A';
+
+  if (low.includes('pre-kinder') || low.includes('prekinder') || low.includes('1er nivel')) {
+    return { currentCourse, nextCourse: '2° nivel de Transición (Kinder) A', isGraduating: false, is2doMedioBranchChoice: false };
+  }
+  if (low.includes('kinder') || low.includes('2° nivel')) {
+    return { currentCourse, nextCourse: '1° Básico A', isGraduating: false, is2doMedioBranchChoice: false };
+  }
+  if (low.includes('1° básico') || low.includes('1° basico')) {
+    return { currentCourse, nextCourse: '2° Básico A', isGraduating: false, is2doMedioBranchChoice: false };
+  }
+  if (low.includes('2° básico') || low.includes('2° basico')) {
+    return { currentCourse, nextCourse: '3° Básico A', isGraduating: false, is2doMedioBranchChoice: false };
+  }
+  if (low.includes('3° básico') || low.includes('3° basico')) {
+    return { currentCourse, nextCourse: '4° Básico A', isGraduating: false, is2doMedioBranchChoice: false };
+  }
+  if (low.includes('4° básico') || low.includes('4° basico')) {
+    return { currentCourse, nextCourse: '5° Básico A', isGraduating: false, is2doMedioBranchChoice: false };
+  }
+  if (low.includes('5° básico') || low.includes('5° basico')) {
+    return { currentCourse, nextCourse: '6° Básico A', isGraduating: false, is2doMedioBranchChoice: false };
+  }
+  if (low.includes('6° básico') || low.includes('6° basico')) {
+    return { currentCourse, nextCourse: '7° Básico A', isGraduating: false, is2doMedioBranchChoice: false };
+  }
+  if (low.includes('7° básico') || low.includes('7° basico')) {
+    return { currentCourse, nextCourse: '8° Básico A', isGraduating: false, is2doMedioBranchChoice: false };
+  }
+  if (low.includes('8° básico') || low.includes('8° basico')) {
+    return { currentCourse, nextCourse: '1° Medio A', isGraduating: false, is2doMedioBranchChoice: false };
+  }
+  if (low.includes('1° medio') || low.includes('1 medio')) {
+    return { currentCourse, nextCourse: `2° Medio ${letter === 'B' ? 'B' : 'A'}`, isGraduating: false, is2doMedioBranchChoice: false };
+  }
+  if (low.includes('2° medio') || low.includes('2 medio')) {
+    return {
+      currentCourse,
+      nextCourse: '3° Medio Industrial (Mecánica Industrial) A',
+      isGraduating: false,
+      is2doMedioBranchChoice: true
+    };
+  }
+  if (low.includes('3° medio') || low.includes('3 medio')) {
+    if (low.includes('párvulo') || low.includes('parvulo') || low.includes('técnico') || low.includes('tecnico') || low.includes('610')) {
+      return {
+        currentCourse,
+        nextCourse: '4° Medio Técnico Niños (Atención de Párvulos) A',
+        isGraduating: false,
+        is2doMedioBranchChoice: false
+      };
+    }
+    return {
+      currentCourse,
+      nextCourse: '4° Medio Industrial (Mecánica Industrial) A',
+      isGraduating: false,
+      is2doMedioBranchChoice: false
+    };
+  }
+  if (low.includes('4° medio') || low.includes('4 medio')) {
+    return {
+      currentCourse,
+      nextCourse: currentCourse,
+      isGraduating: true,
+      is2doMedioBranchChoice: false
+    };
+  }
+  if (low.includes('laboral')) {
+    return {
+      currentCourse,
+      nextCourse: 'Laboral 1 A',
+      isGraduating: false,
+      is2doMedioBranchChoice: false
+    };
+  }
+
+  return {
+    currentCourse: currentCourse || 'Sin Curso',
+    nextCourse: currentCourse === 'Sin Curso' ? '' : currentCourse,
+    isGraduating: false,
+    is2doMedioBranchChoice: false
+  };
+};
+
+export const getTodayIsoDate = (): string => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+/**
+ * Prepara los datos de un estudiante de un año anterior (ej. 2026) para matricularlo
+ * y actualizar su ficha en el nuevo año lectivo (ej. 2027), conservando el registro histórico.
+ */
+export const prepareStudentForYearEnrollment = (
+  sourceStudent: any,
+  targetYear: number,
+  allStudents: any[],
+  options?: { batchIndex?: number; batchTotal?: number }
+): any => {
+  const projection = getSuggestedNextCourse(sourceStudent);
+  const nextEnrollmentNumber = getNextEnrollmentNumberForYear(allStudents, targetYear);
+  const courseMeta = parseCourseMetadata(projection.nextCourse);
+
+  // Calcular N° de lista correlativo dentro del curso sugerido del año destino
+  const existingInTargetCourse = (allStudents || []).filter(
+    (s: any) => getStudentYear(s) === targetYear && getStudentCourse(s) === projection.nextCourse
+  );
+  const maxListNum = existingInTargetCourse.reduce((max: number, s: any) => {
+    const n = Number(s.list_number || 0);
+    return !isNaN(n) && n > max ? n : max;
+  }, 0);
+
+  // Buscar profesor jefe ya asignado a ese curso (o en cursos 2026/2027)
+  const targetTeacher =
+    (allStudents || []).find((s: any) => getStudentYear(s) === targetYear && getStudentCourse(s) === projection.nextCourse && s.profesor_jefe)?.profesor_jefe ||
+    (allStudents || []).find((s: any) => getStudentCourse(s) === projection.nextCourse && s.profesor_jefe && s.profesor_jefe !== 'Sin Asignar')?.profesor_jefe ||
+    '';
+
+  const todayIso = getTodayIsoDate();
+
+  return {
+    ...sourceStudent,
+    // Desvincular ID e identificadores propios del año 2026 para crear registro limpio en targetYear
+    id: undefined,
+    anno: targetYear,
+    academic_year: targetYear,
+    entry_year: sourceStudent?.entry_year || getStudentYear(sourceStudent) || 2026,
+    enrollment_number: nextEnrollmentNumber,
+    numero_matricula: nextEnrollmentNumber,
+    list_number: maxListNum + 1,
+    // Curso proyectado 2027
+    desc_grado: courseMeta.desc_grado,
+    level_name: courseMeta.level_name,
+    letra_curso: courseMeta.letra_curso,
+    cod_tipo_ensenanza: courseMeta.cod_tipo_ensenanza ?? sourceStudent?.cod_tipo_ensenanza,
+    cod_grado: courseMeta.cod_grado ?? sourceStudent?.cod_grado,
+    profesor_jefe: targetTeacher,
+    previous_school: sourceStudent?.previous_school || 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck',
+    // Estado activo limpio para el nuevo período
+    status: 'Active',
+    is_retired: false,
+    withdrawal_date: null,
+    withdrawal_reason: null,
+    fecha_retiro: null,
+    // Fechas y funcionario responsable frescos
+    enrollment_date: todayIso,
+    incorporation_date: todayIso,
+    enrolled_by_name: undefined,
+    enrolled_by_run: undefined,
+    enrolled_by_role: undefined,
+    // Metadatos UI de continuidad (no afectan guardado SQL)
+    _isContinuityFromPreviousYear: true,
+    _clonedFromStudentId: sourceStudent?.id,
+    _previousYear: getStudentYear(sourceStudent),
+    _previousCourse: projection.currentCourse,
+    _is2doMedioBranchChoice: projection.is2doMedioBranchChoice,
+    _isGraduatingPreviousYear: projection.isGraduating,
+    _batchIndex: options?.batchIndex,
+    _batchTotal: options?.batchTotal
+  };
+};
+
+
 

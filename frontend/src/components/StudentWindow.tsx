@@ -1,11 +1,23 @@
 import React, { useState } from 'react';
-import { User, Shield, Heart, FileText, CheckCircle, X, Users, Home, Search, ClipboardList } from 'lucide-react';
+import { User, Shield, Heart, FileText, CheckCircle, X, Users, Search, ClipboardList, Printer, ArrowRight, Sparkles, RefreshCw } from 'lucide-react';
 import { formatRut } from '../utils/rut';
 import { formatPhone } from '../utils/phone';
-import { getStudentCourse, isStudentRetired, sortCoursesList } from '../utils/course';
+import {
+  getStudentCourse,
+  getStudentYear,
+  isStudentRetired,
+  sortCoursesList,
+  OFFICIAL_SCHOOL_COURSES,
+  parseCourseMetadata,
+  getNextEnrollmentNumberForYear,
+  getTodayIsoDate,
+  prepareStudentForYearEnrollment
+} from '../utils/course';
 import { useAuth } from '../context/AuthContext';
 import Swal from 'sweetalert2';
 import { StudentDocumentChecklistModal } from './StudentDocumentChecklistModal';
+import { EnrollmentSelectorModal } from './EnrollmentSelectorModal';
+import { OfficialEnrollmentForm } from './OfficialEnrollmentForm';
 import { getModuleSubTabFromUrl, syncModuleSubUrl } from '../utils/urlRouter';
 
 interface StudentWindowProps {
@@ -15,6 +27,12 @@ interface StudentWindowProps {
   onPrint?: (student: any) => void;
   token: string;
   readOnly?: boolean;
+  batchInfo?: {
+    current: number;
+    total: number;
+    nextStudentName?: string;
+    onNextStudent?: () => void;
+  };
 }
 
 function formatDateForInput(dateVal: any): string {
@@ -83,7 +101,34 @@ export function calculateExactAge(birthDateString: string | null): string {
 }
 
 
-export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, onSave, onPrint, token, readOnly = false }) => {
+const buildInitialFormState = (student: any, user: any) => {
+  const targetYear = Number(student?.anno || student?.academic_year || student?.entry_year || 2027) || 2027;
+  const todayIso = getTodayIsoDate();
+  return {
+    ...student,
+    has_complementary_insurance: student?.has_complementary_insurance ? 1 : 0,
+    complementary_insurance_name: student?.complementary_insurance_name || '',
+    complementary_insurance_coverage: student?.complementary_insurance_coverage || '',
+    authorize_image_use: student?.authorize_image_use !== undefined ? (student?.authorize_image_use ? 1 : 0) : 1,
+    image_auth_scope: student?.image_auth_scope || (student?.authorize_image_use === 0 ? 'ninguna' : 'personal_y_grupal'),
+    enrollment_number: cleanEnrollmentVal(student?.enrollment_number || student?.numero_matricula),
+    is_retired: isStudentRetired(student),
+    anno: targetYear,
+    academic_year: student?.academic_year || targetYear,
+    region: student?.region || 'Región de Ñuble',
+    commune: student?.commune || 'Yungay',
+    family_members: student?.family_members ?? student?.family_count ?? 4,
+    allergies_detail: student?.allergies_detail || student?.allergies || '',
+    is_priority: student?.is_priority ?? student?.sep_priority ?? 0,
+    enrollment_date: formatDateForInput(student?.enrollment_date) || todayIso,
+    incorporation_date: formatDateForInput(student?.incorporation_date) || todayIso,
+    enrolled_by_name: student?.enrolled_by_name || user?.name || '',
+    enrolled_by_run: student?.enrolled_by_run || user?.run || '',
+    enrolled_by_role: student?.enrolled_by_role || user?.role || 'Encargado de Matrícula'
+  };
+};
+
+export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, onSave, onPrint, token, readOnly = false, batchInfo }) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'personal' | 'guardian_main' | 'guardian_secondary' | 'parents_family' | 'health_sep'>(() =>
     getModuleSubTabFromUrl('students', 'personal') as any
@@ -104,22 +149,9 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
       syncModuleSubUrl('students', null, true);
     };
   }, []);
-  const [formData, setFormData] = useState<any>({
-    ...student,
-    has_complementary_insurance: student?.has_complementary_insurance ? 1 : 0,
-    complementary_insurance_name: student?.complementary_insurance_name || '',
-    complementary_insurance_coverage: student?.complementary_insurance_coverage || '',
-    authorize_image_use: student?.authorize_image_use !== undefined ? (student?.authorize_image_use ? 1 : 0) : 1,
-    image_auth_scope: student?.image_auth_scope || (student?.authorize_image_use === 0 ? 'ninguna' : 'personal_y_grupal'),
-    enrollment_number: cleanEnrollmentVal(student?.enrollment_number || student?.numero_matricula),
-    is_retired: isStudentRetired(student),
-    anno: student?.anno || student?.academic_year || student?.entry_year || 2027,
-    enrolled_by_name: student?.enrolled_by_name || user?.name || '',
-    enrolled_by_run: student?.enrolled_by_run || user?.run || '',
-    enrolled_by_role: student?.enrolled_by_role || user?.role || 'Encargado de Matrícula'
-  });
+  const [formData, setFormData] = useState<any>(() => buildInitialFormState(student, user));
 
-  const [coursesList, setCoursesList] = useState<string[]>([]);
+  const [coursesList, setCoursesList] = useState<string[]>(() => sortCoursesList(OFFICIAL_SCHOOL_COURSES));
   const [teachersList, setTeachersList] = useState<any[]>([]);
   const [allStudents, setAllStudents] = useState<any[]>([]);
   const [showSiblingModal, setShowSiblingModal] = useState(false);
@@ -133,50 +165,61 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
   const [loadingGuardians, setLoadingGuardians] = useState(false);
   const [showChecklistModal, setShowChecklistModal] = useState(false);
   const [checklistMode, setChecklistMode] = useState<'retiro' | 'matricula'>('retiro');
+  const [showPreviousSelector, setShowPreviousSelector] = useState(false);
+  const [internalPrintStudent, setInternalPrintStudent] = useState<any | null>(null);
+  const [hasSavedSession, setHasSavedSession] = useState<boolean>(Boolean(student?.id));
+  const [manualEnrollmentEdited, setManualEnrollmentEdited] = useState<boolean>(Boolean(student?.id));
+  const [saving, setSaving] = useState<boolean>(false);
+
+  // Sincronizar estado cuando cambia el estudiante seleccionado (ej. al avanzar en cola 2027)
+  React.useEffect(() => {
+    setFormData(buildInitialFormState(student, user));
+    setHasSavedSession(Boolean(student?.id));
+    setManualEnrollmentEdited(Boolean(student?.id));
+    setActiveTab('personal');
+  }, [student]);
 
   React.useEffect(() => {
     if (allStudents.length > 0) {
       const currentCourse = getStudentCourse(formData);
-      if (currentCourse && !formData.profesor_jefe) {
-        const assigned = allStudents.find((s: any) => getStudentCourse(s) === currentCourse && s.profesor_jefe)?.profesor_jefe;
+      if (currentCourse && currentCourse !== 'Sin Curso' && !formData.profesor_jefe) {
+        const targetYear = Number(formData.anno || formData.academic_year || 2027);
+        const assigned =
+          allStudents.find((s: any) => getStudentYear(s) === targetYear && getStudentCourse(s) === currentCourse && s.profesor_jefe && s.profesor_jefe !== 'Sin Asignar')?.profesor_jefe ||
+          allStudents.find((s: any) => getStudentCourse(s) === currentCourse && s.profesor_jefe && s.profesor_jefe !== 'Sin Asignar')?.profesor_jefe;
         if (assigned) {
           setFormData((prev: any) => ({ ...prev, profesor_jefe: assigned }));
         }
       }
     }
-  }, [allStudents, formData.level_name, formData.desc_grado]);
+  }, [allStudents, formData.level_name, formData.desc_grado, formData.anno]);
 
-  // Auto-asignar Número de Matrícula único (ej: 2026-004) si no lo tiene asignado aún
+  // Auto-asignar Número de Matrícula único por año lectivo (ej: 2027-001 desde el 1 en adelante)
   React.useEffect(() => {
-    const currentMat = cleanEnrollmentVal(formData.enrollment_number);
-    if (allStudents.length > 0 && !currentMat) {
-      let maxSeq = 0;
-      allStudents.forEach((s: any) => {
-        const str = cleanEnrollmentVal(s.enrollment_number || s.numero_matricula);
-        if (str) {
-          const parts = str.split('-');
-          let lastPart = parts[parts.length - 1].replace(/[^0-9]/g, '');
-          if (lastPart.startsWith('2026') && lastPart.length > 4) {
-            lastPart = lastPart.slice(4);
-          }
-          const n = parseInt(lastPart, 10);
-          if (!isNaN(n) && n > maxSeq) maxSeq = n;
-        }
-      });
-      const year = new Date().getFullYear();
-      const nextSeq = String(maxSeq + 1).padStart(3, '0');
-      setFormData((prev: any) => ({
+    if (formData.id || manualEnrollmentEdited) return;
+    const targetYear = parseInt(String(formData.anno || formData.academic_year || 2027), 10) || 2027;
+    const computed = getNextEnrollmentNumberForYear(allStudents, targetYear);
+    setFormData((prev: any) => {
+      if (prev.id || prev.enrollment_number === computed) return prev;
+      return {
         ...prev,
-        enrollment_number: `${year}-${nextSeq}`
-      }));
-    }
-  }, [allStudents, formData.enrollment_number]);
+        enrollment_number: computed,
+        numero_matricula: computed
+      };
+    });
+  }, [allStudents, formData.anno, formData.id, manualEnrollmentEdited]);
 
   // Soporte para cerrar la ventana con la tecla Escape (ESC)
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (showGuardianSearchModal) {
+        if (internalPrintStudent) {
+          return;
+        } else if (showPreviousSelector) {
+          setShowPreviousSelector(false);
+        } else if (showChecklistModal) {
+          setShowChecklistModal(false);
+        } else if (showGuardianSearchModal) {
           setShowGuardianSearchModal(false);
         } else if (showSiblingModal) {
           setShowSiblingModal(false);
@@ -187,42 +230,53 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, showGuardianSearchModal, showSiblingModal]);
+  }, [onClose, internalPrintStudent, showPreviousSelector, showChecklistModal, showGuardianSearchModal, showSiblingModal]);
 
-  // Recalcular N° de Lista correlativo exacto según la posición en el curso asignado
+  // Recalcular N° de Lista correlativo exacto dentro del año lectivo y curso asignado
+  const currentYearForList = parseInt(String(formData.anno || formData.academic_year || 2027), 10) || 2027;
   const currentCourseForList = getStudentCourse(formData);
   const courseStudentsForList = allStudents
-    .filter((s: any) => getStudentCourse(s) === currentCourseForList)
+    .filter((s: any) => getStudentYear(s) === currentYearForList && getStudentCourse(s) === currentCourseForList)
     .sort((a: any, b: any) => {
-      const numA = typeof a.list_number === 'number' ? a.list_number : 999;
-      const numB = typeof b.list_number === 'number' ? b.list_number : 999;
+      const numA = typeof a.list_number === 'number' ? a.list_number : 9999;
+      const numB = typeof b.list_number === 'number' ? b.list_number : 9999;
       if (numA !== numB) return numA - numB;
       return String(a.full_name || '').localeCompare(String(b.full_name || ''));
     });
 
-  const studentCourseIndex = courseStudentsForList.findIndex((s: any) =>
-    (s.id && s.id === formData.id) ||
-    (s.run && formatRut(s.run) === formatRut(formData.run))
-  );
+  const studentCourseIndex = formData.id
+    ? courseStudentsForList.findIndex((s: any) => s.id === formData.id)
+    : -1;
 
-  const calculatedListNumber = (formData.list_number && formData.list_number > 0)
-    ? formData.list_number
-    : (studentCourseIndex >= 0 ? studentCourseIndex + 1 : 1);
+  const maxCourseListNumber = courseStudentsForList.reduce((max: number, s: any) => {
+    const n = Number(s.list_number || 0);
+    return !isNaN(n) && n > max ? n : max;
+  }, 0);
 
-  React.useEffect(() => {
-    // 1. Obtener Cursos y Estudiantes desde la base de datos
+  const calculatedListNumber = (formData.list_number && Number(formData.list_number) > 0)
+    ? Number(formData.list_number)
+    : (studentCourseIndex >= 0 ? studentCourseIndex + 1 : maxCourseListNumber + 1);
+
+  const fetchStudentsRoster = React.useCallback(() => {
     fetch('/api/students', { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
           setAllStudents(data);
-          const uniqueCourses = Array.from(new Set(data.map((s: any) => getStudentCourse(s)))).filter(Boolean) as string[];
+          const uniqueCourses = Array.from(new Set(data.map((s: any) => getStudentCourse(s)))).filter(
+            (c: any) => Boolean(c) && c !== 'Sin Curso' && !String(c).toLowerCase().includes('egresado')
+          ) as string[];
           if (uniqueCourses.length > 0) {
-            setCoursesList(sortCoursesList(uniqueCourses));
+            setCoursesList(prev => sortCoursesList(Array.from(new Set([...prev, ...uniqueCourses]))));
           }
         }
       })
       .catch(() => {});
+  }, [token]);
+
+  React.useEffect(() => {
+    // 1. Obtener Cursos y Estudiantes desde la base de datos
+    fetchStudentsRoster();
 
     fetch('/api/levels', { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
@@ -403,20 +457,157 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
     if (field === 'father_run') handleGuardianRutLookup(value, 'father');
   };
 
+  const handleSelectCourse = (newCourse: string) => {
+    const meta = parseCourseMetadata(newCourse);
+    const targetYear = Number(formData.anno || formData.academic_year || 2027);
+    const assignedTeacher =
+      allStudents.find((s: any) => getStudentYear(s) === targetYear && getStudentCourse(s) === newCourse && s.profesor_jefe && s.profesor_jefe !== 'Sin Asignar')?.profesor_jefe ||
+      allStudents.find((s: any) => getStudentCourse(s) === newCourse && s.profesor_jefe && s.profesor_jefe !== 'Sin Asignar')?.profesor_jefe;
+
+    const existingCourseStudents = allStudents.filter(
+      (s: any) => getStudentYear(s) === targetYear && getStudentCourse(s) === newCourse
+    );
+    const nextList =
+      existingCourseStudents.reduce((max: number, s: any) => {
+        const n = Number(s.list_number || 0);
+        return !isNaN(n) && n > max ? n : max;
+      }, 0) + 1;
+
+    setFormData((prev: any) => ({
+      ...prev,
+      level_name: meta.level_name || newCourse,
+      desc_grado: meta.desc_grado || newCourse,
+      letra_curso: meta.letra_curso || prev.letra_curso || 'A',
+      cod_tipo_ensenanza: meta.cod_tipo_ensenanza ?? prev.cod_tipo_ensenanza,
+      cod_grado: meta.cod_grado ?? prev.cod_grado,
+      profesor_jefe: assignedTeacher || prev.profesor_jefe || '',
+      list_number: !prev.id ? nextList : prev.list_number
+    }));
+  };
+
+  const handleLoadStudentFromPreviousYear = (sourceStudent: any, existingTarget?: any) => {
+    if (existingTarget) {
+      setFormData(buildInitialFormState(existingTarget, user));
+      setHasSavedSession(true);
+      setManualEnrollmentEdited(true);
+      setShowPreviousSelector(false);
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'info',
+        title: `Cargada ficha existente ${formData.anno} de ${existingTarget.full_name}`,
+        showConfirmButton: false,
+        timer: 2400
+      });
+      return;
+    }
+
+    const targetYear = Number(formData.anno || formData.academic_year || 2027);
+    const prepared = prepareStudentForYearEnrollment(sourceStudent, targetYear, allStudents);
+    setFormData(buildInitialFormState(prepared, user));
+    setHasSavedSession(false);
+    setManualEnrollmentEdited(false);
+    setShowPreviousSelector(false);
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: 'success',
+      title: `Datos ${sourceStudent.full_name} cargados para Matrícula ${targetYear} (${prepared.enrollment_number})`,
+      showConfirmButton: false,
+      timer: 2800
+    });
+  };
+
   const handleSave = async () => {
     if (readOnly) {
       Swal.fire('Solo Vista', 'Tu perfil solo tiene acceso de consulta e impresión en esta ficha.', 'info');
       return;
     }
+
+    const targetYear = Number(formData.anno || formData.academic_year || 2027) || 2027;
+    const resolvedFullName = (
+      formData.full_name ||
+      `${formData.paternal_surname || ''} ${formData.maternal_surname || ''} ${formData.first_name || ''}`
+    ).trim();
+    const resolvedRun = String(formData.run || '').trim();
+    const cleanRunDigits = resolvedRun.replace(/[^0-9kK]/g, '');
+    const selectedCourse = getStudentCourse(formData);
+
+    const missingFields: string[] = [];
+    if (!resolvedFullName || (!formData.first_name?.trim() && !formData.id)) {
+      missingFields.push('Nombres y Apellidos del estudiante');
+    }
+    if (!cleanRunDigits || cleanRunDigits.length < 7) {
+      missingFields.push('RUT / RUN válido del estudiante');
+    }
+    if (!selectedCourse || selectedCourse === 'Sin Curso') {
+      missingFields.push(`Curso / Nivel para el año ${targetYear}`);
+    }
+    if (!cleanEnrollmentVal(formData.enrollment_number)) {
+      missingFields.push(`N° de Matrícula (${targetYear}-XXX)`);
+    }
+
+    if (missingFields.length > 0) {
+      setActiveTab('personal');
+      Swal.fire({
+        title: 'Complete la Información Requerida',
+        html: `
+          <div style="text-align:left; font-size:0.9rem; color:#334155;">
+            <p style="margin-bottom:0.5rem;">Para guardar la matrícula ${targetYear}, complete los siguientes datos:</p>
+            <ul style="margin:0; padding-left:1.25rem; color:#b91c1c; font-weight:600;">
+              ${missingFields.map(f => `<li>${f}</li>`).join('')}
+            </ul>
+          </div>
+        `,
+        icon: 'warning',
+        confirmButtonColor: '#4f46e5',
+        confirmButtonText: 'Completar Datos'
+      });
+      return;
+    }
+
+    // Si es un estudiante nuevo sin apoderado titular, recordar completarlo antes de guardar
+    if (!formData.id && !formData._isContinuityFromPreviousYear && (!formData.guardian_name?.trim() || !formData.guardian_run?.trim())) {
+      const guardianPrompt = await Swal.fire({
+        title: '¿Falta completar Apoderado Titular?',
+        text: 'Es un estudiante nuevo y aún no tiene registrado Nombre o RUT del Apoderado Titular.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#4f46e5',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: '🛡️ Completar Apoderado Titular',
+        cancelButtonText: 'Guardar sin Apoderado'
+      });
+      if (guardianPrompt.isConfirmed) {
+        setActiveTab('guardian_main');
+        return;
+      }
+    }
+
+    setSaving(true);
     try {
+      const courseMeta = parseCourseMetadata(selectedCourse);
       const payload = {
         ...formData,
-        anno: formData.anno || 2027,
+        anno: targetYear,
+        academic_year: targetYear,
+        full_name: resolvedFullName,
+        desc_grado: courseMeta.desc_grado || formData.desc_grado || selectedCourse,
+        level_name: courseMeta.level_name || selectedCourse,
+        letra_curso: courseMeta.letra_curso || formData.letra_curso || 'A',
+        cod_tipo_ensenanza: courseMeta.cod_tipo_ensenanza ?? formData.cod_tipo_ensenanza,
+        cod_grado: courseMeta.cod_grado ?? formData.cod_grado,
+        family_members: Number(formData.family_members ?? formData.family_count ?? 4),
+        allergies_detail: formData.allergies_detail ?? formData.allergies ?? null,
+        has_allergies: (formData.allergies_detail || formData.allergies) ? 1 : 0,
+        is_priority: formData.is_priority ?? formData.sep_priority ?? 0,
         enrolled_by_name: formData.enrolled_by_name || user?.name || 'Administrador',
         enrolled_by_run: formData.enrolled_by_run || user?.run || '',
         enrolled_by_role: formData.enrolled_by_role || user?.role || 'Encargado de Matrícula',
-        list_number: formData.list_number !== undefined && formData.list_number !== null ? formData.list_number : calculatedListNumber,
-        enrollment_number: formData.enrollment_number || '',
+        list_number: formData.list_number !== undefined && formData.list_number !== null && Number(formData.list_number) > 0
+          ? Number(formData.list_number)
+          : calculatedListNumber,
+        enrollment_number: cleanEnrollmentVal(formData.enrollment_number),
         gender: formData.gender === 'OTRO' ? (formData.gender_custom || 'OTRO') : formData.gender,
         ethnicity: formData.ethnicity === 'Otro' ? (formData.ethnicity_custom || 'Otro') : formData.ethnicity
       };
@@ -431,25 +622,55 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al guardar');
-      
-      Swal.fire({
-        title: '¡Ficha Guardada con Éxito!',
-        text: 'Los datos del estudiante han sido guardados exitosamente en la base de datos. ¿Desea imprimir la Ficha Oficial FIDE ahora?',
+
+      const savedStudent = { ...payload, ...(data.student || {}) };
+      setFormData((prev: any) => ({
+        ...prev,
+        ...savedStudent
+      }));
+      setHasSavedSession(true);
+      setManualEnrollmentEdited(true);
+      fetchStudentsRoster();
+      onSave(savedStudent);
+
+      const hasNextInQueue = Boolean(batchInfo?.onNextStudent);
+      const result = await Swal.fire({
+        title: '¡Matrícula Guardada con Éxito!',
+        html: `
+          <div style="text-align:center; font-size:0.92rem; color:#334155; line-height:1.55;">
+            <p style="margin:0 0 0.5rem 0;">
+              <strong>${savedStudent.full_name}</strong> quedó registrado en <strong>${getStudentCourse(savedStudent)}</strong> (Año ${targetYear}).
+            </p>
+            <div style="display:inline-block; background:#eef2ff; border:1px solid #c7d2fe; color:#3730a3; padding:0.35rem 0.85rem; border-radius:8px; font-weight:800; font-size:0.95rem; margin-bottom:0.65rem;">
+              N° de Matrícula: ${savedStudent.enrollment_number} • N° Lista: #${savedStudent.list_number || calculatedListNumber}
+            </div>
+            <p style="margin:0.35rem 0 0 0; color:#475569;">
+              Antes de cerrar, ¿desea imprimir la <strong>Ficha de Matrícula</strong> ahora?
+            </p>
+          </div>
+        `,
         icon: 'success',
         showCancelButton: true,
+        showDenyButton: hasNextInQueue,
         confirmButtonColor: '#4f46e5',
+        denyButtonColor: '#059669',
         cancelButtonColor: '#64748b',
-        confirmButtonText: '🖨️ Guardar e Imprimir Ficha FIDE',
-        cancelButtonText: '💾 Solo Guardar'
-      }).then((result) => {
-        onSave(payload);
-        onClose();
-        if (result.isConfirmed && onPrint) {
-          onPrint(payload);
-        }
+        confirmButtonText: '🖨️ Imprimir Ficha de Matrícula',
+        denyButtonText: `➡️ Siguiente (${batchInfo ? batchInfo.current + 1 : 2}/${batchInfo?.total || ''})`,
+        cancelButtonText: '✅ Cerrar Ventana'
       });
+
+      if (result.isConfirmed) {
+        setInternalPrintStudent(savedStudent);
+      } else if (result.isDenied && batchInfo?.onNextStudent) {
+        batchInfo.onNextStudent();
+      } else if (result.dismiss === Swal.DismissReason.cancel) {
+        onClose();
+      }
     } catch (err: any) {
       Swal.fire('Error', err.message, 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -458,15 +679,28 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
       <div style={{ background: '#ffffff', borderRadius: '16px', width: '96vw', maxWidth: '1280px', maxHeight: '94vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
         
         {/* Encabezado de la Ventana Modal Distribuido */}
-        <div style={{ background: '#4f46e5', color: '#ffffff', padding: '1.25rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: '#4f46e5', color: '#ffffff', padding: '1.15rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
               <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>
                 Ficha Institucional del Estudiante
               </h2>
+              <span style={{ fontSize: '0.74rem', padding: '0.2rem 0.65rem', borderRadius: '9999px', background: 'rgba(255,255,255,0.2)', color: '#ffffff', fontWeight: 800 }}>
+                AÑO {formData.anno || 2027}
+              </span>
               <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.65rem', borderRadius: '9999px', background: formData.is_retired ? '#ef4444' : '#10b981', color: '#ffffff', fontWeight: 700 }}>
                 {formData.is_retired ? 'RETIRADO' : 'MATRICULADO / VIGENTE'}
               </span>
+              {batchInfo && (
+                <span style={{ fontSize: '0.74rem', padding: '0.2rem 0.65rem', borderRadius: '9999px', background: '#fef3c7', color: '#92400e', fontWeight: 800 }}>
+                  Cola: Estudiante {batchInfo.current} de {batchInfo.total}
+                </span>
+              )}
+              {hasSavedSession && formData.enrollment_number && (
+                <span style={{ fontSize: '0.74rem', padding: '0.2rem 0.65rem', borderRadius: '9999px', background: '#dcfce7', color: '#166534', fontWeight: 800 }}>
+                  ✅ Guardado ({formData.enrollment_number})
+                </span>
+              )}
               {readOnly && (
                 <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.65rem', borderRadius: '9999px', background: '#fef3c7', color: '#92400e', fontWeight: 800 }}>
                   👁️ MODO SOLO VISTA
@@ -574,21 +808,21 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
             {!readOnly && (
               <button
                 onClick={() => {
+                  const courseOptions: Record<string, string> = {};
+                  coursesList.forEach(c => {
+                    courseOptions[c] = c;
+                  });
                   Swal.fire({
                     title: 'Cambiar de Curso',
                     input: 'select',
-                    inputOptions: {
-                      '1° Medio A': '1° Medio A',
-                      '1° Medio B': '1° Medio B',
-                      '2° Medio A': '2° Medio A',
-                      '3° Medio TP Telecomunicaciones': '3° Medio TP Telecomunicaciones',
-                      '4° Medio TP Electricidad': '4° Medio TP Electricidad'
-                    },
+                    inputOptions: courseOptions,
+                    inputValue: getStudentCourse(formData),
                     showCancelButton: true,
-                    confirmButtonText: 'Cambiar Curso'
+                    confirmButtonText: 'Cambiar Curso',
+                    cancelButtonText: 'Cancelar'
                   }).then((res) => {
                     if (res.isConfirmed && res.value) {
-                      setFormData((prev: any) => ({ ...prev, level_name: res.value }));
+                      handleSelectCourse(res.value);
                       Swal.fire('Cambiado', `Curso cambiado a ${res.value}`, 'success');
                     }
                   });
@@ -647,7 +881,106 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
           {/* SECCIÓN 1: DATOS PERSONALES DEL ESTUDIANTE */}
           {activeTab === 'personal' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              
+
+              {/* BANNER DE ORIGEN / SELECCIÓN PARA MATRÍCULA NUEVA O CONTINUIDAD */}
+              {!readOnly && !formData.id && (
+                formData._isContinuityFromPreviousYear ? (
+                  <div style={{
+                    background: 'linear-gradient(90deg, #eef2ff 0%, #f0fdf4 100%)',
+                    border: '1.5px solid #818cf8',
+                    borderRadius: '12px',
+                    padding: '0.95rem 1.25rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '0.85rem'
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 800, color: '#312e81', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                        🔄 Continuidad Escolar {formData._previousYear} ➔ {formData.anno}
+                        <span style={{ background: '#4f46e5', color: '#ffffff', fontSize: '0.73rem', padding: '0.15rem 0.55rem', borderRadius: '6px' }}>
+                          Matrícula {formData.anno}: {formData.enrollment_number || '...'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#334155', marginTop: '0.25rem' }}>
+                        Datos cargados desde <strong>{formData._previousYear}</strong> (Curso anterior: <strong>{formData._previousCourse}</strong>). Actualiza domicilio, teléfonos, apoderados y confirma el curso {formData.anno} antes de guardar.
+                      </div>
+                      {formData._is2doMedioBranchChoice && (
+                        <div style={{ fontSize: '0.78rem', color: '#b45309', fontWeight: 800, marginTop: '0.25rem' }}>
+                          ⚠️ Viene de 2° Medio: verifica abajo si corresponde a 3° Medio Industrial (Mecánica) o 3° Medio Técnico Niños (Párvulos).
+                        </div>
+                      )}
+                      {formData._isGraduatingPreviousYear && (
+                        <div style={{ fontSize: '0.78rem', color: '#be123c', fontWeight: 800, marginTop: '0.25rem' }}>
+                          🎓 El estudiante cursó 4° Medio el año {formData._previousYear}. Matricular en {formData.anno} únicamente si corresponde a repitencia.
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowPreviousSelector(true)}
+                      style={{
+                        background: '#ffffff',
+                        color: '#4338ca',
+                        border: '1.5px solid #6366f1',
+                        borderRadius: '8px',
+                        padding: '0.5rem 0.9rem',
+                        fontWeight: 800,
+                        fontSize: '0.8rem',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem'
+                      }}
+                    >
+                      <Search size={15} /> Cambiar Alumno del {Number(formData.anno || 2027) - 1}
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{
+                    background: 'linear-gradient(90deg, #ecfdf5 0%, #eff6ff 100%)',
+                    border: '1.5px solid #6ee7b7',
+                    borderRadius: '12px',
+                    padding: '0.95rem 1.25rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '0.85rem'
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 800, color: '#065f46', fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                        <Sparkles size={16} color="#059669" /> Matrícula {formData.anno || 2027} — Correlativo Inicial: {formData.enrollment_number || `${formData.anno || 2027}-001`}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#334155', marginTop: '0.2rem' }}>
+                        Si el estudiante estuvo matriculado en <strong>{Number(formData.anno || 2027) - 1}</strong>, puedes seleccionarlo de la lista para cargar y actualizar sus datos. Si es <strong>estudiante nuevo</strong>, completa los campos requeridos (*).
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowPreviousSelector(true)}
+                      style={{
+                        background: '#4f46e5',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '9px',
+                        padding: '0.55rem 1rem',
+                        fontWeight: 800,
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        boxShadow: '0 4px 10px rgba(79, 70, 229, 0.2)'
+                      }}
+                    >
+                      <Users size={16} /> Seleccionar Estudiante de Nómina {Number(formData.anno || 2027) - 1}
+                    </button>
+                  </div>
+                )
+              )}
+
               {/* TARJETA 1: IDENTIFICACIÓN Y NOMBRES DESGLOSADOS */}
               <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
                 <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.6rem', marginBottom: '1rem' }}>
@@ -661,7 +994,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem 1.5rem' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Nombres del Alumno(a)</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Nombres del Alumno(a) <span style={{ color: '#dc2626' }}>*</span></label>
                     <input
                       type="text"
                       value={formData.first_name || ''}
@@ -671,7 +1004,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Apellido Paterno</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Apellido Paterno <span style={{ color: '#dc2626' }}>*</span></label>
                     <input
                       type="text"
                       value={formData.paternal_surname || ''}
@@ -713,7 +1046,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem 1.25rem', marginBottom: '1.25rem' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>RUT Alumno</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>RUT Alumno <span style={{ color: '#dc2626' }}>*</span></label>
                     <input
                       type="text"
                       value={formData.run || ''}
@@ -723,20 +1056,53 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#4338ca', marginBottom: '0.4rem' }}>N° de Matrícula (Único)</label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#4338ca', margin: 0 }}>N° de Matrícula (Único) <span style={{ color: '#dc2626' }}>*</span></label>
+                      {!readOnly && !formData.id && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const y = Number(formData.anno || formData.academic_year || 2027);
+                            const autoNum = getNextEnrollmentNumberForYear(allStudents, y);
+                            setManualEnrollmentEdited(false);
+                            setFormData((prev: any) => ({ ...prev, enrollment_number: autoNum, numero_matricula: autoNum }));
+                          }}
+                          title="Recalcular correlativo automático desde el 1 para este año"
+                          style={{
+                            border: 'none',
+                            background: '#e0e7ff',
+                            color: '#3730a3',
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            borderRadius: '5px',
+                            padding: '1px 6px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '2px'
+                          }}
+                        >
+                          <RefreshCw size={10} /> Auto
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="text"
                       value={formData.enrollment_number || ''}
-                      onChange={e => handleChange('enrollment_number', e.target.value)}
-                      placeholder="2026-001"
+                      onChange={e => {
+                        setManualEnrollmentEdited(true);
+                        handleChange('enrollment_number', e.target.value);
+                      }}
+                      placeholder={`${formData.anno || 2027}-001`}
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '2px solid #6366f1', fontWeight: 800, color: '#312e81', fontSize: '0.85rem', background: '#f5f3ff', boxSizing: 'border-box' }}
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>N° de Lista en Libro</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>N° de Lista en Libro ({formData.anno || 2027})</label>
                     <input
                       type="number"
-                      value={formData.list_number !== undefined && formData.list_number !== null ? formData.list_number : calculatedListNumber}
+                      min={1}
+                      value={formData.list_number !== undefined && formData.list_number !== null && Number(formData.list_number) > 0 ? formData.list_number : calculatedListNumber}
                       onChange={e => handleChange('list_number', parseInt(e.target.value, 10) || 1)}
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 800, color: '#0284c7', fontSize: '0.85rem', boxSizing: 'border-box' }}
                     />
@@ -885,7 +1251,18 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#3730a3', marginBottom: '0.4rem' }}>Año Lectivo Matrícula</label>
                     <select
                       value={formData.anno || 2027}
-                      onChange={e => handleChange('anno', parseInt(e.target.value, 10))}
+                      onChange={e => {
+                        const newYear = parseInt(e.target.value, 10) || 2027;
+                        setFormData((prev: any) => {
+                          const next: any = { ...prev, anno: newYear, academic_year: newYear };
+                          if (!prev.id && !manualEnrollmentEdited) {
+                            const autoNum = getNextEnrollmentNumberForYear(allStudents, newYear);
+                            next.enrollment_number = autoNum;
+                            next.numero_matricula = autoNum;
+                          }
+                          return next;
+                        });
+                      }}
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '2px solid #6366f1', fontWeight: 800, color: '#312e81', fontSize: '0.85rem', background: '#f5f3ff', boxSizing: 'border-box' }}
                     >
                       <option value={2026}>Año Escolar 2026</option>
@@ -932,24 +1309,16 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
               <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
                 <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.6rem', marginBottom: '1.25rem' }}>
                   <h4 style={{ color: '#0f172a', margin: 0, fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    🏫 Asignación Escolar & Domicilio del Estudiante
+                    🏫 Asignación Escolar, Domicilio & Contacto del Estudiante
                   </h4>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem 1.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1.5rem', marginBottom: '1.25rem' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Curso / Nivel</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Curso / Nivel <span style={{ color: '#dc2626' }}>*</span></label>
                     <select
-                      value={getStudentCourse(formData)}
-                      onChange={e => {
-                        const newCourse = e.target.value;
-                        handleChange('level_name', newCourse);
-                        handleChange('desc_grado', newCourse);
-                        const assignedTeacher = allStudents.find((s: any) => getStudentCourse(s) === newCourse && s.profesor_jefe)?.profesor_jefe;
-                        if (assignedTeacher) {
-                          handleChange('profesor_jefe', assignedTeacher);
-                        }
-                      }}
+                      value={getStudentCourse(formData) === 'Sin Curso' ? '' : getStudentCourse(formData)}
+                      onChange={e => handleSelectCourse(e.target.value)}
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '0.85rem', boxSizing: 'border-box', background: '#ffffff', color: '#1e1b4b' }}
                     >
                       <option value="">-- Seleccionar Curso --</option>
@@ -978,14 +1347,98 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                     </select>
                   </div>
                   <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Fecha de Matrícula / Ingreso</label>
+                    <input
+                      type="date"
+                      value={formatDateForInput(formData.incorporation_date || formData.enrollment_date)}
+                      onChange={e => {
+                        handleChange('incorporation_date', e.target.value);
+                        handleChange('enrollment_date', e.target.value);
+                      }}
+                      style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '1.25rem 1.5rem', marginBottom: '1.25rem' }}>
+                  <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Dirección / Domicilio</label>
                     <input
                       type="text"
                       value={formData.address || ''}
                       onChange={e => handleChange('address', e.target.value)}
-                      placeholder="Av. O'Higgins 450, Chillán"
+                      placeholder="Ej: Campanario S/N, Parcela 4..."
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
                     />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Comuna</label>
+                    <input
+                      type="text"
+                      value={formData.commune || ''}
+                      onChange={e => handleChange('commune', e.target.value)}
+                      placeholder="Ej: Yungay"
+                      style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Región</label>
+                    <input
+                      type="text"
+                      value={formData.region || ''}
+                      onChange={e => handleChange('region', e.target.value)}
+                      placeholder="Región de Ñuble"
+                      style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1.2fr 0.9fr', gap: '1.25rem 1.25rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Colegio / Jardín de Procedencia</label>
+                    <input
+                      type="text"
+                      value={formData.previous_school || ''}
+                      onChange={e => handleChange('previous_school', e.target.value)}
+                      placeholder="Ej: Escuela Campanario / Mismo Liceo"
+                      style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Teléfono Estudiante</label>
+                    <input
+                      type="text"
+                      value={formData.phone || formData.mobile_phone || ''}
+                      onFocus={e => { if (!e.target.value) handleChange('phone', '+56'); }}
+                      onChange={e => {
+                        const fmt = formatPhone(e.target.value);
+                        handleChange('phone', fmt);
+                        handleChange('mobile_phone', fmt);
+                      }}
+                      placeholder="+56912345678"
+                      style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Correo Estudiante</label>
+                    <input
+                      type="email"
+                      value={formData.email || ''}
+                      onChange={e => handleChange('email', e.target.value)}
+                      placeholder="estudiante@correo.cl"
+                      style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Situación Escolar</label>
+                    <select
+                      value={formData.is_repeater ? '1' : '0'}
+                      onChange={e => handleChange('is_repeater', e.target.value === '1' ? 1 : 0)}
+                      style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '0.85rem', boxSizing: 'border-box', color: formData.is_repeater ? '#b45309' : '#166534' }}
+                    >
+                      <option value="0">Regular / Promovido</option>
+                      <option value="1">Repitente</option>
+                    </select>
                   </div>
                 </div>
               </div>
@@ -1038,7 +1491,35 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Ocupación / Profesión</label>
-                  <input type="text" value={formData.guardian_occupation || ''} onChange={e => handleChange('guardian_occupation', e.target.value)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
+                  <input type="text" value={formData.guardian_occupation || ''} onChange={e => handleChange('guardian_occupation', e.target.value)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', margin: 0 }}>Dirección Apoderado Titular</label>
+                    {!readOnly && formData.address && (
+                      <button
+                        type="button"
+                        onClick={() => handleChange('guardian_address', formData.address)}
+                        style={{
+                          border: 'none',
+                          background: '#e0e7ff',
+                          color: '#3730a3',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          borderRadius: '5px',
+                          padding: '2px 7px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        📋 Copiar domicilio alumno
+                      </button>
+                    )}
+                  </div>
+                  <input type="text" value={formData.guardian_address || ''} onChange={e => handleChange('guardian_address', e.target.value)} placeholder="Misma del estudiante o especificar..." style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Nivel Educacional Apoderado</label>
+                  <input type="text" value={formData.guardian_education || ''} onChange={e => handleChange('guardian_education', e.target.value)} placeholder="Ej: Media Completa / Técnico / Superior" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }} />
                 </div>
               </div>
             </div>
@@ -1197,7 +1678,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                 <h4 style={{ color: '#3730a3', fontSize: '0.95rem', fontWeight: 800, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
                   🏠 Convivencia Familiar & Tutores Legales
                 </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1rem', marginBottom: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#3730a3', marginBottom: '0.35rem' }}>Alumno Vive Con</label>
                     <select value={formData.lives_with || 'Ambos Padres'} onChange={e => handleChange('lives_with', e.target.value)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.85rem' }}>
@@ -1211,11 +1692,39 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#3730a3', marginBottom: '0.35rem' }}>N° Integrantes Grupo Familiar</label>
-                    <input type="number" value={formData.family_count || 4} onChange={e => handleChange('family_count', parseInt(e.target.value, 10) || 4)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
+                    <input
+                      type="number"
+                      min={1}
+                      value={formData.family_members ?? formData.family_count ?? 4}
+                      onChange={e => {
+                        const val = parseInt(e.target.value, 10) || 1;
+                        handleChange('family_members', val);
+                        handleChange('family_count', val);
+                      }}
+                      style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#3730a3', marginBottom: '0.35rem' }}>Tutor u Otro Familiar Responsable</label>
-                    <input type="text" value={formData.other_tutor_name || ''} onChange={e => handleChange('other_tutor_name', e.target.value)} placeholder="Nombre de Tutor Adicional" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
+                    <input type="text" value={formData.other_tutor_name || ''} onChange={e => handleChange('other_tutor_name', e.target.value)} placeholder="Nombre de Tutor Adicional" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem 1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Total Hermanos</label>
+                    <input type="number" min={0} value={formData.total_siblings ?? 0} onChange={e => handleChange('total_siblings', parseInt(e.target.value, 10) || 0)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Hermanos Escolares</label>
+                    <input type="number" min={0} value={formData.school_siblings ?? 0} onChange={e => handleChange('school_siblings', parseInt(e.target.value, 10) || 0)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Hermanos en este Liceo</label>
+                    <input type="number" min={0} value={formData.liceo_siblings ?? 0} onChange={e => handleChange('liceo_siblings', parseInt(e.target.value, 10) || 0)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Lugar entre Hermanos</label>
+                    <input type="number" min={1} value={formData.sibling_position ?? 1} onChange={e => handleChange('sibling_position', parseInt(e.target.value, 10) || 1)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }} />
                   </div>
                 </div>
               </div>
@@ -1349,7 +1858,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                 <h4 style={{ color: '#0f172a', fontSize: '0.95rem', fontWeight: 800, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
                   🏥 Ficha Médica, Previsión & Salud
                 </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1rem', marginBottom: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Sistema de Previsión de Salud</label>
                     <select value={formData.health_system || 'Fonasa A'} onChange={e => handleChange('health_system', e.target.value)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}>
@@ -1358,17 +1867,69 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                       <option value="Fonasa C">Fonasa Tramo C</option>
                       <option value="Fonasa D">Fonasa Tramo D</option>
                       <option value="Isapre">Isapre</option>
-                      <option value="Particular">Particular / Sin Previsión</option>
+                      <option value="Ninguna">Particular / Sin Previsión</option>
                     </select>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Grupo Sanguíneo</label>
-                    <input type="text" value={formData.blood_type || ''} onChange={e => handleChange('blood_type', e.target.value)} placeholder="Ej: ORH+" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
+                    <input type="text" value={formData.blood_type || ''} onChange={e => handleChange('blood_type', e.target.value)} placeholder="Ej: ORH+" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }} />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Alergias o Contraindicaciones</label>
-                    <input type="text" value={formData.allergies || ''} onChange={e => handleChange('allergies', e.target.value)} placeholder="Ej: Penicilina / Polen" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
+                    <input
+                      type="text"
+                      value={formData.allergies_detail ?? formData.allergies ?? ''}
+                      onChange={e => {
+                        handleChange('allergies_detail', e.target.value);
+                        handleChange('allergies', e.target.value);
+                      }}
+                      placeholder="Ej: Penicilina / Polen / Ninguna"
+                      style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
                   </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Enfermedades Crónicas / Tratamiento</label>
+                    <input
+                      type="text"
+                      value={formData.chronic_disease_detail || ''}
+                      onChange={e => handleChange('chronic_disease_detail', e.target.value)}
+                      placeholder="Ej: Asma / Ninguna"
+                      style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Contacto de Emergencia</label>
+                    <input
+                      type="text"
+                      value={formData.emergency_contact_name || ''}
+                      onChange={e => handleChange('emergency_contact_name', e.target.value)}
+                      placeholder="Nombre contacto adicional"
+                      style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Teléfono Emergencia</label>
+                    <input
+                      type="text"
+                      value={formData.emergency_contact_phone || ''}
+                      onFocus={e => { if (!e.target.value) handleChange('emergency_contact_phone', '+56'); }}
+                      onChange={e => handleChange('emergency_contact_phone', formatPhone(e.target.value))}
+                      placeholder="+56912345678"
+                      style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Observaciones Generales / Salud</label>
+                  <input
+                    type="text"
+                    value={formData.health_observations ?? formData.observaciones ?? ''}
+                    onChange={e => handleChange('health_observations', e.target.value)}
+                    placeholder="Observaciones relevantes para matrícula y ficha de salud..."
+                    style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                  />
                 </div>
               </div>
 
@@ -1380,18 +1941,26 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem 1rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Pertenece a Programa PIE</label>
-                    <select value={formData.pie_program ? 'Sí' : 'No'} onChange={e => handleChange('pie_program', e.target.value === 'Sí')} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, color: formData.pie_program ? '#16a34a' : '#64748b', fontSize: '0.85rem' }}>
+                    <select value={formData.pie_program ? 'Sí' : 'No'} onChange={e => handleChange('pie_program', e.target.value === 'Sí' ? 1 : 0)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, color: formData.pie_program ? '#16a34a' : '#64748b', fontSize: '0.85rem' }}>
                       <option value="No">No pertenece a PIE</option>
                       <option value="Sí">Sí pertenece a PIE</option>
                     </select>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Diagnóstico PIE Registrado</label>
-                    <input type="text" value={formData.pie_diagnosis || ''} onChange={e => handleChange('pie_diagnosis', e.target.value)} placeholder="Ej: TEL Mixto / DEA / TDAH" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }} />
+                    <input type="text" value={formData.pie_diagnosis || ''} onChange={e => handleChange('pie_diagnosis', e.target.value)} placeholder="Ej: TEL Mixto / DEA / TDAH" style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }} />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>Prioridad SEP / Alumno Prioritario</label>
-                    <select value={formData.sep_priority ? 'Sí' : 'No'} onChange={e => handleChange('sep_priority', e.target.value === 'Sí')} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, color: formData.sep_priority ? '#d97706' : '#64748b', fontSize: '0.85rem' }}>
+                    <select
+                      value={(formData.is_priority || formData.sep_priority) ? 'Sí' : 'No'}
+                      onChange={e => {
+                        const val = e.target.value === 'Sí' ? 1 : 0;
+                        handleChange('is_priority', val);
+                        handleChange('sep_priority', Boolean(val));
+                      }}
+                      style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, color: (formData.is_priority || formData.sep_priority) ? '#d97706' : '#64748b', fontSize: '0.85rem' }}
+                    >
                       <option value="No">No Prioritario</option>
                       <option value="Sí">Sí Prioritario SEP</option>
                     </select>
@@ -1760,27 +2329,57 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
         )}
 
         {/* Footer con Botones */}
-        <div style={{ padding: '1rem 1.5rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ padding: '1rem 1.5rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <div>
-            {readOnly && (
+            {readOnly ? (
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#92400e', background: '#fef3c7', border: '1px solid #fde68a', padding: '0.35rem 0.75rem', borderRadius: '8px' }}>
                 👁️ Perfil en Modo Solo Vista: puedes consultar todas las pestañas e imprimir documentos, pero no modificar la ficha.
               </span>
-            )}
+            ) : hasSavedSession ? (
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#166534', background: '#dcfce7', border: '1px solid #86efac', padding: '0.35rem 0.75rem', borderRadius: '8px' }}>
+                ✅ Ficha guardada en Año {formData.anno} • Matrícula {formData.enrollment_number || 'S/N'} — Puedes imprimir la ficha antes de cerrar.
+              </span>
+            ) : null}
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <button onClick={onClose} className="btn" style={{ background: '#cbd5e1', color: '#1e293b' }}>
-              {readOnly ? 'Cerrar Ficha' : 'Cancelar'}
+          <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <button onClick={onClose} className="btn" style={{ background: '#cbd5e1', color: '#1e293b', fontWeight: 700 }}>
+              {readOnly || hasSavedSession ? 'Cerrar Ficha' : 'Cancelar'}
             </button>
+            {hasSavedSession && (
+              <button
+                type="button"
+                onClick={() => setInternalPrintStudent(formData)}
+                className="btn"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#059669', color: '#ffffff', fontWeight: 700 }}
+              >
+                <Printer size={16} /> Imprimir Ficha de Matrícula
+              </button>
+            )}
+            {!readOnly && batchInfo?.onNextStudent && (
+              <button
+                type="button"
+                onClick={batchInfo.onNextStudent}
+                className="btn"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#0284c7', color: '#ffffff', fontWeight: 700 }}
+                title={batchInfo.nextStudentName ? `Continuar con ${batchInfo.nextStudentName}` : 'Continuar con siguiente estudiante seleccionado'}
+              >
+                Siguiente ({batchInfo.current + 1}/{batchInfo.total}) <ArrowRight size={15} />
+              </button>
+            )}
             {readOnly ? (
-              onPrint && (
+              !hasSavedSession && onPrint && (
                 <button onClick={() => onPrint(formData)} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#4f46e5' }}>
-                  🖨️ Imprimir Ficha Oficial
+                  <Printer size={16} /> Imprimir Ficha Oficial
                 </button>
               )
             ) : (
-              <button onClick={handleSave} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <CheckCircle size={16} /> Guardar Ficha Completa
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="btn btn-primary"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, opacity: saving ? 0.7 : 1 }}
+              >
+                <CheckCircle size={16} /> {saving ? 'Guardando...' : hasSavedSession ? 'Guardar Cambios' : 'Guardar Ficha Completa'}
               </button>
             )}
           </div>
@@ -1793,6 +2392,26 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
           student={formData}
           initialMode={checklistMode}
         />
+
+        {/* MODAL SELECTOR DE ESTUDIANTES DEL AÑO ANTERIOR DESDE DENTRO DE LA FICHA */}
+        {showPreviousSelector && (
+          <EnrollmentSelectorModal
+            isOpen={showPreviousSelector}
+            onClose={() => setShowPreviousSelector(false)}
+            allStudents={allStudents}
+            targetYear={Number(formData.anno || formData.academic_year || 2027)}
+            onSelectSingleFromPrevious={handleLoadStudentFromPreviousYear}
+            titleOverride={`Cargar Estudiante del ${Number(formData.anno || 2027) - 1} para Actualizar en ${formData.anno || 2027}`}
+          />
+        )}
+
+        {/* MODAL IMPRESIÓN DIRECTA ANTES DE CERRAR */}
+        {internalPrintStudent && (
+          <OfficialEnrollmentForm
+            student={internalPrintStudent}
+            onClose={() => setInternalPrintStudent(null)}
+          />
+        )}
       </div>
     </div>
   );

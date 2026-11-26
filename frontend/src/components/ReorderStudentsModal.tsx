@@ -37,25 +37,38 @@ export const ReorderStudentsModal: React.FC<ReorderModalProps> = ({ students, to
     ? list 
     : list.filter(s => getStudentCourse(s) === selectedCourse);
 
-  // 1. REORDENAMIENTO AUTOMÁTICO A-Z POR APELLIDOS
+  // 1. REORDENAMIENTO AUTOMÁTICO A-Z POR APELLIDOS (CORRELATIVO POR CURSO)
   const handleAutoReorderAZ = () => {
     const sorted = [...list].sort((a, b) => {
+      const courseA = getStudentCourse(a);
+      const courseB = getStudentCourse(b);
+      if (courseA !== courseB) {
+        return sortCoursesList([courseA, courseB])[0] === courseA ? -1 : 1;
+      }
       const surnameA = (a.paternal_surname || a.full_name || '').toLowerCase();
       const surnameB = (b.paternal_surname || b.full_name || '').toLowerCase();
       return surnameA.localeCompare(surnameB, 'es', { sensitivity: 'base' });
     });
 
-    const renumbered = sorted.map((std, idx) => ({
-      ...std,
-      list_number: idx + 1
-    }));
+    const courseCounters: Record<string, number> = {};
+    const renumbered = sorted.map(std => {
+      const c = getStudentCourse(std);
+      if (selectedCourse !== 'Todos' && c !== selectedCourse) {
+        return std;
+      }
+      courseCounters[c] = (courseCounters[c] || 0) + 1;
+      return {
+        ...std,
+        list_number: courseCounters[c]
+      };
+    });
 
     setList(renumbered);
     Swal.fire({
       toast: true,
       position: 'top-end',
       icon: 'success',
-      title: 'Lista reordenada alfabéticamente A-Z',
+      title: 'Lista reordenada alfabéticamente A-Z por curso',
       timer: 1500,
       showConfirmButton: false
     });
