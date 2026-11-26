@@ -101,9 +101,29 @@ export function calculateExactAge(birthDateString: string | null): string {
 }
 
 
+const resolveReligionChoice = (val: any): 'Ninguna' | 'Católica' | 'Evangélica' | 'Otro' => {
+  const clean = String(val || '').trim();
+  if (!clean) return 'Ninguna';
+  const norm = clean.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (norm === 'ninguna' || norm === 'ninguno' || norm === 'no profesa' || norm === 'sin religion') return 'Ninguna';
+  if (norm === 'catolica' || norm === 'catolico') return 'Católica';
+  if (norm === 'evangelica' || norm === 'evangelico') return 'Evangélica';
+  return 'Otro';
+};
+
+const normalizeReligionValue = (val: any): string => {
+  const choice = resolveReligionChoice(val);
+  if (choice === 'Otro') {
+    const clean = String(val || '').trim();
+    return clean.toLowerCase() === 'otro' || clean.toLowerCase() === 'otra' ? '' : clean;
+  }
+  return choice;
+};
+
 const buildInitialFormState = (student: any, user: any) => {
   const targetYear = Number(student?.anno || student?.academic_year || student?.entry_year || 2027) || 2027;
   const todayIso = getTodayIsoDate();
+  const normalizedReligion = normalizeReligionValue(student?.religion);
   return {
     ...student,
     has_complementary_insurance: student?.has_complementary_insurance ? 1 : 0,
@@ -117,6 +137,8 @@ const buildInitialFormState = (student: any, user: any) => {
     academic_year: student?.academic_year || targetYear,
     region: student?.region || 'Región de Ñuble',
     commune: student?.commune || 'Yungay',
+    religion: normalizedReligion,
+    has_religion: normalizedReligion && normalizedReligion !== 'Ninguna' ? 1 : 0,
     family_members: student?.family_members ?? student?.family_count ?? 4,
     allergies_detail: student?.allergies_detail || student?.allergies || '',
     is_priority: student?.is_priority ?? student?.sep_priority ?? 0,
@@ -170,10 +192,14 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
   const [hasSavedSession, setHasSavedSession] = useState<boolean>(Boolean(student?.id));
   const [manualEnrollmentEdited, setManualEnrollmentEdited] = useState<boolean>(Boolean(student?.id));
   const [saving, setSaving] = useState<boolean>(false);
+  const [religionChoice, setReligionChoice] = useState<'Ninguna' | 'Católica' | 'Evangélica' | 'Otro'>(() =>
+    resolveReligionChoice(student?.religion)
+  );
 
   // Sincronizar estado cuando cambia el estudiante seleccionado (ej. al avanzar en cola 2027)
   React.useEffect(() => {
     setFormData(buildInitialFormState(student, user));
+    setReligionChoice(resolveReligionChoice(student?.religion));
     setHasSavedSession(Boolean(student?.id));
     setManualEnrollmentEdited(Boolean(student?.id));
     setActiveTab('personal');
@@ -488,6 +514,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
   const handleLoadStudentFromPreviousYear = (sourceStudent: any, existingTarget?: any) => {
     if (existingTarget) {
       setFormData(buildInitialFormState(existingTarget, user));
+      setReligionChoice(resolveReligionChoice(existingTarget?.religion));
       setHasSavedSession(true);
       setManualEnrollmentEdited(true);
       setShowPreviousSelector(false);
@@ -505,6 +532,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
     const targetYear = Number(formData.anno || formData.academic_year || 2027);
     const prepared = prepareStudentForYearEnrollment(sourceStudent, targetYear, allStudents);
     setFormData(buildInitialFormState(prepared, user));
+    setReligionChoice(resolveReligionChoice(prepared?.religion));
     setHasSavedSession(false);
     setManualEnrollmentEdited(false);
     setShowPreviousSelector(false);
@@ -609,7 +637,15 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
           : calculatedListNumber,
         enrollment_number: cleanEnrollmentVal(formData.enrollment_number),
         gender: formData.gender === 'OTRO' ? (formData.gender_custom || 'OTRO') : formData.gender,
-        ethnicity: formData.ethnicity === 'Otro' ? (formData.ethnicity_custom || 'Otro') : formData.ethnicity
+        ethnicity: formData.ethnicity === 'Otro' ? (formData.ethnicity_custom || 'Otro') : formData.ethnicity,
+        religion:
+          religionChoice === 'Otro'
+            ? (String(formData.religion || '').trim() || 'Otra')
+            : religionChoice,
+        has_religion:
+          religionChoice === 'Ninguna'
+            ? 0
+            : (religionChoice === 'Otro' && !String(formData.religion || '').trim() ? 0 : 1)
       };
 
       const res = await fetch('/api/students', {
@@ -628,6 +664,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
         ...prev,
         ...savedStudent
       }));
+      setReligionChoice(resolveReligionChoice(savedStudent.religion));
       setHasSavedSession(true);
       setManualEnrollmentEdited(true);
       fetchStudentsRoster();
@@ -1202,13 +1239,49 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Religión / Creencia</label>
-                    <input
-                      type="text"
-                      value={formData.religion || 'Ninguna'}
-                      onChange={e => handleChange('religion', e.target.value)}
-                      placeholder="Evangélica, Católica, etc."
-                      style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
-                    />
+                    <select
+                      value={religionChoice}
+                      onChange={e => {
+                        const chosen = e.target.value as 'Ninguna' | 'Católica' | 'Evangélica' | 'Otro';
+                        setReligionChoice(chosen);
+                        if (chosen === 'Otro') {
+                          setFormData((prev: any) => ({
+                            ...prev,
+                            religion: resolveReligionChoice(prev.religion) === 'Otro' ? (prev.religion || '') : '',
+                            has_religion: 1
+                          }));
+                        } else {
+                          setFormData((prev: any) => ({
+                            ...prev,
+                            religion: chosen,
+                            has_religion: chosen === 'Ninguna' ? 0 : 1
+                          }));
+                        }
+                      }}
+                      style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    >
+                      <option value="Ninguna">Ninguna / No profesa</option>
+                      <option value="Católica">Católica</option>
+                      <option value="Evangélica">Evangélica</option>
+                      <option value="Otro">Otro (Especificar religión)</option>
+                    </select>
+                    {religionChoice === 'Otro' && (
+                      <input
+                        type="text"
+                        value={formData.religion || ''}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setFormData((prev: any) => ({
+                            ...prev,
+                            religion: val,
+                            has_religion: val.trim() ? 1 : 0
+                          }));
+                        }}
+                        placeholder="Escriba la religión o creencia..."
+                        autoFocus
+                        style={{ width: '100%', marginTop: '0.4rem', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #6366f1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                      />
+                    )}
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Previsión de Salud</label>
