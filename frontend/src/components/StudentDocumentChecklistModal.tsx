@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import Swal from 'sweetalert2';
 import { 
   FileCheck, 
@@ -21,6 +22,17 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ChecklistTemplatesEditor } from './ChecklistTemplatesEditor';
+import { getStudentCourse, getStudentYear } from '../utils/course';
+
+const OFFICIAL_INSTITUTION_DEFAULTS = {
+  schoolName: 'Liceo Técnico Profesional Campanario Marcos Delucchi Fonck',
+  shortName: 'LTP Campanario',
+  rbd: '3941-1',
+  phone: '+56 42 220 5400',
+  locality: 'Campanario',
+  commune: 'Yungay',
+  region: 'XVI Región de Ñuble'
+};
 
 export interface ChecklistItem {
   id: string;
@@ -103,7 +115,10 @@ export const StudentDocumentChecklistModal: React.FC<StudentDocumentChecklistMod
   const canConfigure = isSuperAdmin || user?.role === 'Admin' || user?.role === 'Director' || user?.role === 'Administrativo';
   const [showConfigEditor, setShowConfigEditor] = useState(false);
   const [activeTab, setActiveTab] = useState<'retiro' | 'matricula'>(initialMode);
-  const [studentType, setStudentType] = useState<'nuevo' | 'antiguo'>('nuevo');
+  const [studentType, setStudentType] = useState<'nuevo' | 'antiguo'>(() =>
+    student?._isContinuityFromPreviousYear ? 'antiguo' : 'nuevo'
+  );
+  const [instSettings, setInstSettings] = useState(OFFICIAL_INSTITUTION_DEFAULTS);
 
   // Items en memoria
   const [withdrawalItems, setWithdrawalItems] = useState<ChecklistItem[]>(DEFAULT_WITHDRAWAL_ITEMS);
@@ -124,12 +139,35 @@ export const StudentDocumentChecklistModal: React.FC<StudentDocumentChecklistMod
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.stopPropagation();
         onClose();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/config/institutional-settings', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data && (data.schoolName || data.rbd)) {
+          setInstSettings({
+            schoolName: data.schoolName || OFFICIAL_INSTITUTION_DEFAULTS.schoolName,
+            shortName: data.shortName || OFFICIAL_INSTITUTION_DEFAULTS.shortName,
+            rbd: data.rbd && data.rbd !== '1234-5' ? data.rbd : OFFICIAL_INSTITUTION_DEFAULTS.rbd,
+            phone: data.phone || OFFICIAL_INSTITUTION_DEFAULTS.phone,
+            locality: data.locality || OFFICIAL_INSTITUTION_DEFAULTS.locality,
+            commune: data.commune || OFFICIAL_INSTITUTION_DEFAULTS.commune,
+            region: data.region || OFFICIAL_INSTITUTION_DEFAULTS.region
+          });
+        }
+      })
+      .catch(() => {});
+  }, [isOpen, token]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -153,24 +191,26 @@ export const StudentDocumentChecklistModal: React.FC<StudentDocumentChecklistMod
   }, [initialMode]);
 
   useEffect(() => {
-    if (student) {
+    if (student && isOpen) {
       setReceiverName(student.apoderado_nombre || student.guardian_name || '');
-      setReceiverRun(student.apoderado_run || student.guardian_rut || '');
+      setReceiverRun(student.apoderado_run || student.guardian_run || student.guardian_rut || '');
       setDestinationSchool('');
       setWithdrawalNotes(student.motivo_retiro || student.retirement_reason || '');
+      setStudentType(student?._isContinuityFromPreviousYear ? 'antiguo' : 'nuevo');
       loadChecklistHistory();
     }
   }, [student, isOpen]);
 
   const loadChecklistHistory = async (forceRefreshTemplates = false) => {
-    if (!student?.id) return;
     setLoading(true);
     try {
       const [tpls, historyRes] = await Promise.all([
         loadChecklistTemplates(),
-        fetch(`/api/students/${student.id}/checklists`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        }).then(r => r.json()).catch(() => null)
+        student?.id
+          ? fetch(`/api/students/${student.id}/checklists`, {
+              headers: token ? { Authorization: `Bearer ${token}` } : {}
+            }).then(r => r.json()).catch(() => null)
+          : Promise.resolve(null)
       ]);
 
       const data = historyRes;
@@ -243,8 +283,17 @@ export const StudentDocumentChecklistModal: React.FC<StudentDocumentChecklistMod
   const totalCount = currentItems.length;
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
+  const schoolYear = getStudentYear(student);
+
   const handleSave = async () => {
-    if (!student?.id) return;
+    if (!student?.id) {
+      Swal.fire(
+        'Ficha aún sin guardar',
+        'Primero guarda la Ficha del Estudiante para poder archivar su Checklist en la base de datos. Puedes imprimirlo igualmente antes o después.',
+        'info'
+      );
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -258,7 +307,7 @@ export const StudentDocumentChecklistModal: React.FC<StudentDocumentChecklistMod
         officer_name: user?.name || 'Funcionario LTP',
         destination_school: activeTab === 'retiro' ? destinationSchool.trim() : '',
         notes: activeTab === 'retiro' ? withdrawalNotes.trim() : '',
-        academic_year: new Date().getFullYear()
+        academic_year: schoolYear
       };
 
       const res = await fetch(`/api/students/${student.id}/checklists`, {
@@ -297,12 +346,15 @@ export const StudentDocumentChecklistModal: React.FC<StudentDocumentChecklistMod
 
   if (!isOpen) return null;
 
-  const studentName = student?.full_name || `${student?.nombres || ''} ${student?.apellido_paterno || ''} ${student?.apellido_materno || ''}`.trim() || 'Estudiante';
+  const studentName =
+    student?.full_name ||
+    `${student?.first_name || student?.nombres || ''} ${student?.paternal_surname || student?.apellido_paterno || ''} ${student?.maternal_surname || student?.apellido_materno || ''}`.trim() ||
+    'Estudiante';
   const studentRun = student?.run || student?.rut || 'Sin RUN';
-  const studentCourse = student?.desc_grado || student?.course_name || student?.curso || 'Sin Curso';
+  const studentCourse = getStudentCourse(student) || student?.course_name || student?.curso || 'Sin Curso';
 
-  return (
-    <div style={{
+  const modalContent = (
+    <div className="checklist-print-portal" style={{
       position: 'fixed',
       top: 0,
       left: 0,
@@ -313,33 +365,59 @@ export const StudentDocumentChecklistModal: React.FC<StudentDocumentChecklistMod
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 9999,
+      zIndex: 99999,
       padding: '1rem'
     }}>
       <style>{`
         @media print {
-          body * {
-            visibility: hidden;
+          @page {
+            size: letter portrait;
+            margin: 10mm 12mm;
           }
-          #printable-checklist-area, #printable-checklist-area * {
-            visibility: visible;
+          html, body {
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            overflow: visible !important;
+          }
+          #root, #root *, body > *:not(.checklist-print-portal) {
+            display: none !important;
+            visibility: hidden !important;
+          }
+          .checklist-print-portal {
+            position: static !important;
+            display: block !important;
+            background: #ffffff !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            overflow: visible !important;
+          }
+          .checklist-print-dialog {
+            max-width: 100% !important;
+            max-height: none !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            overflow: visible !important;
+            display: block !important;
           }
           #printable-checklist-area {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            padding: 1.5cm;
-            background: #ffffff;
-            color: #000000;
+            padding: 0 !important;
+            width: 100% !important;
+            background: #ffffff !important;
+            color: #000000 !important;
           }
-          .no-print {
+          .no-print, .no-print * {
             display: none !important;
+            visibility: hidden !important;
           }
         }
       `}</style>
 
-      <div style={{
+      <div className="checklist-print-dialog" style={{
         background: '#ffffff',
         borderRadius: '16px',
         width: '100%',
@@ -491,13 +569,13 @@ export const StudentDocumentChecklistModal: React.FC<StudentDocumentChecklistMod
               marginBottom: '1.25rem'
             }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, textTransform: 'uppercase', color: '#0f172a' }}>
-                  Liceo Técnico Profesional Campanario
+                <h2 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800, textTransform: 'uppercase', color: '#0f172a' }}>
+                  {instSettings.schoolName}
                 </h2>
-                <div style={{ fontSize: '0.75rem', color: '#475569' }}>
-                  RBD: 17565-1 • Fono: 42 287 0134 • Comuna de Yungay, Región de Ñuble
+                <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '2px' }}>
+                  RBD: {instSettings.rbd} • Fono: {instSettings.phone} • {instSettings.locality ? `${instSettings.locality}, ` : ''}Comuna de {instSettings.commune}, {instSettings.region}
                 </div>
-                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginTop: '2px' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginTop: '3px' }}>
                   {activeTab === 'retiro' 
                     ? 'COMPROBANTE OFICIAL DE ENTREGA DE DOCUMENTOS POR RETIRO ESCOLAR' 
                     : `FICHA DE CONTROL Y RECEPCIÓN DOCUMENTAL DE MATRÍCULA (${studentType === 'nuevo' ? 'ESTUDIANTE NUEVO' : 'ESTUDIANTE ANTIGUO'})`}
@@ -505,7 +583,7 @@ export const StudentDocumentChecklistModal: React.FC<StudentDocumentChecklistMod
               </div>
               <div style={{ textAlign: 'right', fontSize: '0.78rem', color: '#64748b' }}>
                 <div><strong>Fecha:</strong> {new Date().toLocaleDateString('es-CL')}</div>
-                <div><strong>Año Escolar:</strong> {new Date().getFullYear()}</div>
+                <div><strong>Año Escolar:</strong> {schoolYear}</div>
               </div>
             </div>
 
@@ -743,10 +821,10 @@ export const StudentDocumentChecklistModal: React.FC<StudentDocumentChecklistMod
             }}>
               <div style={{ borderTop: '1px solid #000000', paddingTop: '0.5rem' }}>
                 <div style={{ fontWeight: 800, fontSize: '0.85rem' }}>
-                  {activeTab === 'retiro' ? (receiverName || 'Firma Apoderado que Retira') : 'Firma Apoderado Titular'}
+                  {activeTab === 'retiro' ? (receiverName || 'Firma Apoderado que Retira') : (student?.guardian_name || 'Firma Apoderado Titular')}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: '#475569' }}>
-                  RUT: {activeTab === 'retiro' ? (receiverRun || '___________________') : '___________________'}
+                  RUT: {activeTab === 'retiro' ? (receiverRun || '___________________') : (student?.guardian_run || '___________________')}
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic', marginTop: '2px' }}>
                   {activeTab === 'retiro' ? 'Declaro recibir conforme la documentación indicada' : 'Declaro entregar la documentación fidedigna requerida'}
@@ -758,7 +836,7 @@ export const StudentDocumentChecklistModal: React.FC<StudentDocumentChecklistMod
                   {user?.name || 'Funcionario Responsable'}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: '#475569' }}>
-                  Secretaría / Inspectoría General • LTP Campanario
+                  Secretaría / Inspectoría General • {instSettings.shortName || 'LTP Campanario'}
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic', marginTop: '2px' }}>
                   Timbre y Firma Institucional
@@ -845,4 +923,10 @@ export const StudentDocumentChecklistModal: React.FC<StudentDocumentChecklistMod
       )}
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(modalContent, document.body);
 };
