@@ -33,16 +33,19 @@ const isSupabase =
   connectionString.includes('supabase.com') ||
   connectionString.includes('pooler.supabase.com');
 
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+
 let pgPool: PgPool | null = null;
 
 if (connectionString) {
   pgPool = new PgPool({
     connectionString,
     ssl: isSupabase ? { rejectUnauthorized: false } : false,
-    max: 15,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-    keepAlive: true
+    max: isServerless ? 2 : 10,
+    idleTimeoutMillis: isServerless ? 2000 : 30000,
+    connectionTimeoutMillis: 8000,
+    keepAlive: true,
+    allowExitOnIdle: isServerless
   });
 
   pgPool.on('error', (err) => {
@@ -53,31 +56,58 @@ if (connectionString) {
 export const pool = pgPool;
 
 /**
- * Helper universal de consulta SQL para PostgreSQL Supabase.
+ * Helper universal de consulta SQL para PostgreSQL Supabase con reintento automático ante picos transitorios.
  * Mantiene compatibilidad total de llamadas y resultados: { rows: any[], rowCount: number }
  */
 export const query = async (text: string, params?: any[]): Promise<{ rows: any[]; rowCount: number }> => {
   if (!pgPool) {
     throw new Error('Base de datos no conectada: DATABASE_URL no está configurada');
   }
-  try {
-    let pgText = text;
-    // Normalización de compatibilidad INSERT IGNORE -> ON CONFLICT DO NOTHING
-    if (/\bINSERT\s+IGNORE\s+INTO\b/i.test(pgText)) {
-      pgText = pgText.replace(/\bINSERT\s+IGNORE\s+INTO\b/gi, 'INSERT INTO');
-      if (!/ON\s+CONFLICT/i.test(pgText)) {
-        pgText = pgText.trim().replace(/;$/, '') + ' ON CONFLICT DO NOTHING';
-      }
+
+  let pgText = text;
+  // Normalización de compatibilidad INSERT IGNORE -> ON CONFLICT DO NOTHING
+  if (/\bINSERT\s+IGNORE\s+INTO\b/i.test(pgText)) {
+    pgText = pgText.replace(/\bINSERT\s+IGNORE\s+INTO\b/gi, 'INSERT INTO');
+    if (!/ON\s+CONFLICT/i.test(pgText)) {
+      pgText = pgText.trim().replace(/;$/, '') + ' ON CONFLICT DO NOTHING';
     }
-    const res = await pgPool.query(pgText, params);
+  }
+
+  const runQuery = async () => {
+    const res = await pgPool!.query(pgText, params);
     return { rows: res.rows, rowCount: res.rowCount || 0 };
+  };
+
+  try {
+    return await runQuery();
   } catch (err: any) {
     const errCode = String(err.code || '');
+    const errMsg = String(err.message || '');
     // Errores inocuos durante migraciones (ej. columna ya añadida o tabla existente)
     if (errCode === 'ER_DUP_FIELDNAME' || errCode === 'ER_TABLE_EXISTS_ERROR' || errCode === '42701') {
       return { rows: [], rowCount: 0 };
     }
-    console.error(`❌ Error en consulta PostgreSQL (${errCode || err.message}):`, text.substring(0, 100));
+
+    // Reintento único automático si el pooler Supavisor reportó pico de conexiones (EMAXCONN) o desconexión transitoria
+    const isTransient =
+      errMsg.includes('EMAXCONN') ||
+      errMsg.includes('max client connections reached') ||
+      errMsg.includes('ECONNRESET') ||
+      errMsg.includes('Connection terminated') ||
+      errCode === '57P01';
+
+    if (isTransient) {
+      console.warn('⚠️ Pico transitorio detectado en pooler, reintentando consulta en 250ms...');
+      await new Promise(r => setTimeout(r, 250));
+      try {
+        return await runQuery();
+      } catch (retryErr: any) {
+        console.error('❌ Error persistente tras reintento PostgreSQL:', retryErr.message);
+        throw retryErr;
+      }
+    }
+
+    console.error(`❌ Error en consulta PostgreSQL (${errCode || errMsg}):`, text.substring(0, 100));
     throw err;
   }
 };

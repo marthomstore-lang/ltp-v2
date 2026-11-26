@@ -471,6 +471,7 @@ const loginHandler = async (req: Request, res: Response) => {
   }
 
   try {
+    let dbErrorOccurred = false;
     const cleanAlnumRun = cleanRun.replace(/[^0-9kK]/g, '').toLowerCase();
     const result = await query(
       `SELECT * FROM users 
@@ -480,7 +481,11 @@ const loginHandler = async (req: Request, res: Response) => {
           OR LOWER(id) = $3 
           OR LOWER(email) = $3`,
       [cleanAlnumRun, cleanRun.toLowerCase(), rawIdentifier.toLowerCase()]
-    ).catch(() => ({ rows: [] }));
+    ).catch((err: any) => {
+      console.error('❌ Error consultando users en login:', err?.message || err);
+      dbErrorOccurred = true;
+      return { rows: [] };
+    });
 
     let userRows = result.rows || [];
 
@@ -717,6 +722,9 @@ const loginHandler = async (req: Request, res: Response) => {
     }
 
     if (userRows.length === 0) {
+      if (dbErrorOccurred) {
+        return res.status(503).json({ error: 'El servidor de base de datos experimentó una reconexión temporal. Por favor intente ingresar nuevamente.' });
+      }
       return res.status(401).json({ error: 'Credenciales inválidas.' });
     }
 
