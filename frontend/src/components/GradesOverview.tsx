@@ -11,6 +11,7 @@ import { isUserDirective } from '../utils/roles';
 interface SubjectGradeDetail {
   label: string;
   value: number;
+  concept?: string;
 }
 
 interface StudentSubjectPerformance {
@@ -22,6 +23,7 @@ interface StudentSubjectPerformance {
   sem1?: any;
   sem2?: any;
   isConceptual?: boolean;
+  conceptAverage?: string;
   numericAverage?: number;
 }
 
@@ -1393,21 +1395,54 @@ export const GradesOverview: React.FC<GradesOverviewProps> = ({ token }) => {
           students={currentCourseData.students.map(st => {
             const subjectsList = currentCourseData.subjects.map(sub => {
               const perf = st.subjectGrades[sub.name];
+              const isConceptSub = sub.isConceptual || isConceptualSubject(sub.name);
               const gradesArr = perf?.grades || [];
               const nVals: Record<string, number | string> = {};
               
               for (let i = 1; i <= 10; i++) {
-                const foundGrade = gradesArr.find(g => g.label.toLowerCase() === `nota ${i}` || g.label === `N${i}`);
-                nVals[`n${i}`] = foundGrade ? foundGrade.value : (i <= gradesArr.length ? gradesArr[i - 1]?.value || '-' : '-');
+                const foundGrade = gradesArr.find(g => g.label.toLowerCase() === `nota ${i}` || g.label.toLowerCase() === `n${i}`);
+                const rawVal = foundGrade ? foundGrade.value : (i <= gradesArr.length ? gradesArr[i - 1]?.value || '-' : '-');
+                nVals[`n${i}`] = isConceptSub ? (foundGrade?.concept || (rawVal !== '-' ? numberToConcept(rawVal) : '-')) : rawVal;
+              }
+
+              const effAvg = isConceptSub
+                ? (perf?.conceptAverage || (typeof perf?.average === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.average.toUpperCase()) ? perf.average.toUpperCase() : numberToConcept(perf?.average)))
+                : (perf?.average || '-');
+
+              const effAnnAvg = isConceptSub
+                ? (typeof perf?.annualAverage === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.annualAverage.toUpperCase()) ? perf.annualAverage.toUpperCase() : numberToConcept(perf?.annualAverage || effAvg))
+                : (perf?.annualAverage || perf?.average || '-');
+
+              const sem1Obj = perf?.sem1 ? {
+                ...perf.sem1,
+                average: isConceptSub ? (typeof perf.sem1.average === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.sem1.average.toUpperCase()) ? perf.sem1.average.toUpperCase() : numberToConcept(perf.sem1.average)) : perf.sem1.average
+              } : undefined;
+              if (sem1Obj && isConceptSub) {
+                for (let i = 1; i <= 10; i++) {
+                  const sVal = (sem1Obj as any)[`n${i}`];
+                  if (sVal !== undefined && sVal !== '-') (sem1Obj as any)[`n${i}`] = numberToConcept(sVal);
+                }
+              }
+
+              const sem2Obj = perf?.sem2 ? {
+                ...perf.sem2,
+                average: isConceptSub ? (typeof perf.sem2.average === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.sem2.average.toUpperCase()) ? perf.sem2.average.toUpperCase() : numberToConcept(perf.sem2.average)) : perf.sem2.average
+              } : undefined;
+              if (sem2Obj && isConceptSub) {
+                for (let i = 1; i <= 10; i++) {
+                  const sVal = (sem2Obj as any)[`n${i}`];
+                  if (sVal !== undefined && sVal !== '-') (sem2Obj as any)[`n${i}`] = numberToConcept(sVal);
+                }
               }
 
               return {
                 name: sub.name,
+                isConceptual: isConceptSub,
                 ...nVals,
-                average: perf?.average || '-',
-                annualAverage: perf?.annualAverage || perf?.average || '-',
-                sem1: perf?.sem1,
-                sem2: perf?.sem2
+                average: effAvg,
+                annualAverage: effAnnAvg,
+                sem1: sem1Obj,
+                sem2: sem2Obj
               };
             });
 

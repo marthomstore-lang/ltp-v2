@@ -10,6 +10,28 @@ import {
 } from '../utils/personalityIndicators';
 import { roundGrade } from '../utils/gradeCalculations';
 
+// HELPERS PARA ASIGNATURAS CONCEPTUALES (RELIGIÓN Y ORIENTACIÓN - DECRETOS 67/2018 Y 924/1983 MINEDUC)
+export const isConceptualSubject = (name: string): boolean => {
+  const norm = String(name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+  return norm.includes('religion') || norm.includes('orientacion');
+};
+
+export const numberToConcept = (val: any): string => {
+  if (val === undefined || val === null || val === '' || val === '-' || val === 0 || val === '0') return '-';
+  const strVal = String(val).trim().toUpperCase();
+  if (['MB', 'B', 'S', 'I'].includes(strVal)) return strVal;
+  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  if (isNaN(num) || num <= 0) return '-';
+  if (num >= 5.95) return 'MB';
+  if (num >= 4.95) return 'B';
+  if (num >= 3.95) return 'S';
+  return 'I';
+};
+
 export interface SubjectSemesterBreakdown {
   n1?: number | string;
   n2?: number | string;
@@ -26,6 +48,7 @@ export interface SubjectSemesterBreakdown {
 
 export interface SubjectGrade {
   name: string;
+  isConceptual?: boolean;
   n1?: number | string;
   n2?: number | string;
   n3?: number | string;
@@ -341,15 +364,16 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
 
   // Función para filtrar solo las asignaturas que tienen al menos una nota o promedio válido
   const hasAnyGrade = (sub: SubjectGrade) => {
+    const isConceptStr = (v: any) => typeof v === 'string' && ['MB', 'B', 'S', 'I'].includes(v.trim().toUpperCase());
     if (period === 'Anual') {
       const hasSem1Note = sub.sem1 && ['n1', 'n2', 'n3', 'n4', 'n5', 'n6'].some(k => {
         const val = (sub.sem1 as any)[k];
-        return val !== undefined && val !== null && val !== '' && val !== '-';
+        return val !== undefined && val !== null && val !== '' && val !== '-' && val !== 0 && val !== '0';
       });
       const hasSem1Avg = sub.sem1?.average && sub.sem1.average !== '-';
       const hasSem2Note = sub.sem2 && ['n1', 'n2', 'n3', 'n4', 'n5', 'n6'].some(k => {
         const val = (sub.sem2 as any)[k];
-        return val !== undefined && val !== null && val !== '' && val !== '-';
+        return val !== undefined && val !== null && val !== '' && val !== '-' && val !== 0 && val !== '0';
       });
       const hasSem2Avg = sub.sem2?.average && sub.sem2.average !== '-';
       const hasAnnAvg = sub.annualAverage && sub.annualAverage !== '-';
@@ -358,13 +382,13 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
     const keys: (keyof SubjectGrade)[] = ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9', 'n10'];
     const hasNote = keys.some(k => {
       const val = sub[k];
-      if (val === undefined || val === null || val === '' || val === '-') return false;
+      if (val === undefined || val === null || val === '' || val === '-' || val === 0 || val === '0') return false;
+      if (isConceptStr(val)) return true;
       const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
       return !isNaN(num) && num > 0;
     });
-    const avgNum = sub.average && sub.average !== '-' ? (typeof sub.average === 'number' ? sub.average : parseFloat(String(sub.average).replace(',', '.'))) : NaN;
-    const hasAvg = !isNaN(avgNum) && avgNum > 0;
-    return hasNote || hasAvg;
+    const hasAvg = sub.average && sub.average !== '-' && (isConceptStr(sub.average) || (!isNaN(typeof sub.average === 'number' ? sub.average : parseFloat(String(sub.average).replace(',', '.'))) && Number(sub.average) > 0));
+    return hasNote || Boolean(hasAvg);
   };
 
   const currentTemplate = PERSONALITY_REPORT_TEMPLATES[reportLevelKey];
@@ -1097,13 +1121,29 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
 
                       {/* TABLA DE NOTAS */}
                       {(() => {
-                        const renderGrade = (val: any) => {
+                        const renderGrade = (val: any, isConceptual = false) => {
                           if (val === undefined || val === null || val === '' || val === 0 || val === '0' || val === '-') return '-';
+                          if (isConceptual) {
+                            const concept = numberToConcept(val);
+                            if (concept === '-') return '-';
+                            let color = '#15803d'; // MB
+                            if (concept === 'B') color = '#1d4ed8';
+                            else if (concept === 'S') color = '#b45309';
+                            else if (concept === 'I') color = '#dc2626';
+                            return (
+                              <span style={{ color, fontWeight: 800 }}>
+                                {concept}
+                              </span>
+                            );
+                          }
                           const strVal = String(val).trim().toUpperCase();
                           if (['MB', 'B', 'S', 'I'].includes(strVal)) {
-                            const isRed = strVal === 'I';
+                            let color = '#15803d';
+                            if (strVal === 'B') color = '#1d4ed8';
+                            else if (strVal === 'S') color = '#b45309';
+                            else if (strVal === 'I') color = '#dc2626';
                             return (
-                              <span style={{ color: isRed ? '#dc2626' : '#15803d', fontWeight: 800 }}>
+                              <span style={{ color, fontWeight: 800 }}>
                                 {strVal}
                               </span>
                             );
@@ -1120,13 +1160,29 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                           );
                         };
 
-                        const avgFormatted = (val: any) => {
+                        const avgFormatted = (val: any, isConceptual = false) => {
                           if (val === undefined || val === null || val === '' || val === '-') return '-';
+                          if (isConceptual) {
+                            const concept = numberToConcept(val);
+                            if (concept === '-') return '-';
+                            let color = '#15803d';
+                            if (concept === 'B') color = '#1d4ed8';
+                            else if (concept === 'S') color = '#b45309';
+                            else if (concept === 'I') color = '#dc2626';
+                            return (
+                              <strong style={{ color, fontWeight: 900, fontSize: '0.85rem' }}>
+                                {concept}
+                              </strong>
+                            );
+                          }
                           const strVal = String(val).trim().toUpperCase();
                           if (['MB', 'B', 'S', 'I'].includes(strVal)) {
-                            const isRed = strVal === 'I';
+                            let color = '#15803d';
+                            if (strVal === 'B') color = '#1d4ed8';
+                            else if (strVal === 'S') color = '#b45309';
+                            else if (strVal === 'I') color = '#dc2626';
                             return (
-                              <strong style={{ color: isRed ? '#dc2626' : '#15803d', fontWeight: 900, fontSize: '0.82rem' }}>
+                              <strong style={{ color, fontWeight: 900, fontSize: '0.85rem' }}>
                                 {strVal}
                               </strong>
                             );
@@ -1141,13 +1197,29 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                           );
                         };
 
-                        const annualAvgFormatted = (val: any) => {
+                        const annualAvgFormatted = (val: any, isConceptual = false) => {
                           if (val === undefined || val === null || val === '' || val === '-') return '-';
+                          if (isConceptual) {
+                            const concept = numberToConcept(val);
+                            if (concept === '-') return '-';
+                            let color = '#15803d';
+                            if (concept === 'B') color = '#1d4ed8';
+                            else if (concept === 'S') color = '#b45309';
+                            else if (concept === 'I') color = '#dc2626';
+                            return (
+                              <strong style={{ color, fontWeight: 900, fontSize: '0.9rem' }}>
+                                {concept}
+                              </strong>
+                            );
+                          }
                           const strVal = String(val).trim().toUpperCase();
                           if (['MB', 'B', 'S', 'I'].includes(strVal)) {
-                            const isRed = strVal === 'I';
+                            let color = '#15803d';
+                            if (strVal === 'B') color = '#1d4ed8';
+                            else if (strVal === 'S') color = '#b45309';
+                            else if (strVal === 'I') color = '#dc2626';
                             return (
-                              <strong style={{ color: isRed ? '#dc2626' : '#15803d', fontWeight: 900, fontSize: '0.88rem' }}>
+                              <strong style={{ color, fontWeight: 900, fontSize: '0.9rem' }}>
                                 {strVal}
                               </strong>
                             );
@@ -1216,6 +1288,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                                   <tbody>
                                     {activeSubjectGrades.length > 0 ? (
                                       activeSubjectGrades.map((sub, subIdx) => {
+                                        const isConceptual = isConceptualSubject(sub.name) || Boolean(sub.isConceptual);
                                         const sem1 = sub.sem1;
                                         const sem2 = sub.sem2;
                                         const annVal = sub.annualAverage || sub.average;
@@ -1223,28 +1296,33 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                                           <tr key={subIdx} style={{ background: subIdx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
                                             <td style={{ padding: '0.2rem 0.45rem', border: '1px solid #cbd5e1', fontWeight: 700, color: '#1e293b', lineHeight: 1.2 }}>
                                               {sub.name}
+                                              {isConceptual && (
+                                                <span style={{ marginLeft: '5px', fontSize: '0.62rem', background: '#ede9fe', color: '#5b21b6', padding: '1px 5px', borderRadius: '4px', fontWeight: 800 }}>
+                                                  Conceptual
+                                                </span>
+                                              )}
                                             </td>
                                             {/* Semestre 1 */}
-                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n1)}</td>
-                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n2)}</td>
-                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n3)}</td>
-                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n4)}</td>
-                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n5)}</td>
-                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n6)}</td>
-                                            <td style={{ padding: '0.18rem 0.15rem', textAlign: 'center', border: '1px solid #93c5fd', background: '#eff6ff' }}>{avgFormatted(sem1?.average)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n1, isConceptual)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n2, isConceptual)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n3, isConceptual)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n4, isConceptual)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n5, isConceptual)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem1?.n6, isConceptual)}</td>
+                                            <td style={{ padding: '0.18rem 0.15rem', textAlign: 'center', border: '1px solid #93c5fd', background: isConceptual ? '#f0fdf4' : '#eff6ff' }}>{avgFormatted(sem1?.average, isConceptual)}</td>
 
                                             {/* Semestre 2 */}
-                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n1)}</td>
-                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n2)}</td>
-                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n3)}</td>
-                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n4)}</td>
-                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n5)}</td>
-                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n6)}</td>
-                                            <td style={{ padding: '0.18rem 0.15rem', textAlign: 'center', border: '1px solid #c4b5fd', background: '#f5f3ff' }}>{avgFormatted(sem2?.average)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n1, isConceptual)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n2, isConceptual)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n3, isConceptual)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n4, isConceptual)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n5, isConceptual)}</td>
+                                            <td style={{ padding: '0.18rem 0.1rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sem2?.n6, isConceptual)}</td>
+                                            <td style={{ padding: '0.18rem 0.15rem', textAlign: 'center', border: '1px solid #c4b5fd', background: isConceptual ? '#f0fdf4' : '#f5f3ff' }}>{avgFormatted(sem2?.average, isConceptual)}</td>
 
                                             {/* Promedio Anual Final */}
-                                            <td style={{ padding: '0.18rem 0.15rem', textAlign: 'center', border: '1px solid #fcd34d', background: '#fffbeb' }}>
-                                              {annualAvgFormatted(annVal)}
+                                            <td style={{ padding: '0.18rem 0.15rem', textAlign: 'center', border: '1px solid #fcd34d', background: isConceptual ? '#f0fdf4' : '#fffbeb' }}>
+                                              {annualAvgFormatted(annVal, isConceptual)}
                                             </td>
                                           </tr>
                                         );
@@ -1282,22 +1360,28 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                                   <tbody>
                                     {activeSubjectGrades.length > 0 ? (
                                       activeSubjectGrades.map((sub, subIdx) => {
+                                        const isConceptual = isConceptualSubject(sub.name) || Boolean(sub.isConceptual);
                                         return (
                                           <tr key={subIdx} style={{ background: subIdx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
                                             <td style={{ padding: '0.22rem 0.45rem', border: '1px solid #cbd5e1', fontWeight: 700, color: '#334155' }}>
                                               {sub.name}
+                                              {isConceptual && (
+                                                <span style={{ marginLeft: '5px', fontSize: '0.62rem', background: '#ede9fe', color: '#5b21b6', padding: '1px 5px', borderRadius: '4px', fontWeight: 800 }}>
+                                                  Conceptual
+                                                </span>
+                                              )}
                                             </td>
-                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n1)}</td>
-                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n2)}</td>
-                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n3)}</td>
-                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n4)}</td>
-                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n5)}</td>
-                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n6)}</td>
-                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n7)}</td>
-                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n8)}</td>
-                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n9)}</td>
-                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n10)}</td>
-                                            <td style={{ padding: '0.2rem 0.25rem', textAlign: 'center', border: '1px solid #94a3b8', background: '#eff6ff' }}>{avgFormatted(sub.average)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n1, isConceptual)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n2, isConceptual)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n3, isConceptual)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n4, isConceptual)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n5, isConceptual)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n6, isConceptual)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n7, isConceptual)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n8, isConceptual)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n9, isConceptual)}</td>
+                                            <td style={{ padding: '0.2rem 0.15rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{renderGrade(sub.n10, isConceptual)}</td>
+                                            <td style={{ padding: '0.2rem 0.25rem', textAlign: 'center', border: '1px solid #94a3b8', background: isConceptual ? '#f0fdf4' : '#eff6ff' }}>{avgFormatted(sub.average, isConceptual)}</td>
                                           </tr>
                                         );
                                       })
@@ -1315,7 +1399,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
 
                             {/* CUADRO DE RESUMEN Y PROMEDIO GENERAL */}
                             {period === 'Anual' ? (
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.4rem 0.85rem', marginBottom: '0.65rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.4rem 0.85rem', marginBottom: '0.45rem' }}>
                                 <div>
                                   <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
                                     RESUMEN ANUAL DE RENDIMIENTO
@@ -1350,7 +1434,7 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                                 </div>
                               </div>
                             ) : (
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.4rem 0.85rem', marginBottom: '0.65rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.4rem 0.85rem', marginBottom: '0.45rem' }}>
                                 <div>
                                   <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
                                     RESUMEN DE CALIFICACIONES
@@ -1380,6 +1464,20 @@ export const PrintGradeReportModal: React.FC<PrintGradeReportModalProps> = ({
                                 </div>
                               </div>
                             )}
+
+                            {/* LEYENDA OFICIAL DE EVALUACIÓN CONCEPTUAL (DECRETOS 67/2018 Y 924/1983 MINEDUC) */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.67rem', color: '#64748b', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '0.22rem 0.55rem', marginBottom: '0.5rem' }}>
+                              <div>
+                                <strong>Escala Conceptual (Orientación / Religión):</strong>{' '}
+                                <span style={{ color: '#15803d', fontWeight: 800 }}>MB</span>: Muy Bueno (6.0 - 7.0) •{' '}
+                                <span style={{ color: '#1d4ed8', fontWeight: 800 }}>B</span>: Bueno (5.0 - 5.9) •{' '}
+                                <span style={{ color: '#b45309', fontWeight: 800 }}>S</span>: Suficiente (4.0 - 4.9) •{' '}
+                                <span style={{ color: '#dc2626', fontWeight: 800 }}>I</span>: Insuficiente (1.0 - 3.9)
+                              </div>
+                              <div style={{ fontStyle: 'italic', fontSize: '0.64rem' }}>
+                                * Decretos 67/2018 y 924/1983 MINEDUC (No inciden en promedio general de promoción)
+                              </div>
+                            </div>
                           </>
                         );
                       })()}

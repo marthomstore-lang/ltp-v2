@@ -5892,16 +5892,25 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
           }
           let sum = 0;
           let manualConcept = '';
-          const details = semesterGrades.map((g, gIdx) => {
-            const val = parseFloat(g.grade_value);
+
+          // Separar columna de promedio final manual (si existe) de las evaluaciones parciales
+          const finalColItem = semesterGrades.find(g => {
+            const colTitleNorm = (g.col_title || g.evaluation_name || '').toLowerCase();
+            return colTitleNorm.includes('promedio') || (g.grade_column_id && String(g.grade_column_id).includes('FINAL'));
+          });
+          if (isConceptual && finalColItem) {
+            manualConcept = numberToConceptHelper(parseFloat(finalColItem.grade_value));
+          }
+
+          const partialGrades = semesterGrades.filter(g => {
             const colTitleNorm = (g.col_title || g.evaluation_name || '').toLowerCase();
             const isFinalCol = colTitleNorm.includes('promedio') || (g.grade_column_id && String(g.grade_column_id).includes('FINAL'));
-            if (isConceptual && isFinalCol) {
-              manualConcept = numberToConceptHelper(val);
-            }
-            if (!isFinalCol || !isConceptual) {
-              sum += val;
-            }
+            return !isFinalCol;
+          });
+
+          const details = partialGrades.map((g, gIdx) => {
+            const val = parseFloat(g.grade_value);
+            sum += val;
             return {
               label: g.col_title || `Nota ${gIdx + 1}`,
               value: val,
@@ -5917,12 +5926,11 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
           if (isConceptual) {
             let finalConcept = '-';
             let numAvg: number | null = null;
-            if (manualConcept) {
+            if (manualConcept && manualConcept !== '-') {
               finalConcept = manualConcept;
               numAvg = conceptToNumberHelper(manualConcept);
             } else {
-              const evalGrades = details.filter(d => !d.label.toLowerCase().includes('promedio'));
-              const avgNum = evalGrades.length > 0 ? (sum / evalGrades.length) : (details.length > 0 ? details[0].value : 0);
+              const avgNum = details.length > 0 ? (sum / details.length) : (finalColItem ? parseFloat(finalColItem.grade_value) : 0);
               finalConcept = numberToConceptHelper(avgNum);
               numAvg = roundGradeBackend(avgNum);
             }
@@ -5934,7 +5942,7 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
             };
           } else {
             const evalCount = details.length;
-            const avg = evalCount > 0 ? roundGradeBackend(sum / evalCount) : null;
+            const avg = evalCount > 0 ? roundGradeBackend(sum / evalCount) : (finalColItem ? roundGradeBackend(parseFloat(finalColItem.grade_value)) : null);
             return {
               grades: details,
               average: avg !== null ? avg : '-',
@@ -5991,6 +5999,10 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
 
         // Contabilizar evaluaciones del período para estadísticas del alumno
         periodRelevantGrades.forEach(g => {
+          const colTitleNorm = (g.col_title || g.evaluation_name || '').toLowerCase();
+          const isFinalCol = colTitleNorm.includes('promedio') || (g.grade_column_id && String(g.grade_column_id).includes('FINAL'));
+          if (isFinalCol) return; // No contar columna final manual de promedio en el desglose parcial
+
           const val = parseFloat(g.grade_value);
           if (!isNaN(val)) {
             if (!isConceptual) {
@@ -6066,7 +6078,10 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
             ? sem1Data.grades
             : (selectedPeriod === '2do Semestre' || selectedPeriod === 'Semestre 2')
               ? sem2Data.grades
-              : sbGrades.map(g => ({
+              : sbGrades.filter(g => {
+                  const colTitleNorm = (g.col_title || g.evaluation_name || '').toLowerCase();
+                  return !colTitleNorm.includes('promedio') && !(g.grade_column_id && String(g.grade_column_id).includes('FINAL'));
+                }).map(g => ({
                   label: g.col_title || 'Nota',
                   value: parseFloat(g.grade_value),
                   concept: isConceptual ? numberToConceptHelper(parseFloat(g.grade_value)) : undefined

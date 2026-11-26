@@ -33,6 +33,23 @@ interface Subject {
   grades: Grade[];
 }
 
+const isConceptualSubject = (name: string): boolean => {
+  const norm = String(name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  return norm.includes('religion') || norm.includes('orientacion');
+};
+
+const numberToConcept = (val: any): string => {
+  if (val === undefined || val === null || val === '' || val === '-' || val === 0 || val === '0') return '-';
+  const strVal = String(val).trim().toUpperCase();
+  if (['MB', 'B', 'S', 'I'].includes(strVal)) return strVal;
+  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  if (isNaN(num) || num <= 0) return '-';
+  if (num >= 5.95) return 'MB';
+  if (num >= 4.95) return 'B';
+  if (num >= 3.95) return 'S';
+  return 'I';
+};
+
 interface RedGradeDetail {
   subjectName: string;
   teacher: string;
@@ -1016,7 +1033,7 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                                             <span style={{ fontSize: '0.64rem', color: isGradeRed ? '#991b1b' : '#64748b', fontWeight: 700 }}>
                                               {selectedSemester === 'all' ? `${gr.semester === 2 ? '2°S' : '1°S'} ` : ''}{gr.label}:
                                             </span>
-                                            <span>{sub.isConceptual && gr.concept ? `${gr.concept} (${gr.value.toFixed(1)})` : gr.value.toFixed(1)}</span>
+                                            <span>{(sub.isConceptual || isConceptualSubject(sub.name)) ? (gr.concept || numberToConcept(gr.value)) : gr.value.toFixed(1)}</span>
                                           </span>
                                         );
                                       })}
@@ -1025,7 +1042,7 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                                 </td>
                                 <td style={{ padding: '0.8rem 1rem', textAlign: 'center', fontWeight: 800, fontSize: '1.05rem', color: isRed ? '#dc2626' : (displayAvg > 0 ? '#16a34a' : '#64748b') }}>
                                   {displayAvg > 0
-                                    ? (sub.isConceptual && sub.conceptAverage ? `${sub.conceptAverage} (${roundGrade(displayAvg).toFixed(1)})` : roundGrade(displayAvg).toFixed(1))
+                                    ? ((sub.isConceptual || isConceptualSubject(sub.name)) ? (sub.conceptAverage || numberToConcept(displayAvg)) : roundGrade(displayAvg).toFixed(1))
                                     : '-'}
                                 </td>
                                 <td style={{ padding: '0.8rem 1rem', textAlign: 'right' }}>
@@ -1052,7 +1069,7 @@ export const ApoderadoView: React.FC<ApoderadoViewProps> = ({ token }) => {
                                             </div>
                                             <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748b', marginTop: '1px' }}>{gr.label}</div>
                                             <div style={{ fontSize: '1.05rem', fontWeight: 800, color: gr.value >= 4.0 ? '#2563eb' : '#dc2626', marginTop: '2px' }}>
-                                              {sub.isConceptual && gr.concept ? `${gr.concept} (${gr.value.toFixed(1)})` : gr.value.toFixed(1)}
+                                              {(sub.isConceptual || isConceptualSubject(sub.name)) ? (gr.concept || numberToConcept(gr.value)) : gr.value.toFixed(1)}
                                             </div>
                                           </div>
                                         ))}

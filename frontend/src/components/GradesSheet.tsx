@@ -2590,10 +2590,15 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
             const overviewSt = printCourseOverview?.students?.find((os: any) => String(os.id) === String(s.id) || (s.run && os.run === s.run));
             const stHomeroom = (s as any).profesor_jefe || (overviewSt as any)?.homeroomTeacher || (overviewSt as any)?.profesor_jefe || printCourseOverview?.homeroomTeacher;
 
+            const isCurrConcept = isConceptual || isConceptualSubject(currentSubjectName);
             const nVals: Record<string, number | string> = {};
             evalColumns.slice(0, 10).forEach((col, cIdx) => {
               const val = gradesMap[`${s.id}_${col.id}`];
-              nVals[`n${cIdx + 1}`] = val !== undefined && val > 0 ? (gradeScaleMode === 'entera' ? Math.round(roundGrade(val) * 10) : roundGrade(val)) : '-';
+              if (val !== undefined && val > 0) {
+                nVals[`n${cIdx + 1}`] = isCurrConcept ? numberToConcept(val) : (gradeScaleMode === 'entera' ? Math.round(roundGrade(val) * 10) : roundGrade(val));
+              } else {
+                nVals[`n${cIdx + 1}`] = '-';
+              }
             });
 
             let azulCount = 0;
@@ -2613,7 +2618,7 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               : getStudentAnnualAvg(s.id);
 
             const activeAvg = currentPeriodAvg !== null && currentPeriodAvg !== undefined && !isNaN(currentPeriodAvg) && currentPeriodAvg > 0
-              ? roundGrade(currentPeriodAvg)
+              ? (isCurrConcept ? numberToConcept(currentPeriodAvg) : roundGrade(currentPeriodAvg))
               : '-';
 
             return {
@@ -2622,21 +2627,23 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               fullName: s.full_name,
               run: s.run || '',
               course: currentCourseName || 'Curso',
-              promedioGeneral: overviewSt?.promedioGeneral || activeAvg,
+              promedioGeneral: overviewSt?.promedioGeneral || (isCurrConcept ? 0 : activeAvg),
               promedioSem1: (overviewSt as any)?.promedioSem1,
               promedioSem2: (overviewSt as any)?.promedioSem2,
               azules: overviewSt?.azules ?? azulCount,
               rojas: overviewSt?.rojas ?? rojaCount,
               homeroomTeacher: stHomeroom && stHomeroom !== 'Sin Asignar' ? stHomeroom : undefined,
               subjectGrades: (allowedSubjects.length > 0 ? allowedSubjects : allSubjects).map(sub => {
+                const isSubConcept = isConceptualSubject(sub.name);
                 const perf = overviewSt?.subjectGrades?.[sub.name] ||
                   (overviewSt?.subjectGrades ? Object.entries(overviewSt.subjectGrades).find(([k]) => normalizeStr(k) === normalizeStr(sub.name))?.[1] as any : null);
                 if (sub.id === subjectId) {
                   return {
                     name: sub.name,
+                    isConceptual: isCurrConcept,
                     ...nVals,
                     average: activeAvg,
-                    annualAverage: perf?.annualAverage || activeAvg,
+                    annualAverage: isCurrConcept ? (typeof perf?.annualAverage === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.annualAverage.toUpperCase()) ? perf.annualAverage.toUpperCase() : numberToConcept(perf?.annualAverage || activeAvg)) : (perf?.annualAverage || activeAvg),
                     sem1: perf?.sem1,
                     sem2: perf?.sem2
                   };
@@ -2644,20 +2651,29 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                 if (perf && Array.isArray(perf.grades)) {
                   const subNVals: Record<string, number | string> = {};
                   for (let i = 1; i <= 10; i++) {
-                    const foundGrade = perf.grades.find((g: any) => g.label?.toLowerCase() === `nota ${i}` || g.label === `N${i}`);
-                    subNVals[`n${i}`] = foundGrade ? foundGrade.value : (i <= perf.grades.length ? perf.grades[i - 1]?.value || '-' : '-');
+                    const foundGrade = perf.grades.find((g: any) => g.label?.toLowerCase() === `nota ${i}` || g.label?.toLowerCase() === `n${i}`);
+                    const rawVal = foundGrade ? foundGrade.value : (i <= perf.grades.length ? perf.grades[i - 1]?.value || '-' : '-');
+                    subNVals[`n${i}`] = isSubConcept ? (foundGrade?.concept || (rawVal !== '-' ? numberToConcept(rawVal) : '-')) : rawVal;
                   }
+                  const effAvg = isSubConcept
+                    ? (perf.conceptAverage || (typeof perf.average === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.average.toUpperCase()) ? perf.average.toUpperCase() : numberToConcept(perf.average)))
+                    : (perf.average || '-');
+                  const effAnnAvg = isSubConcept
+                    ? (typeof perf.annualAverage === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.annualAverage.toUpperCase()) ? perf.annualAverage.toUpperCase() : numberToConcept(perf.annualAverage || effAvg))
+                    : (perf.annualAverage || perf.average || '-');
                   return {
                     name: sub.name,
+                    isConceptual: isSubConcept,
                     ...subNVals,
-                    average: perf.average || '-',
-                    annualAverage: perf.annualAverage || perf.average || '-',
+                    average: effAvg,
+                    annualAverage: effAnnAvg,
                     sem1: perf.sem1,
                     sem2: perf.sem2
                   };
                 }
                 return {
                   name: sub.name,
+                  isConceptual: isSubConcept,
                   n1: '-', n2: '-', n3: '-', n4: '-', n5: '-', n6: '-', n7: '-', n8: '-', n9: '-', n10: '-',
                   average: '-',
                   annualAverage: '-',

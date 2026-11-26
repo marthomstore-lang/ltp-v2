@@ -213,11 +213,31 @@ export const FinalActaModal: React.FC<FinalActaModalProps> = ({
                 }
               }
 
+              // Orientación
+              const orPerf = liveSt.subjectGrades['Orientación'] ||
+                Object.entries(liveSt.subjectGrades).find(([k]) => k.toLowerCase().includes('orientac'))?.[1];
+              let updatedOrientacion = st.orientacion;
+              if (orPerf && (orPerf.average || orPerf.annualAverage)) {
+                const oRaw = orPerf.annualAverage || orPerf.average;
+                if (typeof oRaw === 'string' && ['MB', 'B', 'S', 'I'].includes(oRaw.toUpperCase())) {
+                  updatedOrientacion = oRaw.toUpperCase();
+                } else {
+                  const oAvg = typeof oRaw === 'number' ? oRaw : parseFloat(String(oRaw).replace(',', '.'));
+                  if (!isNaN(oAvg) && oAvg > 0) {
+                    if (oAvg >= 6.0) updatedOrientacion = 'MB';
+                    else if (oAvg >= 5.0) updatedOrientacion = 'B';
+                    else if (oAvg >= 4.0) updatedOrientacion = 'S';
+                    else updatedOrientacion = 'I';
+                  }
+                }
+              }
+
               return {
                 ...st,
                 subjectGrades: updatedSubjectGrades,
                 promedio: gpaStr,
-                religion: updatedReli
+                religion: updatedReli,
+                orientacion: updatedOrientacion
               };
             }
             return st;
