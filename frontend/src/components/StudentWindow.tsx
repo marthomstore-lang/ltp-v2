@@ -11,7 +11,8 @@ import {
   parseCourseMetadata,
   getNextEnrollmentNumberForYear,
   getTodayIsoDate,
-  prepareStudentForYearEnrollment
+  prepareStudentForYearEnrollment,
+  resolveHomeroomTeacherForCourseYear
 } from '../utils/course';
 import { useAuth } from '../context/AuthContext';
 import Swal from 'sweetalert2';
@@ -174,6 +175,9 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
   const [formData, setFormData] = useState<any>(() => buildInitialFormState(student, user));
 
   const [coursesList, setCoursesList] = useState<string[]>(() => sortCoursesList(OFFICIAL_SCHOOL_COURSES));
+  const [yearCoursesMeta, setYearCoursesMeta] = useState<any[]>([]);
+  const [yearCoursesLoaded, setYearCoursesLoaded] = useState<boolean>(false);
+  const [levelNamesMeta, setLevelNamesMeta] = useState<string[]>([]);
   const [teachersList, setTeachersList] = useState<any[]>([]);
   const [allStudents, setAllStudents] = useState<any[]>([]);
   const [showSiblingModal, setShowSiblingModal] = useState(false);
@@ -206,19 +210,16 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
   }, [student]);
 
   React.useEffect(() => {
-    if (allStudents.length > 0) {
-      const currentCourse = getStudentCourse(formData);
-      if (currentCourse && currentCourse !== 'Sin Curso' && !formData.profesor_jefe) {
-        const targetYear = Number(formData.anno || formData.academic_year || 2027);
-        const assigned =
-          allStudents.find((s: any) => getStudentYear(s) === targetYear && getStudentCourse(s) === currentCourse && s.profesor_jefe && s.profesor_jefe !== 'Sin Asignar')?.profesor_jefe ||
-          allStudents.find((s: any) => getStudentCourse(s) === currentCourse && s.profesor_jefe && s.profesor_jefe !== 'Sin Asignar')?.profesor_jefe;
-        if (assigned) {
-          setFormData((prev: any) => ({ ...prev, profesor_jefe: assigned }));
-        }
+    if (!yearCoursesLoaded) return;
+    const targetYear = Number(formData.anno || formData.academic_year || 2026) || 2026;
+    const currentCourse = getStudentCourse(formData);
+    if (currentCourse && currentCourse !== 'Sin Curso' && (!formData.profesor_jefe || formData.profesor_jefe === 'Sin Asignar')) {
+      const assigned = resolveHomeroomTeacherForCourseYear(currentCourse, targetYear, yearCoursesMeta, allStudents);
+      if (assigned) {
+        setFormData((prev: any) => ({ ...prev, profesor_jefe: assigned }));
       }
     }
-  }, [allStudents, formData.level_name, formData.desc_grado, formData.anno]);
+  }, [allStudents, yearCoursesMeta, yearCoursesLoaded, formData.level_name, formData.desc_grado, formData.anno]);
 
   // Auto-asignar Número de Matrícula único por año lectivo (ej: 2027-001 desde el 1 en adelante)
   React.useEffect(() => {
@@ -289,16 +290,12 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
       .then(data => {
         if (Array.isArray(data)) {
           setAllStudents(data);
-          const uniqueCourses = Array.from(new Set(data.map((s: any) => getStudentCourse(s)))).filter(
-            (c: any) => Boolean(c) && c !== 'Sin Curso' && !String(c).toLowerCase().includes('egresado')
-          ) as string[];
-          if (uniqueCourses.length > 0) {
-            setCoursesList(prev => sortCoursesList(Array.from(new Set([...prev, ...uniqueCourses]))));
-          }
         }
       })
       .catch(() => {});
   }, [token]);
+
+  const activeTargetYear = Number(formData.anno || formData.academic_year || 2026) || 2026;
 
   React.useEffect(() => {
     // 1. Obtener Cursos y Estudiantes desde la base de datos
@@ -308,13 +305,12 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
       .then(res => res.json())
       .then(levels => {
         if (Array.isArray(levels) && levels.length > 0) {
-          const levelNames = levels.map((l: any) => l.name);
-          setCoursesList(prev => sortCoursesList(Array.from(new Set([...prev, ...levelNames]))));
+          setLevelNamesMeta(levels.map((l: any) => l.name).filter(Boolean));
         }
       })
       .catch(() => {});
 
-    // 2. Obtener Profesores / Funcionarios desde MySQL XAMPP
+    // 2. Obtener Profesores / Funcionarios desde PostgreSQL
     fetch('/api/staff', { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(staff => {
@@ -340,6 +336,56 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
       })
       .catch(() => {});
   }, [token]);
+
+  // Cargar malla de cursos configurada para el año lectivo de la matrícula (2026, 2027, 2028...)
+  React.useEffect(() => {
+    let active = true;
+    setYearCoursesLoaded(false);
+    fetch(`/api/courses?year=${activeTargetYear}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(data => {
+        if (!active) return;
+        if (data && Array.isArray(data.courses)) {
+          setYearCoursesMeta(data.courses);
+        } else {
+          setYearCoursesMeta([]);
+        }
+      })
+      .catch(() => {
+        if (active) setYearCoursesMeta([]);
+      })
+      .finally(() => {
+        if (active) setYearCoursesLoaded(true);
+      });
+    return () => { active = false; };
+  }, [activeTargetYear, token]);
+
+  // Reconstruir opciones del selector de Cursos combinando la configuración del año y matrículas vigentes
+  React.useEffect(() => {
+    const cleanCourseSet = new Set<string>();
+    const addIfValid = (c: any) => {
+      const s = String(c || '').trim();
+      if (s && s !== 'Sin Curso' && s !== 'Sin Asignar' && !s.toLowerCase().includes('egresado')) {
+        cleanCourseSet.add(s);
+      }
+    };
+
+    if (yearCoursesMeta.length > 0) {
+      yearCoursesMeta.forEach((c: any) => addIfValid(c?.name));
+      allStudents
+        .filter((s: any) => getStudentYear(s) === activeTargetYear)
+        .forEach((s: any) => addIfValid(getStudentCourse(s)));
+    } else {
+      OFFICIAL_SCHOOL_COURSES.forEach(addIfValid);
+      levelNamesMeta.forEach(addIfValid);
+      allStudents.forEach((s: any) => addIfValid(getStudentCourse(s)));
+    }
+
+    const currentCourse = getStudentCourse(formData);
+    addIfValid(currentCourse);
+
+    setCoursesList(sortCoursesList(Array.from(cleanCourseSet)));
+  }, [yearCoursesMeta, levelNamesMeta, allStudents, activeTargetYear, formData.desc_grado, formData.level_name, formData.letra_curso]);
 
   const populateGuardianFields = (data: { name?: string; phone?: string; email?: string; occupation?: string; relation?: string; education?: string }, targetType: 'guardian' | 'guardian_sec' | 'mother' | 'father') => {
     if (!data || !data.name) return;
@@ -486,9 +532,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
   const handleSelectCourse = (newCourse: string) => {
     const meta = parseCourseMetadata(newCourse);
     const targetYear = Number(formData.anno || formData.academic_year || 2027);
-    const assignedTeacher =
-      allStudents.find((s: any) => getStudentYear(s) === targetYear && getStudentCourse(s) === newCourse && s.profesor_jefe && s.profesor_jefe !== 'Sin Asignar')?.profesor_jefe ||
-      allStudents.find((s: any) => getStudentCourse(s) === newCourse && s.profesor_jefe && s.profesor_jefe !== 'Sin Asignar')?.profesor_jefe;
+    const assignedTeacher = resolveHomeroomTeacherForCourseYear(newCourse, targetYear, yearCoursesMeta, allStudents);
 
     const existingCourseStudents = allStudents.filter(
       (s: any) => getStudentYear(s) === targetYear && getStudentCourse(s) === newCourse
@@ -506,7 +550,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
       letra_curso: meta.letra_curso || prev.letra_curso || 'A',
       cod_tipo_ensenanza: meta.cod_tipo_ensenanza ?? prev.cod_tipo_ensenanza,
       cod_grado: meta.cod_grado ?? prev.cod_grado,
-      profesor_jefe: assignedTeacher || prev.profesor_jefe || '',
+      profesor_jefe: assignedTeacher || '',
       list_number: !prev.id ? nextList : prev.list_number
     }));
   };
@@ -530,7 +574,7 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
     }
 
     const targetYear = Number(formData.anno || formData.academic_year || 2027);
-    const prepared = prepareStudentForYearEnrollment(sourceStudent, targetYear, allStudents);
+    const prepared = prepareStudentForYearEnrollment(sourceStudent, targetYear, allStudents, { targetYearCourses: yearCoursesMeta });
     setFormData(buildInitialFormState(prepared, user));
     setReligionChoice(resolveReligionChoice(prepared?.religion));
     setHasSavedSession(false);
@@ -1402,22 +1446,26 @@ export const StudentWindow: React.FC<StudentWindowProps> = ({ student, onClose, 
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Profesor Jefe Asignado</label>
-                    <select
-                      value={formData.profesor_jefe || (allStudents.find((s: any) => getStudentCourse(s) === getStudentCourse(formData) && s.profesor_jefe)?.profesor_jefe) || ''}
-                      onChange={e => handleChange('profesor_jefe', e.target.value)}
-                      style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box', background: '#ffffff', color: '#1e1b4b', fontWeight: 700 }}
-                    >
-                      <option value="">-- Seleccionar Profesor Jefe --</option>
-                      {(formData.profesor_jefe || (allStudents.find((s: any) => getStudentCourse(s) === getStudentCourse(formData) && s.profesor_jefe)?.profesor_jefe)) &&
-                       !teachersList.some(t => t.name === (formData.profesor_jefe || allStudents.find((s: any) => getStudentCourse(s) === getStudentCourse(formData) && s.profesor_jefe)?.profesor_jefe)) && (
-                        <option key="fallback-pj" value={formData.profesor_jefe || allStudents.find((s: any) => getStudentCourse(s) === getStudentCourse(formData) && s.profesor_jefe)?.profesor_jefe}>
-                          {formData.profesor_jefe || allStudents.find((s: any) => getStudentCourse(s) === getStudentCourse(formData) && s.profesor_jefe)?.profesor_jefe}
-                        </option>
-                      )}
-                      {teachersList.map(t => (
-                        <option key={t.id || t.name} value={t.name}>{t.name} ({t.role})</option>
-                      ))}
-                    </select>
+                    {(() => {
+                      const resolvedPj =
+                        (formData.profesor_jefe && formData.profesor_jefe !== 'Sin Asignar' ? formData.profesor_jefe : '') ||
+                        resolveHomeroomTeacherForCourseYear(getStudentCourse(formData), activeTargetYear, yearCoursesMeta, allStudents);
+                      return (
+                        <select
+                          value={resolvedPj}
+                          onChange={e => handleChange('profesor_jefe', e.target.value)}
+                          style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box', background: '#ffffff', color: '#1e1b4b', fontWeight: 700 }}
+                        >
+                          <option value="">-- Seleccionar Profesor Jefe --</option>
+                          {resolvedPj && !teachersList.some(t => t.name === resolvedPj) && (
+                            <option key="fallback-pj" value={resolvedPj}>{resolvedPj}</option>
+                          )}
+                          {teachersList.map(t => (
+                            <option key={t.id || t.name} value={t.name}>{t.name} ({t.role})</option>
+                          ))}
+                        </select>
+                      );
+                    })()}
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>Fecha de Matrícula / Ingreso</label>

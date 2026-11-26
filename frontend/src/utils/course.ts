@@ -636,6 +636,50 @@ export const getTodayIsoDate = (): string => {
   return `${y}-${m}-${d}`;
 };
 
+export const resolveHomeroomTeacherForCourseYear = (
+  courseName: string,
+  targetYear: number,
+  targetYearCourses: Array<{ name: string; teacher?: string }> = [],
+  allStudents: any[] = []
+): string => {
+  if (!courseName || courseName === 'Sin Curso') return '';
+  const hasConfiguredYear = Array.isArray(targetYearCourses) && targetYearCourses.length > 0;
+  const configured = hasConfiguredYear
+    ? targetYearCourses.find(c => c && c.name === courseName)
+    : undefined;
+
+  if (configured?.teacher && configured.teacher !== 'null' && configured.teacher !== 'undefined' && configured.teacher !== 'Sin Asignar') {
+    return configured.teacher;
+  }
+
+  const fromTargetYearStudents = (allStudents || []).find(
+    (s: any) =>
+      getStudentYear(s) === targetYear &&
+      getStudentCourse(s) === courseName &&
+      s.profesor_jefe &&
+      s.profesor_jefe !== 'null' &&
+      s.profesor_jefe !== 'undefined' &&
+      s.profesor_jefe !== 'Sin Asignar'
+  )?.profesor_jefe;
+  if (fromTargetYearStudents) return fromTargetYearStudents;
+
+  // Solo recurrir a años anteriores cuando el año destino aún no tiene malla configurada
+  if (!hasConfiguredYear || targetYear === 2026) {
+    return (
+      (allStudents || []).find(
+        (s: any) =>
+          getStudentCourse(s) === courseName &&
+          s.profesor_jefe &&
+          s.profesor_jefe !== 'null' &&
+          s.profesor_jefe !== 'undefined' &&
+          s.profesor_jefe !== 'Sin Asignar'
+      )?.profesor_jefe || ''
+    );
+  }
+
+  return '';
+};
+
 /**
  * Prepara los datos de un estudiante de un año anterior (ej. 2026) para matricularlo
  * y actualizar su ficha en el nuevo año lectivo (ej. 2027), conservando el registro histórico.
@@ -644,7 +688,7 @@ export const prepareStudentForYearEnrollment = (
   sourceStudent: any,
   targetYear: number,
   allStudents: any[],
-  options?: { batchIndex?: number; batchTotal?: number }
+  options?: { batchIndex?: number; batchTotal?: number; targetYearCourses?: Array<{ name: string; teacher?: string }> }
 ): any => {
   const projection = getSuggestedNextCourse(sourceStudent);
   const nextEnrollmentNumber = getNextEnrollmentNumberForYear(allStudents, targetYear);
@@ -659,11 +703,13 @@ export const prepareStudentForYearEnrollment = (
     return !isNaN(n) && n > max ? n : max;
   }, 0);
 
-  // Buscar profesor jefe ya asignado a ese curso (o en cursos 2026/2027)
-  const targetTeacher =
-    (allStudents || []).find((s: any) => getStudentYear(s) === targetYear && getStudentCourse(s) === projection.nextCourse && s.profesor_jefe)?.profesor_jefe ||
-    (allStudents || []).find((s: any) => getStudentCourse(s) === projection.nextCourse && s.profesor_jefe && s.profesor_jefe !== 'Sin Asignar')?.profesor_jefe ||
-    '';
+  // Resolver profesor jefe priorizando la configuración oficial del año destino (ej. 2027)
+  const targetTeacher = resolveHomeroomTeacherForCourseYear(
+    projection.nextCourse,
+    targetYear,
+    options?.targetYearCourses || [],
+    allStudents
+  );
 
   const todayIso = getTodayIsoDate();
 

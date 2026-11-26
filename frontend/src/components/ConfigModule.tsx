@@ -4,7 +4,7 @@ import { PermissionsMatrix } from './PermissionsMatrix';
 import { ChecklistTemplatesEditor } from './ChecklistTemplatesEditor';
 import { CourseSupportModal } from './CourseSupportModal';
 import { formatRut } from '../utils/rut';
-import { getStudentCourse, isStudentRetired, sortCoursesList, getCourseSortRank, isParvulariaCourse, getDefaultSubjectsForCourse } from '../utils/course';
+import { getStudentCourse, getStudentYear, isStudentRetired, sortCoursesList, getCourseSortRank, isParvulariaCourse, getDefaultSubjectsForCourse, OFFICIAL_SCHOOL_COURSES } from '../utils/course';
 import { getModuleSubTabFromUrl, syncModuleSubUrl } from '../utils/urlRouter';
 import Swal from 'sweetalert2';
 
@@ -91,6 +91,33 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
   const [testingDrive, setTestingDrive] = useState(false);
   const [supportCourseModal, setSupportCourseModal] = useState<string | null>(null);
   const [supportModalInitialTab, setSupportModalInitialTab] = useState<'course' | 'pie_matrix'>('course');
+
+  // CONFIGURACIÓN MULTI-AÑO DE CURSOS Y PROFESORES JEFES (Sub-ventanas 6.1 y 6.5)
+  const CONFIGURABLE_YEARS = [2026, 2027, 2028, 2029, 2030];
+  const [coursesYear, setCoursesYear] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('ltp_config_courses_year');
+      const parsed = saved ? parseInt(saved, 10) : 2026;
+      return [2026, 2027, 2028, 2029, 2030].includes(parsed) ? parsed : 2026;
+    } catch {
+      return 2026;
+    }
+  });
+  const [configCoursesList, setConfigCoursesList] = useState<any[]>([]);
+  const [loadingCoursesYear, setLoadingCoursesYear] = useState<boolean>(false);
+  const [cloningCoursesYear, setCloningCoursesYear] = useState<boolean>(false);
+  const [quickTeacherModal, setQuickTeacherModal] = useState<{
+    isOpen: boolean;
+    name: string;
+    run: string;
+    email: string;
+    job_function: string;
+    send_welcome_email: boolean;
+    assignToEditingCourse?: boolean;
+    directAssignCourseName?: string;
+    directAssignCapacity?: number;
+  } | null>(null);
+  const [savingQuickTeacher, setSavingQuickTeacher] = useState<boolean>(false);
 
   // CONFIGURACIÓN DE HORARIOS DE CLASES Y RECREOS (Sub-ventana 6.14)
   const [periodsList, setPeriodsList] = useState<any[]>([]);
@@ -510,63 +537,63 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
       })
       .catch(() => {});
 
-    // 3. Cargar Cursos, Capacidad y Jefaturas guardadas desde la Base de Datos
+    // 3. Cargar Cursos, Capacidad y Jefaturas guardadas desde la Base de Datos (Año Base 2026 + Año Seleccionado en Configuración)
     Promise.all([
-      fetch('/api/courses', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => ({ courses: [] })),
+      fetch('/api/courses?year=2026', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => ({ courses: [] })),
       fetch('/api/students', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => ([]))
     ]).then(([coursesRes, studentsData]) => {
-      const savedCourses = (coursesRes && Array.isArray(coursesRes.courses)) ? coursesRes.courses : [];
-      const studentsList = Array.isArray(studentsData) ? studentsData : [];
-      setAllStudentsList(studentsList);
+      const studentsAll = Array.isArray(studentsData) ? studentsData : [];
+      const students2026 = studentsAll.filter((s: any) => getStudentYear(s) === 2026);
+      setAllStudentsList(students2026.length > 0 ? students2026 : studentsAll);
 
-      const courseMap: Record<string, { enrolled: number; teacher: string; capacity: number }> = {};
-      
-      // Registrar cursos guardados en la BD primero
-      savedCourses.forEach((sc: any) => {
-        if (sc.name) {
-          courseMap[sc.name] = {
-            enrolled: 0,
-            teacher: (sc.teacher && sc.teacher !== 'null' && sc.teacher !== 'undefined') ? sc.teacher : 'Sin Asignar',
-            capacity: Number(sc.capacity) || 45
-          };
-        }
-      });
+      const savedCourses2026 = (coursesRes && Array.isArray(coursesRes.courses)) ? coursesRes.courses : [];
+      const buildCourseRows = (savedCourses: any[], yearStudents: any[]) => {
+        const courseMap: Record<string, { id?: string | number; enrolled: number; teacher: string; capacity: number }> = {};
+        savedCourses.forEach((sc: any) => {
+          if (sc.name) {
+            courseMap[sc.name] = {
+              id: sc.id,
+              enrolled: 0,
+              teacher: (sc.teacher && sc.teacher !== 'null' && sc.teacher !== 'undefined') ? sc.teacher : 'Sin Asignar',
+              capacity: Number(sc.capacity) || 45
+            };
+          }
+        });
+        yearStudents.forEach((s: any) => {
+          const cName = getStudentCourse(s);
+          const cleanT = (s.profesor_jefe && s.profesor_jefe !== 'null' && s.profesor_jefe !== 'undefined') ? s.profesor_jefe : 'Sin Asignar';
+          if (!courseMap[cName]) {
+            const isTP = cName.includes('Industrial') || cName.includes('Técnico Niños') || cName.includes('Mecánica') || cName.includes('Párvulos');
+            const defaultCap = isTP ? 35 : (cName.includes('Pre-kinder') || cName.includes('Kinder') ? 30 : 45);
+            courseMap[cName] = { enrolled: 0, teacher: cleanT, capacity: defaultCap };
+          }
+          if (!isStudentRetired(s)) {
+            courseMap[cName].enrolled += 1;
+          }
+          if (cleanT && cleanT !== 'Sin Asignar' && (!courseMap[cName].teacher || courseMap[cName].teacher === 'Sin Asignar')) {
+            courseMap[cName].teacher = cleanT;
+          }
+        });
+        return sortCoursesList(Object.keys(courseMap).map((cName, idx) => ({
+          id: courseMap[cName].id || idx + 1,
+          name: cName,
+          capacity: courseMap[cName].capacity,
+          enrolled: courseMap[cName].enrolled,
+          teacher: courseMap[cName].teacher
+        })));
+      };
 
-      // Mapear matriculados y jefaturas desde los estudiantes
-      studentsList.forEach((s: any) => {
-        const cName = getStudentCourse(s);
-        const cleanT = (s.profesor_jefe && s.profesor_jefe !== 'null' && s.profesor_jefe !== 'undefined') ? s.profesor_jefe : 'Sin Asignar';
-        if (!courseMap[cName]) {
-          const isTP = cName.includes('Industrial') || cName.includes('Técnico Niños') || cName.includes('Mecánica') || cName.includes('Párvulos');
-          const defaultCap = isTP ? 35 : (cName.includes('Pre-kinder') || cName.includes('Kinder') ? 30 : 45);
-          courseMap[cName] = {
-            enrolled: 0,
-            teacher: cleanT,
-            capacity: defaultCap
-          };
-        }
-        if (!isStudentRetired(s)) {
-          courseMap[cName].enrolled += 1;
-        }
-        if (cleanT && cleanT !== 'Sin Asignar' && (!courseMap[cName].teacher || courseMap[cName].teacher === 'Sin Asignar')) {
-          courseMap[cName].teacher = cleanT;
-        }
-      });
+      const formatted2026 = buildCourseRows(savedCourses2026, students2026);
+      setCoursesList(formatted2026);
+      if (coursesYear === 2026) {
+        setConfigCoursesList(formatted2026);
+      }
 
-      const formattedCourses = sortCoursesList(Object.keys(courseMap).map((cName, idx) => ({
-        id: idx + 1,
-        name: cName,
-        capacity: courseMap[cName].capacity,
-        enrolled: courseMap[cName].enrolled,
-        teacher: courseMap[cName].teacher
-      })));
-
-      setCoursesList(formattedCourses);
-      const firstGradeable = formattedCourses.find(c => !isParvulariaCourse(c.name));
+      const firstGradeable = formatted2026.find(c => !isParvulariaCourse(c.name));
       if (firstGradeable) {
         setSelectedCourseForOrder(prev => (prev && !isParvulariaCourse(prev)) ? prev : firstGradeable.name);
-      } else if (formattedCourses.length > 0) {
-        setSelectedCourseForOrder(prev => prev || formattedCourses[0].name);
+      } else if (formatted2026.length > 0) {
+        setSelectedCourseForOrder(prev => prev || formatted2026[0].name);
       }
     }).catch(() => {});
 
@@ -603,6 +630,75 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
     // 7. Cargar Horarios de Clases y Recreos (Sub-ventana 6.14)
     fetchPeriods();
   };
+
+  const fetchConfigCoursesForYear = async (yearToLoad: number) => {
+    setLoadingCoursesYear(true);
+    try {
+      const [coursesRes, studentsData] = await Promise.all([
+        fetch(`/api/courses?year=${yearToLoad}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => ({ courses: [] })),
+        fetch(`/api/students?year=${yearToLoad}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).catch(() => [])
+      ]);
+      const savedCourses = (coursesRes && Array.isArray(coursesRes.courses)) ? coursesRes.courses : [];
+      const yearStudents = (Array.isArray(studentsData) ? studentsData : []).filter((s: any) => getStudentYear(s) === yearToLoad);
+      const courseMap: Record<string, { id?: string | number; enrolled: number; teacher: string; capacity: number }> = {};
+
+      savedCourses.forEach((sc: any) => {
+        if (sc.name) {
+          courseMap[sc.name] = {
+            id: sc.id,
+            enrolled: 0,
+            teacher: (sc.teacher && sc.teacher !== 'null' && sc.teacher !== 'undefined') ? sc.teacher : 'Sin Asignar',
+            capacity: Number(sc.capacity) || 45
+          };
+        }
+      });
+
+      yearStudents.forEach((s: any) => {
+        const cName = getStudentCourse(s);
+        const cleanT = (s.profesor_jefe && s.profesor_jefe !== 'null' && s.profesor_jefe !== 'undefined') ? s.profesor_jefe : 'Sin Asignar';
+        if (!courseMap[cName]) {
+          const isTP = cName.includes('Industrial') || cName.includes('Técnico Niños') || cName.includes('Mecánica') || cName.includes('Párvulos');
+          const defaultCap = isTP ? 35 : (cName.includes('Pre-kinder') || cName.includes('Kinder') ? 30 : 45);
+          courseMap[cName] = { enrolled: 0, teacher: cleanT, capacity: defaultCap };
+        }
+        if (!isStudentRetired(s)) {
+          courseMap[cName].enrolled += 1;
+        }
+        if (cleanT && cleanT !== 'Sin Asignar' && (!courseMap[cName].teacher || courseMap[cName].teacher === 'Sin Asignar')) {
+          courseMap[cName].teacher = cleanT;
+        }
+      });
+
+      const formatted = sortCoursesList(Object.keys(courseMap).map((cName, idx) => ({
+        id: courseMap[cName].id || `${yearToLoad}_${idx + 1}`,
+        name: cName,
+        capacity: courseMap[cName].capacity,
+        enrolled: courseMap[cName].enrolled,
+        teacher: courseMap[cName].teacher,
+        academic_year: yearToLoad
+      })));
+
+      setConfigCoursesList(formatted);
+      if (yearToLoad === 2026) {
+        setCoursesList(formatted);
+      }
+    } catch (_) {
+      // silent fallback
+    } finally {
+      setLoadingCoursesYear(false);
+    }
+  };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('ltp_config_courses_year', String(coursesYear));
+    } catch {
+      // ignore
+    }
+    if (token) {
+      fetchConfigCoursesForYear(coursesYear);
+    }
+  }, [coursesYear, token]);
 
   const [directorNameConfig, setDirectorNameConfig] = useState<string>('');
 
@@ -1661,53 +1757,300 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
     });
   };
 
-  // GUARDAR EDICIÓN DE CURSOS Y PROFESOR JEFE EN SUPABASE
+  // GUARDAR EDICIÓN DE CURSOS Y PROFESOR JEFE EN SUPABASE (POR AÑO LECTIVO)
   const handleSaveCourseEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingCourse.name) return;
+    if (!editingCourse.name || !String(editingCourse.name).trim()) return;
 
     try {
+      const targetYear = Number(editingCourse.academic_year || coursesYear) || 2026;
+      const cleanName = String(editingCourse.name).trim();
       const teacherName = editingCourse.teacher || 'Sin Asignar';
-      
-      // CERRAR MODAL DE EDICIÓN PRIMERO
-      const targetCourse = { ...editingCourse };
+
+      const targetCourse = { ...editingCourse, name: cleanName, teacher: teacherName, academic_year: targetYear };
       setEditingCourse(null);
 
-      // Guardar Profesor Jefe y Capacidad en la base de datos
-      await fetch('/api/courses/homeroom', {
+      // Guardar Profesor Jefe y Capacidad en la base de datos aislada por año
+      const res = await fetch('/api/courses/homeroom', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          courseName: targetCourse.name,
+          courseName: cleanName,
+          oldCourseName: (!targetCourse.isNew && targetCourse.originalName && targetCourse.originalName !== cleanName) ? targetCourse.originalName : undefined,
           teacherName,
-          capacity: targetCourse.capacity
+          capacity: targetCourse.capacity,
+          academicYear: targetYear
         })
       });
 
-      if (targetCourse.isNew) {
-        const newCourse = { ...targetCourse, id: Date.now() };
-        delete newCourse.isNew;
-        setCoursesList(prev => sortCoursesList([...prev, newCourse]));
-      } else {
-        setCoursesList(prev => sortCoursesList(prev.map(c => c.id === targetCourse.id ? targetCourse : c)));
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Error al guardar curso');
       }
 
-      loadConfigData();
+      if (targetCourse.isNew) {
+        const newCourse = { ...targetCourse, id: Date.now(), enrolled: 0 };
+        delete newCourse.isNew;
+        setConfigCoursesList(prev => sortCoursesList([...prev, newCourse]));
+        if (targetYear === 2026) {
+          setCoursesList(prev => sortCoursesList([...prev, newCourse]));
+        }
+      } else {
+        setConfigCoursesList(prev => sortCoursesList(prev.map(c => c.id === targetCourse.id ? targetCourse : c)));
+        if (targetYear === 2026) {
+          setCoursesList(prev => sortCoursesList(prev.map(c => c.id === targetCourse.id ? targetCourse : c)));
+        }
+      }
+
+      await fetchConfigCoursesForYear(targetYear);
 
       Swal.fire({
         icon: 'success',
-        title: '¡Curso y Jefatura Actualizados!',
-        text: `El curso "${targetCourse.name}" (Capacidad: ${targetCourse.capacity} cupos) y el profesor jefe "${teacherName}" han sido guardados correctamente.`,
+        title: `¡Curso ${targetYear} Guardado!`,
+        text: `El curso "${cleanName}" (Año ${targetYear}, Capacidad: ${targetCourse.capacity} cupos) y el profesor jefe "${teacherName}" han sido guardados correctamente.`,
         confirmButtonColor: '#4f46e5',
         confirmButtonText: 'Aceptar'
       });
-    } catch (err) {
-      Swal.fire('Error', 'No se pudo guardar la asignación de jefatura en la base de datos.', 'error');
+    } catch (err: any) {
+      Swal.fire('Error', err?.message || 'No se pudo guardar la asignación de curso/jefatura en la base de datos.', 'error');
     }
   };
+
+  // COPIAR MALLA BASE DE CURSOS DESDE EL AÑO ANTERIOR (EJ. 2026 -> 2027)
+  const handleCloneCoursesFromPreviousYear = async (fromYear: number, toYear: number) => {
+    const choice = await Swal.fire({
+      icon: 'question',
+      title: `Copiar Cursos desde ${fromYear} hacia ${toYear}`,
+      html: `
+        <div style="text-align:left; font-size:0.88rem; color:#334155; line-height:1.5;">
+          <p style="margin-top:0;">Esta acción copiará los cursos faltantes y sus vacantes desde el año <strong>${fromYear}</strong> hacia el año lectivo <strong>${toYear}</strong>, sin modificar ningún dato de ${fromYear}.</p>
+          <p style="margin-bottom:0; color:#4f46e5; font-weight:600;">¿Cómo deseas inicializar los Profesores Jefe en ${toYear}?</p>
+        </div>
+      `,
+      showDenyButton: true,
+      showCancelButton: true,
+      confirmButtonText: `Copiar solo cursos (Prof. Jefe "Sin Asignar")`,
+      denyButtonText: `Copiar cursos y mantener Prof. Jefe de ${fromYear}`,
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#4f46e5',
+      denyButtonColor: '#0f766e'
+    });
+
+    if (choice.isDismissed) return;
+    const includeTeachers = choice.isDenied;
+
+    setCloningCoursesYear(true);
+    try {
+      const res = await fetch('/api/courses/clone-year', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ fromYear, toYear, includeTeachers })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'No se pudieron copiar los cursos.');
+      }
+
+      await fetchConfigCoursesForYear(toYear);
+      Swal.fire({
+        icon: 'success',
+        title: `¡Malla ${toYear} Preparada!`,
+        text: data.copiedCount > 0
+          ? `Se crearon ${data.copiedCount} cursos para el año ${toYear}${data.skippedCount > 0 ? ` (${data.skippedCount} ya existían)` : ''}. Ahora puedes editar cupos, agregar nuevos cursos (ej. paralelos B) o asignar Profesores Jefe.`
+          : `Todos los cursos de ${fromYear} ya estaban creados en ${toYear}.`,
+        confirmButtonColor: '#4f46e5'
+      });
+    } catch (err: any) {
+      Swal.fire('Error', err?.message || 'Error al copiar cursos del año anterior.', 'error');
+    } finally {
+      setCloningCoursesYear(false);
+    }
+  };
+
+  // CREAR RÁPIDAMENTE UN NUEVO DOCENTE / PROFESOR JEFE DESDE CONFIGURACIÓN DE CURSOS
+  const handleSaveQuickTeacher = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickTeacherModal) return;
+    const cleanName = quickTeacherModal.name.trim();
+    const formattedRun = formatRut(quickTeacherModal.run.trim());
+    if (!cleanName || !formattedRun) {
+      Swal.fire('Campos requeridos', 'Ingresa el Nombre Completo y el RUT / RUN del docente.', 'warning');
+      return;
+    }
+
+    setSavingQuickTeacher(true);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          run: formattedRun,
+          name: cleanName,
+          email: quickTeacherModal.email.trim(),
+          role: 'Docente',
+          roles: ['Docente'],
+          staff_type: 'Docente',
+          job_function: quickTeacherModal.job_function || 'Profesor(a) Jefe',
+          send_welcome_email: Boolean(quickTeacherModal.send_welcome_email && quickTeacherModal.email.trim())
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.user) {
+        throw new Error(data.error || 'No se pudo crear el docente.');
+      }
+
+      const createdUser = data.user;
+      setUsersList(prev => {
+        const exists = prev.some(u => u.id === createdUser.id || u.run === createdUser.run);
+        return exists ? prev.map(u => (u.id === createdUser.id || u.run === createdUser.run ? { ...u, ...createdUser } : u)) : [createdUser, ...prev];
+      });
+      fetchUsers();
+
+      // Si se abrió desde el modal de curso, seleccionarlo automáticamente como Profesor Jefe
+      if (quickTeacherModal.assignToEditingCourse) {
+        setEditingCourse((prev: any) => prev ? { ...prev, teacher: createdUser.name } : prev);
+      }
+
+      // Si se abrió directamente desde una fila de curso en 6.5, asignarlo inmediatamente a ese curso en BD
+      if (quickTeacherModal.directAssignCourseName) {
+        const cName = quickTeacherModal.directAssignCourseName;
+        await fetch('/api/courses/homeroom', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            courseName: cName,
+            teacherName: createdUser.name,
+            capacity: quickTeacherModal.directAssignCapacity || 45,
+            academicYear: coursesYear
+          })
+        });
+        await fetchConfigCoursesForYear(coursesYear);
+      }
+
+      const emailNotice = data.emailSent ? ' Se envió correo con credenciales de acceso.' : '';
+      const passNotice = createdUser.password_plain ? ` Clave temporal: ${createdUser.password_plain}.` : '';
+      setQuickTeacherModal(null);
+
+      Swal.fire({
+        icon: 'success',
+        title: '¡Docente Creado!',
+        text: `"${createdUser.name}" ha sido agregado como ${createdUser.job_function || 'Docente'}.${passNotice}${emailNotice}`,
+        confirmButtonColor: '#4f46e5'
+      });
+    } catch (err: any) {
+      Swal.fire('Error', err?.message || 'No se pudo registrar el docente.', 'error');
+    } finally {
+      setSavingQuickTeacher(false);
+    }
+  };
+
+  const EXTRA_COURSE_SUGGESTIONS = Array.from(new Set([
+    ...OFFICIAL_SCHOOL_COURSES,
+    '1° Básico B', '2° Básico B', '3° Básico B', '4° Básico B',
+    '5° Básico B', '6° Básico B', '7° Básico B', '8° Básico B',
+    '1° Medio B', '1° Medio C', '2° Medio C',
+    '3° Medio Industrial (Mecánica Industrial) B',
+    '3° Medio Técnico Niños (Atención de Párvulos) B',
+    '4° Medio Industrial (Mecánica Industrial) B',
+    '4° Medio Técnico Niños (Atención de Párvulos) B'
+  ]));
+
+  const renderCoursesYearSelector = () => (
+    <div style={{
+      background: coursesYear > 2026 ? '#f0fdf4' : '#f8fafc',
+      border: `1px solid ${coursesYear > 2026 ? '#bbf7d0' : '#e2e8f0'}`,
+      borderRadius: '10px',
+      padding: '0.85rem 1rem',
+      marginBottom: '1rem',
+      display: 'flex',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: '0.75rem'
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a', marginRight: '0.25rem' }}>
+          📅 Año Lectivo a Configurar:
+        </span>
+        {CONFIGURABLE_YEARS.map(yr => {
+          const active = coursesYear === yr;
+          return (
+            <button
+              key={yr}
+              type="button"
+              onClick={() => setCoursesYear(yr)}
+              style={{
+                padding: '0.35rem 0.75rem',
+                borderRadius: '999px',
+                border: active ? '1px solid #4f46e5' : '1px solid #cbd5e1',
+                background: active ? '#4f46e5' : '#ffffff',
+                color: active ? '#ffffff' : '#334155',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s'
+              }}
+            >
+              {yr}{yr === 2026 ? ' (Actual)' : ''}
+            </button>
+          );
+        })}
+        <span style={{
+          fontSize: '0.75rem',
+          fontWeight: 600,
+          color: coursesYear > 2026 ? '#15803d' : '#475569',
+          background: '#ffffff',
+          border: '1px solid #cbd5e1',
+          borderRadius: '999px',
+          padding: '0.2rem 0.65rem'
+        }}>
+          {loadingCoursesYear ? 'Cargando...' : `${configCoursesList.length} curso(s) en ${coursesYear}`}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+        {coursesYear > 2026 && (
+          <button
+            type="button"
+            disabled={cloningCoursesYear}
+            onClick={() => handleCloneCoursesFromPreviousYear(coursesYear - 1, coursesYear)}
+            className="btn"
+            style={{
+              background: '#ffffff',
+              color: '#0f766e',
+              border: '1px solid #99f6e4',
+              padding: '0.38rem 0.8rem',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              opacity: cloningCoursesYear ? 0.6 : 1
+            }}
+            title={`Copiar la malla de cursos del año ${coursesYear - 1} hacia ${coursesYear} sin modificar ${coursesYear - 1}`}
+          >
+            <Copy size={14} />
+            {cloningCoursesYear ? 'Copiando...' : `Copiar Cursos Base desde ${coursesYear - 1}`}
+          </button>
+        )}
+      </div>
+
+      {coursesYear > 2026 && (
+        <div style={{ width: '100%', fontSize: '0.76rem', color: '#166534' }}>
+          ℹ️ Los cursos y Profesores Jefe configurados para <strong>{coursesYear}</strong> quedan completamente aislados del año 2026 y aparecerán disponibles en la <strong>Ficha de Matrícula {coursesYear}</strong>.
+        </div>
+      )}
+    </div>
+  );
 
   // CREAR / EDITAR ASIGNACIÓN DOCENTE EN BASE DE DATOS
   const handleCreateAssignment = async (e: React.FormEvent) => {
@@ -3897,14 +4240,15 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
       {/* SUB-VENTANA 6.1: CURSOS Y VACANTES */}
       {subTab === 'courses' && (
         <div>
+          {renderCoursesYearSelector()}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap', gap: '0.6rem' }}>
-            <h3>Gestión de Cursos y Vacantes</h3>
+            <h3>Gestión de Cursos y Vacantes — Año {coursesYear}</h3>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 onClick={() => {
                   setSupportModalInitialTab('pie_matrix');
-                  setSupportCourseModal(coursesList[0]?.name || '1° Medio A');
+                  setSupportCourseModal(configCoursesList[0]?.name || coursesList[0]?.name || '1° Medio A');
                 }}
                 className="btn"
                 style={{
@@ -3922,8 +4266,35 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
               >
                 🔐 Asignar Cursos por Profesor PIE (Privacidad)
               </button>
-              <button onClick={() => setEditingCourse({ isNew: true, name: '', capacity: 45, enrolled: 0, teacher: 'Sin Asignar' })} className="btn btn-primary">
-                + Nuevo Curso
+              <button
+                type="button"
+                onClick={() => setQuickTeacherModal({
+                  isOpen: true,
+                  name: '',
+                  run: '',
+                  email: '',
+                  job_function: 'Profesor(a) Jefe',
+                  send_welcome_email: false
+                })}
+                className="btn"
+                style={{
+                  background: '#ecfdf5',
+                  color: '#065f46',
+                  border: '1px solid #a7f3d0',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem'
+                }}
+                title="Crear rápidamente un nuevo Docente para asignarlo como Profesor Jefe"
+              >
+                👩‍🏫 + Crear Docente / Prof. Jefe
+              </button>
+              <button
+                onClick={() => setEditingCourse({ isNew: true, academic_year: coursesYear, name: '', capacity: 45, enrolled: 0, teacher: 'Sin Asignar' })}
+                className="btn btn-primary"
+              >
+                + Nuevo Curso ({coursesYear})
               </button>
             </div>
           </div>
@@ -3935,25 +4306,46 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                   <th>Capacidad Total</th>
                   <th>Matriculados Activos</th>
                   <th>Vacantes Disponibles</th>
-                  <th>Profesor Jefe Asignado</th>
+                  <th>Profesor Jefe Asignado ({coursesYear})</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {coursesList.length === 0 ? (
+                {configCoursesList.length === 0 ? (
                   <tr>
                     <td colSpan={6} style={{ textAlign: 'center', padding: '2.5rem', color: '#64748b' }}>
-                      No hay cursos registrados en el sistema. Los cursos se reflejarán cuando estén registrados en la base de datos o use "+ Nuevo Curso".
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        No hay cursos configurados para el año <strong>{coursesYear}</strong>.
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                        {coursesYear > 2026 && (
+                          <button
+                            type="button"
+                            onClick={() => handleCloneCoursesFromPreviousYear(coursesYear - 1, coursesYear)}
+                            className="btn"
+                            style={{ background: '#f0fdf4', color: '#15803d', border: '1px solid #86efac', fontWeight: 700 }}
+                          >
+                            📋 Copiar Cursos Base desde {coursesYear - 1}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setEditingCourse({ isNew: true, academic_year: coursesYear, name: '', capacity: 45, enrolled: 0, teacher: 'Sin Asignar' })}
+                          className="btn btn-primary"
+                        >
+                          + Crear Curso {coursesYear}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ) : (
-                  coursesList.map(c => (
-                  <tr key={c.id}>
+                  configCoursesList.map(c => (
+                  <tr key={`${coursesYear}-${c.id || c.name}`}>
                     <td><strong>{c.name}</strong></td>
                     <td>{c.capacity} cupos</td>
                     <td>{c.enrolled} alumnos</td>
                     <td><span style={{ color: '#10b981', fontWeight: 700 }}>{c.capacity - c.enrolled} vacantes</span></td>
-                    <td>{(!c.teacher || c.teacher === 'null' || c.teacher === 'undefined') ? <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin Asignar</span> : c.teacher}</td>
+                    <td>{(!c.teacher || c.teacher === 'null' || c.teacher === 'undefined' || c.teacher === 'Sin Asignar') ? <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin Asignar</span> : c.teacher}</td>
                     <td>
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
                         <button
@@ -3978,19 +4370,22 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                         >
                           <Users size={12} /> Apoyo PIE
                         </button>
-                        <button onClick={() => setEditingCourse({ ...c })} className="btn btn-primary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}>
+                        <button onClick={() => setEditingCourse({ ...c, originalName: c.name, academic_year: coursesYear })} className="btn btn-primary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}>
                           <Edit size={12} /> Editar
                         </button>
                         <button
-                          onClick={() => confirmDelete(c.name, async () => {
+                          onClick={() => confirmDelete(`${c.name} (${coursesYear})`, async () => {
                             try {
-                              const res = await fetch(`/api/courses?name=${encodeURIComponent(c.name)}&id=${encodeURIComponent(c.id)}`, {
+                              const res = await fetch(`/api/courses?name=${encodeURIComponent(c.name)}&id=${encodeURIComponent(c.id)}&year=${coursesYear}`, {
                                 method: 'DELETE',
                                 headers: { Authorization: `Bearer ${token}` }
                               });
                               if (res.ok) {
-                                setCoursesList(prev => prev.filter(x => x.id !== c.id && x.name !== c.name));
-                                Swal.fire('Eliminado', `El curso "${c.name}" ha sido eliminado permanentemente.`, 'success');
+                                setConfigCoursesList(prev => prev.filter(x => x.id !== c.id && x.name !== c.name));
+                                if (coursesYear === 2026) {
+                                  setCoursesList(prev => prev.filter(x => x.id !== c.id && x.name !== c.name));
+                                }
+                                Swal.fire('Eliminado', `El curso "${c.name}" (${coursesYear}) ha sido eliminado correctamente.`, 'success');
                               } else {
                                 Swal.fire('Error', 'No se pudo eliminar el curso.', 'error');
                               }
@@ -4572,8 +4967,44 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>Asignación de Profesores Jefes por Curso</h3>
+          {renderCoursesYearSelector()}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.6rem' }}>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>Asignación de Profesores Jefes por Curso — Año {coursesYear}</h3>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setQuickTeacherModal({
+                  isOpen: true,
+                  name: '',
+                  run: '',
+                  email: '',
+                  job_function: 'Profesor(a) Jefe',
+                  send_welcome_email: false
+                })}
+                className="btn"
+                style={{
+                  background: '#ecfdf5',
+                  color: '#065f46',
+                  border: '1px solid #a7f3d0',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontSize: '0.82rem'
+                }}
+              >
+                👩‍🏫 + Crear Docente / Prof. Jefe
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingCourse({ isNew: true, academic_year: coursesYear, name: '', capacity: 45, enrolled: 0, teacher: 'Sin Asignar' })}
+                className="btn btn-primary"
+                style={{ fontSize: '0.82rem' }}
+              >
+                + Nuevo Curso ({coursesYear})
+              </button>
+            </div>
           </div>
 
           <div className="table-container">
@@ -4581,21 +5012,45 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
               <thead>
                 <tr>
                   <th>Curso / Nivel (Orden Oficial)</th>
-                  <th>Profesor Jefe Responsable</th>
+                  <th>Profesor Jefe Responsable ({coursesYear})</th>
                   <th>Seleccionar / Asignar Docente</th>
                   <th>Acción</th>
                 </tr>
               </thead>
               <tbody>
-                {coursesList.length === 0 ? (
+                {configCoursesList.length === 0 ? (
                   <tr>
                     <td colSpan={4} style={{ textAlign: 'center', padding: '2.5rem', color: '#64748b' }}>
-                      No hay cursos registrados para asignar jefaturas. Los cursos se reflejarán cuando estén registrados en la base de datos.
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        No hay cursos configurados en el año <strong>{coursesYear}</strong> para asignar jefaturas.
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                        {coursesYear > 2026 && (
+                          <button
+                            type="button"
+                            onClick={() => handleCloneCoursesFromPreviousYear(coursesYear - 1, coursesYear)}
+                            className="btn"
+                            style={{ background: '#f0fdf4', color: '#15803d', border: '1px solid #86efac', fontWeight: 700 }}
+                          >
+                            📋 Copiar Cursos Base desde {coursesYear - 1}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setEditingCourse({ isNew: true, academic_year: coursesYear, name: '', capacity: 45, enrolled: 0, teacher: 'Sin Asignar' })}
+                          className="btn btn-primary"
+                        >
+                          + Crear Curso {coursesYear}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ) : (
-                  sortCoursesList(coursesList).map(c => (
-                  <tr key={c.id}>
+                  sortCoursesList(configCoursesList).map(c => {
+                    const docenteOptions = usersList.filter(isDocenteUser);
+                    const hasExactMatch = !c.teacher || c.teacher === 'Sin Asignar' || docenteOptions.some((u: any) => u.name === c.teacher);
+                    return (
+                  <tr key={`${coursesYear}-${c.id || c.name}`}>
                     <td><strong>{c.name}</strong></td>
                     <td>
                       {c.teacher && c.teacher !== 'Sin Asignar' ? (
@@ -4607,49 +5062,78 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                       )}
                     </td>
                     <td>
-                      <select
-                        value={c.teacher || 'Sin Asignar'}
-                        onChange={async e => {
-                          const newTeacher = e.target.value;
-                          try {
-                            await fetch('/api/courses/homeroom', {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                              body: JSON.stringify({ courseName: c.name, teacherName: newTeacher })
-                            });
-                            setCoursesList(prev => sortCoursesList(prev.map(x => x.id === c.id ? { ...x, teacher: newTeacher } : x)));
-                            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Jefatura de ${c.name} asignada a ${newTeacher}`, timer: 1500, showConfirmButton: false });
-                          } catch (err) {
-                            Swal.fire('Error', 'No se pudo guardar la jefatura.', 'error');
-                          }
-                        }}
-                        style={{ padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', fontWeight: 600, background: '#ffffff', color: '#0f172a', cursor: 'pointer', maxWidth: '260px' }}
-                      >
-                        <option value="Sin Asignar">-- Sin Asignar --</option>
-                        {usersList.filter(isDocenteUser).map(u => (
-                          <option key={u.id || u.run} value={`Prof. ${u.name}`}>
-                            Prof. {u.name}
-                          </option>
-                        ))}
-                      </select>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <select
+                          value={c.teacher || 'Sin Asignar'}
+                          onChange={async e => {
+                            const newTeacher = e.target.value;
+                            try {
+                              await fetch('/api/courses/homeroom', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ courseName: c.name, teacherName: newTeacher, capacity: c.capacity, academicYear: coursesYear })
+                              });
+                              setConfigCoursesList(prev => sortCoursesList(prev.map(x => x.name === c.name ? { ...x, teacher: newTeacher } : x)));
+                              if (coursesYear === 2026) {
+                                setCoursesList(prev => sortCoursesList(prev.map(x => x.name === c.name ? { ...x, teacher: newTeacher } : x)));
+                              }
+                              Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Jefatura ${coursesYear} de ${c.name} asignada a ${newTeacher}`, timer: 1500, showConfirmButton: false });
+                            } catch (err) {
+                              Swal.fire('Error', 'No se pudo guardar la jefatura.', 'error');
+                            }
+                          }}
+                          style={{ padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', fontWeight: 600, background: '#ffffff', color: '#0f172a', cursor: 'pointer', maxWidth: '250px' }}
+                        >
+                          <option value="Sin Asignar">-- Sin Asignar --</option>
+                          {!hasExactMatch && c.teacher && (
+                            <option value={c.teacher}>{c.teacher}</option>
+                          )}
+                          {docenteOptions.map(u => (
+                            <option key={u.id || u.run} value={u.name}>
+                              {u.name} ({u.job_function || u.role})
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setQuickTeacherModal({
+                            isOpen: true,
+                            name: '',
+                            run: '',
+                            email: '',
+                            job_function: 'Profesor(a) Jefe',
+                            send_welcome_email: false,
+                            directAssignCourseName: c.name,
+                            directAssignCapacity: c.capacity
+                          })}
+                          className="btn"
+                          style={{ background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '0.32rem 0.45rem', fontSize: '0.75rem', fontWeight: 700 }}
+                          title={`Crear nuevo Docente y asignarlo directamente a ${c.name} (${coursesYear})`}
+                        >
+                          <Plus size={14} />
+                        </button>
+                      </div>
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
-                        <button onClick={() => setEditingCourse({ ...c })} className="btn btn-primary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                        <button onClick={() => setEditingCourse({ ...c, originalName: c.name, academic_year: coursesYear })} className="btn btn-primary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '3px' }}>
                           <Edit size={12} /> Editar
                         </button>
                         <button
-                          onClick={() => confirmDelete(`Jefatura de ${c.name}`, async () => {
+                          onClick={() => confirmDelete(`Jefatura ${coursesYear} de ${c.name}`, async () => {
                             await fetch('/api/courses/homeroom', {
                               method: 'PUT',
                               headers: {
                                 'Content-Type': 'application/json',
                                 'Authorization': `Bearer ${token}`
                               },
-                              body: JSON.stringify({ courseName: c.name, teacherName: 'Sin Asignar' })
+                              body: JSON.stringify({ courseName: c.name, teacherName: 'Sin Asignar', capacity: c.capacity, academicYear: coursesYear })
                             });
-                            setCoursesList(prev => sortCoursesList(prev.map(x => x.id === c.id ? { ...x, teacher: 'Sin Asignar' } : x)));
-                            Swal.fire('Desasignado', `Se retiró la jefatura de ${c.name} en la base de datos`, 'success');
+                            setConfigCoursesList(prev => sortCoursesList(prev.map(x => x.name === c.name ? { ...x, teacher: 'Sin Asignar' } : x)));
+                            if (coursesYear === 2026) {
+                              setCoursesList(prev => sortCoursesList(prev.map(x => x.name === c.name ? { ...x, teacher: 'Sin Asignar' } : x)));
+                            }
+                            Swal.fire('Desasignado', `Se retiró la jefatura de ${c.name} (${coursesYear}) en la base de datos`, 'success');
                           })}
                           className="btn"
                           style={{ background: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3', padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
@@ -4659,7 +5143,8 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                       </div>
                     </td>
                   </tr>
-                )))}
+                    );
+                  }))}
               </tbody>
             </table>
           </div>
@@ -5834,33 +6319,52 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
         </div>
       )}
 
-      {/* MODAL 2: EDICIÓN DE CURSOS (SUB-VENTANA 6.1) */}
+      {/* MODAL 2: EDICIÓN DE CURSOS (SUB-VENTANA 6.1 / 6.5 POR AÑO) */}
       {editingCourse && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.75)', zIndex: 3000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem' }}>
-          <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.75rem', width: '100%', maxWidth: '440px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#4f46e5' }}>
-                {editingCourse.isNew ? 'Crear Nuevo Curso' : 'Editar Curso / Nivel'}
-              </h3>
-              <button onClick={() => setEditingCourse(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+          <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.75rem', width: '100%', maxWidth: '470px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.1rem' }}>
+              <div>
+                <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#4f46e5', margin: 0 }}>
+                  {editingCourse.isNew ? 'Crear Nuevo Curso' : 'Editar Curso / Nivel'}
+                </h3>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0f766e', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '999px', padding: '0.15rem 0.55rem', display: 'inline-block', marginTop: '0.3rem' }}>
+                  📅 Año Lectivo {editingCourse.academic_year || coursesYear}
+                </span>
+              </div>
+              <button type="button" onClick={() => setEditingCourse(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
             </div>
 
             <form onSubmit={handleSaveCourseEdit}>
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>Nombre del Curso</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>Nombre del Curso *</label>
                 <input
                   type="text"
+                  list="ltp-course-suggestions-list"
+                  required
                   value={editingCourse.name || ''}
                   onChange={e => setEditingCourse({ ...editingCourse, name: e.target.value })}
-                  placeholder="Ej: 1° Medio A"
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                  placeholder="Ej: 1° Medio B"
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
                 />
+                <datalist id="ltp-course-suggestions-list">
+                  {EXTRA_COURSE_SUGGESTIONS.map(s => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
+                {editingCourse.isNew && (
+                  <small style={{ color: '#64748b', fontSize: '0.72rem', display: 'block', marginTop: '0.25rem' }}>
+                    Puedes escribir cualquier curso (ej. 1° Medio B, 2° Básico B) o elegir de la lista sugerida.
+                  </small>
+                )}
               </div>
 
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>Capacidad Total (Cupos)</label>
                 <input
                   type="number"
+                  min={1}
+                  max={60}
                   value={editingCourse.capacity || 45}
                   onChange={e => setEditingCourse({ ...editingCourse, capacity: parseInt(e.target.value, 10) || 45 })}
                   style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
@@ -5868,7 +6372,33 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
               </div>
 
               <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.2rem' }}>Profesor Jefe Asignado</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>Profesor Jefe Asignado</label>
+                  <button
+                    type="button"
+                    onClick={() => setQuickTeacherModal({
+                      isOpen: true,
+                      name: '',
+                      run: '',
+                      email: '',
+                      job_function: 'Profesor(a) Jefe',
+                      send_welcome_email: false,
+                      assignToEditingCourse: true
+                    })}
+                    style={{
+                      background: '#ecfdf5',
+                      color: '#065f46',
+                      border: '1px solid #a7f3d0',
+                      borderRadius: '6px',
+                      padding: '0.22rem 0.55rem',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    + Crear Nuevo Docente
+                  </button>
+                </div>
                 <select
                   value={editingCourse.teacher || 'Sin Asignar'}
                   onChange={e => setEditingCourse({ ...editingCourse, teacher: e.target.value })}
@@ -5878,8 +6408,13 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
                   {editingCourse.teacher && editingCourse.teacher !== 'Sin Asignar' && !usersList.some((u: any) => u.name === editingCourse.teacher) && (
                     <option value={editingCourse.teacher}>{editingCourse.teacher}</option>
                   )}
-                  {usersList.map((u: any) => (
-                    <option key={u.id} value={u.name}>{u.name} ({u.job_function || u.role})</option>
+                  {[...usersList].sort((a: any, b: any) => {
+                    const ad = isDocenteUser(a) ? 0 : 1;
+                    const bd = isDocenteUser(b) ? 0 : 1;
+                    if (ad !== bd) return ad - bd;
+                    return String(a.name || '').localeCompare(String(b.name || ''));
+                  }).map((u: any) => (
+                    <option key={u.id || u.run} value={u.name}>{u.name} ({u.job_function || u.role})</option>
                   ))}
                 </select>
               </div>
@@ -5887,6 +6422,99 @@ export const ConfigModule: React.FC<ConfigModuleProps> = ({ token }) => {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
                 <button type="button" onClick={() => setEditingCourse(null)} className="btn" style={{ background: '#cbd5e1' }}>Cancelar</button>
                 <button type="submit" className="btn btn-primary"><Save size={16} /> Guardar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2B: CREACIÓN RÁPIDA DE DOCENTE / PROFESOR JEFE */}
+      {quickTeacherModal?.isOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.8)', zIndex: 3500, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem' }}>
+          <div style={{ background: '#ffffff', borderRadius: '16px', padding: '1.65rem', width: '100%', maxWidth: '460px', boxShadow: '0 20px 50px rgba(0,0,0,0.28)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div>
+                <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#065f46', margin: 0 }}>
+                  👩‍🏫 Agregar Docente / Profesor Jefe
+                </h3>
+                {(quickTeacherModal.assignToEditingCourse || quickTeacherModal.directAssignCourseName) && (
+                  <span style={{ fontSize: '0.75rem', color: '#0f766e', fontWeight: 700, display: 'block', marginTop: '0.2rem' }}>
+                    Se asignará automáticamente como Profesor Jefe de {quickTeacherModal.directAssignCourseName || editingCourse?.name || 'este curso'} ({coursesYear})
+                  </span>
+                )}
+              </div>
+              <button type="button" onClick={() => setQuickTeacherModal(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+
+            <form onSubmit={handleSaveQuickTeacher}>
+              <div style={{ marginBottom: '0.85rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.25rem' }}>Nombre Completo del Docente *</label>
+                <input
+                  type="text"
+                  required
+                  value={quickTeacherModal.name}
+                  onChange={e => setQuickTeacherModal({ ...quickTeacherModal, name: e.target.value })}
+                  placeholder="Ej: MARÍA JOSÉ PÉREZ SOTO"
+                  style={{ width: '100%', padding: '0.58rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.25rem' }}>RUT / RUN *</label>
+                  <input
+                    type="text"
+                    required
+                    value={quickTeacherModal.run}
+                    onChange={e => setQuickTeacherModal({ ...quickTeacherModal, run: e.target.value })}
+                    onBlur={e => setQuickTeacherModal({ ...quickTeacherModal, run: formatRut(e.target.value) })}
+                    placeholder="15.234.567-8"
+                    style={{ width: '100%', padding: '0.58rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.25rem' }}>Cargo / Función</label>
+                  <select
+                    value={quickTeacherModal.job_function}
+                    onChange={e => setQuickTeacherModal({ ...quickTeacherModal, job_function: e.target.value })}
+                    style={{ width: '100%', padding: '0.58rem', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff' }}
+                  >
+                    <option value="Profesor(a) Jefe">Profesor(a) Jefe</option>
+                    <option value="Docente de Aula">Docente de Aula</option>
+                    <option value="Educador(a) de Párvulos">Educador(a) de Párvulos</option>
+                    <option value="Profesor(a) Técnico Profesional">Profesor(a) TP</option>
+                    <option value="Docente Diferencial / PIE">Docente Diferencial / PIE</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '0.9rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.25rem' }}>Correo Electrónico (Opcional)</label>
+                <input
+                  type="email"
+                  value={quickTeacherModal.email}
+                  onChange={e => setQuickTeacherModal({ ...quickTeacherModal, email: e.target.value })}
+                  placeholder="docente@liceocampanario.cl"
+                  style={{ width: '100%', padding: '0.58rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+
+              {quickTeacherModal.email.trim() !== '' && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: '#334155', marginBottom: '1rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={quickTeacherModal.send_welcome_email}
+                    onChange={e => setQuickTeacherModal({ ...quickTeacherModal, send_welcome_email: e.target.checked })}
+                  />
+                  Enviar clave temporal de acceso al correo del docente
+                </label>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                <button type="button" onClick={() => setQuickTeacherModal(null)} className="btn" style={{ background: '#e2e8f0', color: '#334155' }}>Cancelar</button>
+                <button type="submit" disabled={savingQuickTeacher} className="btn btn-primary" style={{ background: '#059669', borderColor: '#059669' }}>
+                  <Save size={16} /> {savingQuickTeacher ? 'Guardando...' : 'Crear Docente'}
+                </button>
               </div>
             </form>
           </div>

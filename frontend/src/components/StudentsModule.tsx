@@ -19,6 +19,7 @@ import {
   isStudentRetired,
   getStudentWithdrawalDate,
   sortStudentsList,
+  sortCoursesList,
   getStudentYear,
   getNextEnrollmentNumberForYear,
   prepareStudentForYearEnrollment
@@ -72,6 +73,21 @@ export const StudentsModule: React.FC<StudentsModuleProps> = ({
   const [enrollmentQueue, setEnrollmentQueue] = useState<any[]>([]);
   const [enrollmentQueueIndex, setEnrollmentQueueIndex] = useState<number>(0);
   const [sessionSavedStudents, setSessionSavedStudents] = useState<any[]>([]);
+  const [yearCoursesMeta, setYearCoursesMeta] = useState<any[]>([]);
+
+  React.useEffect(() => {
+    if (!token) return;
+    fetch(`/api/courses?year=${selectedYear}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        if (data && Array.isArray(data.courses)) {
+          setYearCoursesMeta(data.courses);
+        } else {
+          setYearCoursesMeta([]);
+        }
+      })
+      .catch(() => setYearCoursesMeta([]));
+  }, [selectedYear, token]);
 
   const mergedAllStudents = useMemo(() => {
     const map = new Map<string, any>();
@@ -135,7 +151,7 @@ export const StudentsModule: React.FC<StudentsModuleProps> = ({
     if (existingTarget) {
       setSelectedStudent({ ...existingTarget, anno: getStudentYear(existingTarget) });
     } else {
-      setSelectedStudent(prepareStudentForYearEnrollment(studentPrev, selectedYear, mergedAllStudents));
+      setSelectedStudent(prepareStudentForYearEnrollment(studentPrev, selectedYear, mergedAllStudents, { targetYearCourses: yearCoursesMeta }));
     }
   };
 
@@ -147,7 +163,8 @@ export const StudentsModule: React.FC<StudentsModuleProps> = ({
     setSelectedStudent(
       prepareStudentForYearEnrollment(pickedStudents[0], selectedYear, mergedAllStudents, {
         batchIndex: 1,
-        batchTotal: pickedStudents.length
+        batchTotal: pickedStudents.length,
+        targetYearCourses: yearCoursesMeta
       })
     );
   };
@@ -164,7 +181,8 @@ export const StudentsModule: React.FC<StudentsModuleProps> = ({
     setSelectedStudent(
       prepareStudentForYearEnrollment(enrollmentQueue[nextIdx], selectedYear, mergedAllStudents, {
         batchIndex: nextIdx + 1,
-        batchTotal: enrollmentQueue.length
+        batchTotal: enrollmentQueue.length,
+        targetYearCourses: yearCoursesMeta
       })
     );
   };
@@ -184,15 +202,18 @@ export const StudentsModule: React.FC<StudentsModuleProps> = ({
     return students.filter(s => getStudentYear(s) === selectedYear);
   }, [students, selectedYear]);
 
-  // Cursos disponibles para el año
+  // Cursos disponibles para el año (combinando alumnos matriculados + malla configurada para el año)
   const availableCourses = useMemo(() => {
     const cSet = new Set<string>();
+    (yearCoursesMeta || []).forEach((c: any) => {
+      if (c?.name && c.name !== 'Sin Asignar' && c.name !== 'null') cSet.add(c.name);
+    });
     yearStudents.forEach(s => {
       const c = getStudentCourse(s);
       if (c && c !== 'Sin Asignar' && c !== 'null') cSet.add(c);
     });
-    return Array.from(cSet).sort();
-  }, [yearStudents]);
+    return sortCoursesList(Array.from(cSet));
+  }, [yearStudents, yearCoursesMeta]);
 
   // Alumnos en el alcance del filtro de curso
   const scopeStudents = useMemo(() => {

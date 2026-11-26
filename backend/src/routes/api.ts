@@ -3399,12 +3399,14 @@ router.get('/students', authMiddleware, async (req: Request, res: Response) => {
     sql += ' ORDER BY list_number ASC, full_name ASC';
     const [result, coursesRes] = await Promise.all([
       query(sql, params),
-      query('SELECT name, teacher FROM courses').catch(() => ({ rows: [] }))
+      query('SELECT name, teacher, COALESCE(academic_year, 2026) as academic_year FROM courses').catch(() => ({ rows: [] }))
     ]);
-    const courseTeacherMap: Record<string, string> = {};
+    const courseTeacherMapByYear: Record<number, Record<string, string>> = {};
     (coursesRes.rows || []).forEach((c: any) => {
       if (c.name && c.teacher && c.teacher !== 'null' && c.teacher !== 'Sin Asignar') {
-        courseTeacherMap[c.name] = c.teacher;
+        const y = Number(c.academic_year) || 2026;
+        if (!courseTeacherMapByYear[y]) courseTeacherMapByYear[y] = {};
+        courseTeacherMapByYear[y][c.name] = c.teacher;
       }
     });
 
@@ -3412,7 +3414,9 @@ router.get('/students', authMiddleware, async (req: Request, res: Response) => {
       let pj = s.profesor_jefe;
       if (!pj || pj === 'null' || pj === 'undefined') {
         const cName = getStudentCourseHelper(s);
-        pj = courseTeacherMap[cName] || courseTeacherMap[s.desc_grado] || null;
+        const sYear = Number(s.anno || s.academic_year || s.entry_year || 2026);
+        const yearMap = courseTeacherMapByYear[sYear] || {};
+        pj = yearMap[cName] || yearMap[s.desc_grado] || null;
       }
       const rawWd = s.withdrawal_date ? String(s.withdrawal_date).trim() : '';
       const isInvalidWd = !rawWd || rawWd.startsWith('1899') || rawWd.startsWith('1900') || rawWd.startsWith('0000') || rawWd === 'null' || rawWd === 'Invalid Date';
@@ -5655,7 +5659,7 @@ router.get('/grades/course-overview', authMiddleware, async (req: Request, res: 
       ).catch(() => ({ rows: [] })),
       query(`SELECT * FROM grade_columns WHERE academic_year = $1`, [selectedYear]).catch(() => ({ rows: [] })),
       query(`SELECT * FROM levels`).catch(() => ({ rows: [] })),
-      query(`SELECT id, name, teacher FROM courses`).catch(() => ({ rows: [] }))
+      query(`SELECT id, name, teacher FROM courses WHERE COALESCE(academic_year, 2026) = $1`, [selectedYear]).catch(() => ({ rows: [] }))
     ]);
 
     const allDbStudents = allStudentsRes.rows;
@@ -8125,45 +8129,79 @@ function getStudentCourseHelper(s: any): string {
   return raw || 'Sin Curso';
 }
 
+function buildCourseIdForYear(courseName: string, year: number): string {
+  const slug = String(courseName || '').replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+  return year === 2026 ? `course_${slug}` : `course_${year}_${slug}`;
+}
+
 router.put('/courses/homeroom', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
   try {
-    const { courseName, teacherName, capacity } = req.body;
-    console.log('🚀 RECEIVED PUT /courses/homeroom:', { courseName, teacherName, capacity });
-    if (!courseName) {
+    const { courseName, oldCourseName, teacherName, capacity, academicYear, academic_year, year } = req.body;
+    const targetYear = Number(academicYear ?? academic_year ?? year) || 2026;
+    const cleanCourseName = String(courseName || '').trim();
+    const cleanOldName = oldCourseName ? String(oldCourseName).trim() : '';
+    console.log('🚀 RECEIVED PUT /courses/homeroom:', { courseName: cleanCourseName, oldCourseName: cleanOldName, teacherName, capacity, targetYear });
+    if (!cleanCourseName) {
       return res.status(400).json({ error: 'courseName es requerido' });
     }
 
-    const cleanTeacher = (!teacherName || teacherName === 'null' || teacherName === 'undefined') ? 'Sin Asignar' : teacherName;
+    const cleanTeacher = (!teacherName || teacherName === 'null' || teacherName === 'undefined') ? 'Sin Asignar' : String(teacherName).trim();
     const cleanCap = Number(capacity) || 45;
 
-    // 1. Actualizar o Insertar en tabla courses en Base de Datos SQL
-    const courseId = `course_${courseName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`;
-    const checkCourse = await query('SELECT id FROM courses WHERE name = $1 OR id = $2', [courseName, courseId]).catch(() => ({ rows: [] }));
+    // 1. Actualizar, Renombrar o Insertar en tabla courses para el año lectivo indicado
+    const courseId = buildCourseIdForYear(cleanCourseName, targetYear);
+    const oldCourseId = cleanOldName ? buildCourseIdForYear(cleanOldName, targetYear) : courseId;
+    const lookupNames = Array.from(new Set([cleanCourseName, cleanOldName].filter(Boolean)));
+    const lookupIds = Array.from(new Set([courseId, oldCourseId].filter(Boolean)));
+
+    const checkCourse = await query(
+      'SELECT id, name FROM courses WHERE COALESCE(academic_year, 2026) = $1 AND (name = ANY($2) OR id = ANY($3)) LIMIT 1',
+      [targetYear, lookupNames, lookupIds]
+    ).catch(() => ({ rows: [] }));
+
+    let savedId = courseId;
     if (checkCourse.rows.length > 0) {
-      await query('UPDATE courses SET teacher = $1, capacity = $2 WHERE name = $3 OR id = $4', [cleanTeacher, cleanCap, courseName, courseId]).catch(() => {});
+      savedId = checkCourse.rows[0].id;
+      await query(
+        'UPDATE courses SET name = $1, teacher = $2, capacity = $3, academic_year = $4 WHERE id = $5',
+        [cleanCourseName, cleanTeacher, cleanCap, targetYear, savedId]
+      ).catch(() => {});
     } else {
-      await query('INSERT INTO courses (id, name, teacher, capacity) VALUES ($1, $2, $3, $4)', [courseId, courseName, cleanTeacher, cleanCap]).catch(() => {});
+      await query(
+        'INSERT INTO courses (id, name, teacher, capacity, academic_year) VALUES ($1, $2, $3, $4, $5)',
+        [courseId, cleanCourseName, cleanTeacher, cleanCap, targetYear]
+      ).catch(() => {});
     }
 
-    // 1.1 Sincronizar en tabla levels por compatibilidad
-    await query('UPDATE levels SET total_capacity = $1 WHERE name = $2', [cleanCap, courseName]).catch(() => {});
+    // 1.1 Sincronizar en tabla levels solo para el año base 2026 por compatibilidad
+    if (targetYear === 2026) {
+      await query('UPDATE levels SET total_capacity = $1 WHERE name = $2', [cleanCap, cleanCourseName]).catch(() => {});
+    }
 
-    // 2. Cascadas masivas a todos los estudiantes que pertenezcan a este curso en DB SQL
-    await query(
-      'UPDATE students SET profesor_jefe = $1 WHERE desc_grado = $2 OR desc_grado LIKE $3',
-      [cleanTeacher, courseName, `${courseName}%`]
-    ).catch(() => {});
+    // 2. Cascada de profesor_jefe SOLO a estudiantes del año lectivo correspondiente
+    const stRes = await query(
+      'SELECT id, run, desc_grado, letra_curso FROM students WHERE COALESCE(anno, academic_year, entry_year, 2026) = $1',
+      [targetYear]
+    ).catch(() => ({ rows: [] }));
+    const stRows = stRes.rows || [];
+    const matchingStudents = stRows.filter((s: any) => {
+      const resolved = getStudentCourseHelper(s);
+      return resolved === cleanCourseName || s.desc_grado === cleanCourseName || (cleanOldName && (resolved === cleanOldName || s.desc_grado === cleanOldName));
+    });
 
-    const allStRes = await query('SELECT id, run, desc_grado, letra_curso FROM students').catch(() => ({ rows: [] }));
-    const stRows = allStRes.rows || [];
-    const matchingStudents = stRows.filter((s: any) => getStudentCourseHelper(s) === courseName || s.desc_grado === courseName);
-    
-    for (const s of matchingStudents) {
-      if (s.id) {
-        await query('UPDATE students SET profesor_jefe = $1 WHERE id = $2', [cleanTeacher, s.id]).catch(() => {});
-      } else if (s.run) {
-        await query('UPDATE students SET profesor_jefe = $1 WHERE run = $2', [cleanTeacher, s.run]).catch(() => {});
-      }
+    const studentIdsToUpdate = matchingStudents.map((s: any) => s.id).filter(Boolean);
+    if (studentIdsToUpdate.length > 0) {
+      await query(
+        'UPDATE students SET profesor_jefe = $1 WHERE id = ANY($2)',
+        [cleanTeacher, studentIdsToUpdate]
+      ).catch(() => {});
+    }
+    const studentRunsFallback = matchingStudents.filter((s: any) => !s.id && s.run).map((s: any) => s.run);
+    for (const runVal of studentRunsFallback) {
+      await query(
+        'UPDATE students SET profesor_jefe = $1 WHERE run = $2 AND COALESCE(anno, academic_year, entry_year, 2026) = $3',
+        [cleanTeacher, runVal, targetYear]
+      ).catch(() => {});
     }
 
     // 3. Sincronizar en local_store.json
@@ -8172,18 +8210,25 @@ router.put('/courses/homeroom', authMiddleware, checkRoles(['Admin', 'Director']
       try {
         const store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
         if (!store.courses) store.courses = [];
-        let existingCourse = store.courses.find((c: any) => c.name === courseName || c.id === courseId);
+        let existingCourse = store.courses.find((c: any) =>
+          (Number(c.academic_year) || 2026) === targetYear &&
+          (c.name === cleanCourseName || c.id === savedId || (cleanOldName && c.name === cleanOldName))
+        );
         if (existingCourse) {
+          existingCourse.name = cleanCourseName;
           existingCourse.teacher = cleanTeacher;
           existingCourse.capacity = cleanCap;
+          existingCourse.academic_year = targetYear;
         } else {
-          store.courses.push({ id: courseId, name: courseName, teacher: cleanTeacher, capacity: cleanCap });
+          store.courses.push({ id: savedId, name: cleanCourseName, teacher: cleanTeacher, capacity: cleanCap, academic_year: targetYear });
         }
 
         if (Array.isArray(store.students)) {
           store.students.forEach((s: any) => {
+            const sYear = Number(s.anno || s.academic_year || s.entry_year || 2026);
+            if (sYear !== targetYear) return;
             const c = getStudentCourseHelper(s);
-            if (c === courseName || s.desc_grado === courseName || s.level_name === courseName) {
+            if (c === cleanCourseName || s.desc_grado === cleanCourseName || s.level_name === cleanCourseName) {
               s.profesor_jefe = cleanTeacher;
             }
           });
@@ -8194,8 +8239,12 @@ router.put('/courses/homeroom', authMiddleware, checkRoles(['Admin', 'Director']
       }
     }
 
-    await logAudit(req, 'UPDATE_HOMEROOM_TEACHER', `Profesor Jefe ${cleanTeacher} y capacidad ${cleanCap} asignados al curso ${courseName}`);
-    res.json({ success: true, message: 'Curso y jefatura actualizados correctamente' });
+    await logAudit(req, 'UPDATE_HOMEROOM_TEACHER', `Profesor Jefe ${cleanTeacher} y capacidad ${cleanCap} asignados al curso ${cleanCourseName} (Año ${targetYear})`);
+    res.json({
+      success: true,
+      course: { id: savedId, name: cleanCourseName, teacher: cleanTeacher, capacity: cleanCap, academic_year: targetYear },
+      message: 'Curso y jefatura actualizados correctamente'
+    });
   } catch (err: any) {
     console.error('Error al actualizar jefatura de curso:', err);
     res.status(500).json({ error: `Error al actualizar jefatura: ${err.message}` });
@@ -8214,27 +8263,127 @@ router.post('/courses', authMiddleware, checkRoles(['Admin', 'Director']), async
   (router as any).handle(req, res);
 });
 
+router.post('/courses/clone-year', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
+  try {
+    const sourceYear = Number(req.body?.fromYear) || 2026;
+    const targetYear = Number(req.body?.toYear) || (sourceYear + 1);
+    const includeTeachers = Boolean(req.body?.includeTeachers);
+
+    if (sourceYear === targetYear) {
+      return res.status(400).json({ error: 'El año origen y destino deben ser distintos.' });
+    }
+
+    const srcCoursesRes = await query(
+      'SELECT * FROM courses WHERE COALESCE(academic_year, 2026) = $1',
+      [sourceYear]
+    ).catch(() => ({ rows: [] }));
+    const srcMap = new Map<string, any>();
+
+    if (sourceYear === 2026) {
+      const levelsRes = await query('SELECT id, name, total_capacity as capacity FROM levels').catch(() => ({ rows: [] }));
+      (levelsRes.rows || []).forEach((l: any) => {
+        if (l?.name) {
+          srcMap.set(l.name, { name: l.name, capacity: Number(l.capacity) || 45, teacher: 'Sin Asignar' });
+        }
+      });
+    }
+
+    (srcCoursesRes.rows || []).forEach((c: any) => {
+      if (c?.name) {
+        const prev = srcMap.get(c.name) || {};
+        srcMap.set(c.name, {
+          name: c.name,
+          capacity: Number(c.capacity) || prev.capacity || 45,
+          teacher: c.teacher || prev.teacher || 'Sin Asignar'
+        });
+      }
+    });
+
+    const sourceList = Array.from(srcMap.values());
+    if (sourceList.length === 0) {
+      return res.status(404).json({ error: `No hay cursos configurados en el año ${sourceYear} para copiar.` });
+    }
+
+    const existingTargetRes = await query(
+      'SELECT name FROM courses WHERE COALESCE(academic_year, 2026) = $1',
+      [targetYear]
+    ).catch(() => ({ rows: [] }));
+    const existingNames = new Set((existingTargetRes.rows || []).map((r: any) => String(r.name || '').trim().toLowerCase()));
+
+    let copiedCount = 0;
+    let skippedCount = 0;
+    const insertedCourses: any[] = [];
+
+    for (const src of sourceList) {
+      const key = String(src.name || '').trim().toLowerCase();
+      if (!key || existingNames.has(key)) {
+        skippedCount++;
+        continue;
+      }
+      const newId = buildCourseIdForYear(src.name, targetYear);
+      const newTeacher = includeTeachers && src.teacher && src.teacher !== 'null' ? src.teacher : 'Sin Asignar';
+      const newCap = Number(src.capacity) || 45;
+
+      await query(
+        `INSERT INTO courses (id, name, teacher, capacity, academic_year)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (id) DO NOTHING`,
+        [newId, src.name, newTeacher, newCap, targetYear]
+      );
+      insertedCourses.push({ id: newId, name: src.name, teacher: newTeacher, capacity: newCap, academic_year: targetYear });
+      copiedCount++;
+    }
+
+    const storePath = getStorePath();
+    if (fs.existsSync(storePath) && insertedCourses.length > 0) {
+      try {
+        const store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+        if (!Array.isArray(store.courses)) store.courses = [];
+        for (const ic of insertedCourses) {
+          if (!store.courses.some((c: any) => c.id === ic.id || ((Number(c.academic_year) || 2026) === targetYear && c.name === ic.name))) {
+            store.courses.push(ic);
+          }
+        }
+        fs.writeFileSync(storePath, JSON.stringify(store, null, 2), 'utf-8');
+      } catch (_) {}
+    }
+
+    await logAudit(req, 'CLONE_COURSES_YEAR', `Copiados ${copiedCount} cursos desde ${sourceYear} hacia ${targetYear} (Mantener jefaturas: ${includeTeachers ? 'Sí' : 'No'})`);
+    res.json({ success: true, copiedCount, skippedCount, targetYear, courses: insertedCourses });
+  } catch (err: any) {
+    console.error('Error al clonar cursos de año:', err);
+    res.status(500).json({ error: `Error al copiar cursos: ${err.message}` });
+  }
+});
+
 router.delete('/courses', authMiddleware, checkRoles(['Admin', 'Director']), async (req: Request, res: Response) => {
   try {
-    const courseName = String(req.query.name || req.body.name || req.query.id || '').trim();
+    const courseName = String(req.query.name || req.body?.name || req.query.id || '').trim();
+    const targetYear = Number(req.query.year || req.query.academic_year || req.body?.academicYear || req.body?.year) || 2026;
     if (!courseName) return res.status(400).json({ error: 'Falta nombre de curso' });
 
-    const courseId = `course_${courseName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`;
-    await query('DELETE FROM courses WHERE name = $1 OR id = $2 OR id = $3', [courseName, courseId, req.query.id]).catch(() => {});
-
-    // Reset profesor_jefe for matching students
+    const courseId = buildCourseIdForYear(courseName, targetYear);
+    const reqId = String(req.query.id || '').trim();
     await query(
-      'UPDATE students SET profesor_jefe = \'Sin Asignar\' WHERE desc_grado = $1 OR desc_grado LIKE $2',
-      [courseName, `${courseName}%`]
+      'DELETE FROM courses WHERE COALESCE(academic_year, 2026) = $1 AND (name = $2 OR id = $3 OR id = $4)',
+      [targetYear, courseName, courseId, reqId]
     ).catch(() => {});
 
-    const allStRes = await query('SELECT id, run, desc_grado, letra_curso FROM students').catch(() => ({ rows: [] }));
-    const stRows = allStRes.rows || [];
-    const matchingStudents = stRows.filter((s: any) => getStudentCourseHelper(s) === courseName || s.desc_grado === courseName);
-    for (const s of matchingStudents) {
-      if (s.id) {
-        await query('UPDATE students SET profesor_jefe = \'Sin Asignar\' WHERE id = $1', [s.id]).catch(() => {});
-      }
+    // Reset profesor_jefe ONLY for matching students in targetYear
+    const stRes = await query(
+      'SELECT id, run, desc_grado, letra_curso FROM students WHERE COALESCE(anno, academic_year, entry_year, 2026) = $1',
+      [targetYear]
+    ).catch(() => ({ rows: [] }));
+    const stRows = stRes.rows || [];
+    const matchingIds = stRows
+      .filter((s: any) => getStudentCourseHelper(s) === courseName || s.desc_grado === courseName)
+      .map((s: any) => s.id)
+      .filter(Boolean);
+    if (matchingIds.length > 0) {
+      await query(
+        'UPDATE students SET profesor_jefe = \'Sin Asignar\' WHERE id = ANY($1)',
+        [matchingIds]
+      ).catch(() => {});
     }
 
     const storePath = getStorePath();
@@ -8242,10 +8391,16 @@ router.delete('/courses', authMiddleware, checkRoles(['Admin', 'Director']), asy
       try {
         const store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
         if (Array.isArray(store.courses)) {
-          store.courses = store.courses.filter((c: any) => c.name !== courseName && c.id !== courseId && String(c.id) !== String(req.query.id));
+          store.courses = store.courses.filter((c: any) => {
+            const cYear = Number(c.academic_year) || 2026;
+            if (cYear !== targetYear) return true;
+            return c.name !== courseName && c.id !== courseId && (!reqId || String(c.id) !== reqId);
+          });
         }
         if (Array.isArray(store.students)) {
           store.students.forEach((s: any) => {
+            const sYear = Number(s.anno || s.academic_year || s.entry_year || 2026);
+            if (sYear !== targetYear) return;
             if (getStudentCourseHelper(s) === courseName || s.desc_grado === courseName || s.level_name === courseName) {
               s.profesor_jefe = 'Sin Asignar';
             }
@@ -8255,6 +8410,7 @@ router.delete('/courses', authMiddleware, checkRoles(['Admin', 'Director']), asy
       } catch (_) {}
     }
 
+    await logAudit(req, 'DELETE_COURSE', `Curso ${courseName} (Año ${targetYear}) eliminado`);
     res.json({ success: true, message: 'Curso eliminado de la base de datos' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -8263,11 +8419,18 @@ router.delete('/courses', authMiddleware, checkRoles(['Admin', 'Director']), asy
 
 router.get('/courses', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const coursesRes = await query('SELECT * FROM courses').catch(() => ({ rows: [] }));
+    const rawYear = req.query.year ?? req.query.academic_year;
+    const requestedYear = rawYear !== undefined && rawYear !== '' ? Number(rawYear) : 2026;
+
+    const coursesRes = await query(
+      'SELECT *, COALESCE(academic_year, 2026) as academic_year FROM courses WHERE COALESCE(academic_year, 2026) = $1',
+      [requestedYear]
+    ).catch(() => ({ rows: [] }));
     const dbCourses = coursesRes.rows || [];
-    
-    const levelsRes = await query('SELECT id, name, total_capacity as capacity FROM levels').catch(() => ({ rows: [] }));
-    const dbLevels = levelsRes.rows || [];
+
+    const dbLevels = requestedYear === 2026
+      ? ((await query('SELECT id, name, total_capacity as capacity FROM levels').catch(() => ({ rows: [] }))).rows || [])
+      : [];
 
     let storeCourses: any[] = [];
     const storePath = getStorePath();
@@ -8275,7 +8438,7 @@ router.get('/courses', authMiddleware, async (req: Request, res: Response) => {
       try {
         const store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
         if (Array.isArray(store.courses)) {
-          storeCourses = store.courses;
+          storeCourses = store.courses.filter((c: any) => (Number(c.academic_year) || 2026) === requestedYear);
         }
       } catch (_) {}
     }
@@ -8288,24 +8451,25 @@ router.get('/courses', authMiddleware, async (req: Request, res: Response) => {
           level_id: l.id,
           name: l.name,
           capacity: Number(l.capacity) || 45,
-          teacher: 'Sin Asignar'
+          teacher: 'Sin Asignar',
+          academic_year: 2026
         });
       }
     });
     storeCourses.forEach((c: any) => {
       if (c && c.name) {
         const existing = courseMap.get(c.name) || {};
-        courseMap.set(c.name, { ...existing, ...c, level_id: existing.level_id || c.level_id, capacity: Number(c.capacity) || existing.capacity || 45 });
+        courseMap.set(c.name, { ...existing, ...c, academic_year: requestedYear, level_id: existing.level_id || c.level_id, capacity: Number(c.capacity) || existing.capacity || 45 });
       }
     });
     dbCourses.forEach((c: any) => {
       if (c && c.name) {
         const existing = courseMap.get(c.name) || {};
-        courseMap.set(c.name, { ...existing, ...c, level_id: existing.level_id || c.level_id, capacity: Number(c.capacity) || existing.capacity || 45 });
+        courseMap.set(c.name, { ...existing, ...c, academic_year: requestedYear, level_id: existing.level_id || c.level_id, capacity: Number(c.capacity) || existing.capacity || 45 });
       }
     });
 
-    res.json({ success: true, courses: Array.from(courseMap.values()) });
+    res.json({ success: true, year: requestedYear, courses: Array.from(courseMap.values()) });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -8339,7 +8503,7 @@ router.get('/courses/teachers-summary', authMiddleware, async (req: Request, res
       query('SELECT id, name, email, role, run FROM users').catch(() => ({ rows: [] })),
       query('SELECT id, full_name, email, role, run, user_id FROM staff_profiles').catch(() => ({ rows: [] })),
       query('SELECT teacher_id, teacher_name, teacher_id_2, teacher_name_2, level_name, subject_name FROM teacher_assignments').catch(() => ({ rows: [] })),
-      query('SELECT id, name, teacher FROM courses').catch(() => ({ rows: [] })),
+      query('SELECT id, name, teacher FROM courses WHERE COALESCE(academic_year, 2026) = $1', [Number(req.query.year || req.query.academic_year || 2026)]).catch(() => ({ rows: [] })),
       query(`SELECT id, run, full_name, email, desc_grado, letra_curso, profesor_jefe, profesor_pie,
                     guardian_name, guardian_run, guardian_email,
                     guardian_sec_name, guardian_sec_run, guardian_sec_email,
@@ -8983,7 +9147,7 @@ async function backfillAuditCommunicationsIfNeeded() {
     const [studentsRes, assignRes, coursesRes, usersRes, staffRes] = await Promise.all([
       query('SELECT * FROM students ORDER BY list_number ASC, full_name ASC').catch(() => ({ rows: [] })),
       query('SELECT * FROM teacher_assignments').catch(() => ({ rows: [] })),
-      query('SELECT * FROM courses').catch(() => ({ rows: [] })),
+      query('SELECT * FROM courses WHERE COALESCE(academic_year, 2026) = 2026').catch(() => ({ rows: [] })),
       query('SELECT id, name, email, role, run FROM users').catch(() => ({ rows: [] })),
       query('SELECT user_id, full_name, email, role, run FROM staff_profiles').catch(() => ({ rows: [] }))
     ]);
