@@ -507,6 +507,28 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
     return formatGrade(val, gradeScaleMode);
   };
 
+  // Helper para renderizar promedio o nota en concepto si la asignatura es conceptual
+  const renderConceptOrGrade = (val: number | null | undefined, isConcept: boolean) => {
+    if (val === null || val === undefined || isNaN(val) || val <= 0) return '-';
+    if (!isConcept) return formatGradeValue(val);
+    const c = numberToConcept(val);
+    const badge = getConceptBadgeStyle(c);
+    return (
+      <span style={{
+        display: 'inline-block',
+        padding: '0.15rem 0.5rem',
+        borderRadius: '6px',
+        fontWeight: 800,
+        fontSize: '0.85rem',
+        background: badge.bg,
+        color: badge.color,
+        border: `1.5px solid ${badge.border}`
+      }}>
+        {c}
+      </span>
+    );
+  };
+
   // Promedio de 1er Semestre para un estudiante (Aproximación oficial MINEDUC: >= .05 sube a décima superior)
   const getStudentSemester1Avg = (studentId: string): number | null => {
     const cols = s1Columns.filter(c => !c.id.includes('FINAL') && c.title.toLowerCase().trim() !== 'promedio');
@@ -2255,13 +2277,13 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                       textAlign: 'center',
                       fontWeight: 800,
                       fontSize: '0.95rem',
-                      color: p1 ? (p1 < 4.0 ? '#dc2626' : '#1e40af') : '#94a3b8',
-                      background: '#f8fafc',
+                      color: isConceptual ? (p1 ? (p1 < 4.0 ? '#dc2626' : '#166534') : '#94a3b8') : (p1 ? (p1 < 4.0 ? '#dc2626' : '#1e40af') : '#94a3b8'),
+                      background: isConceptual ? '#f0fdf4' : '#f8fafc',
                       padding: '0.65rem 0.75rem',
                       borderLeft: '2px solid #e2e8f0',
                       borderRight: '2px solid #e2e8f0'
                     }} title="Promedio obtenido en 1er Semestre (Referencial)">
-                      {formatGradeValue(p1)}
+                      {renderConceptOrGrade(p1, isConceptual)}
                     </td>
                   )}
                   {evalColumns.map((col, cIdx) => {
@@ -2426,11 +2448,11 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                         textAlign: 'center',
                         fontWeight: 800,
                         fontSize: '0.98rem',
-                        color: p1 ? (p1 < 4.0 ? '#dc2626' : '#1d4ed8') : '#94a3b8',
-                        background: '#eff6ff',
+                        color: isConceptual ? '#166534' : (p1 ? (p1 < 4.0 ? '#dc2626' : '#1d4ed8') : '#94a3b8'),
+                        background: isConceptual ? '#f0fdf4' : '#eff6ff',
                         padding: '0.65rem 0.75rem'
                       }}>
-                        {formatGradeValue(p1)}
+                        {renderConceptOrGrade(p1, isConceptual)}
                       </td>
                     )
                   )}
@@ -2505,11 +2527,11 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                       textAlign: 'center',
                       fontWeight: 800,
                       fontSize: '0.98rem',
-                      color: p2 ? (p2 < 4.0 ? '#dc2626' : '#047857') : '#94a3b8',
-                      background: '#ecfdf5',
+                      color: isConceptual ? '#166534' : (p2 ? (p2 < 4.0 ? '#dc2626' : '#047857') : '#94a3b8'),
+                      background: isConceptual ? '#f0fdf4' : '#ecfdf5',
                       padding: '0.65rem 0.75rem'
                     }}>
-                      {formatGradeValue(p2)}
+                      {renderConceptOrGrade(p2, isConceptual)}
                     </td>
                   )}
 
@@ -2518,12 +2540,12 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                     textAlign: 'center',
                     fontWeight: 900,
                     fontSize: '1.05rem',
-                    color: pAnual ? (pAnual < 4.0 ? '#dc2626' : '#6b21a8') : '#94a3b8',
-                    background: '#faf5ff',
+                    color: isConceptual ? '#5b21b6' : (pAnual ? (pAnual < 4.0 ? '#dc2626' : '#6b21a8') : '#94a3b8'),
+                    background: isConceptual ? '#f0fdf4' : '#faf5ff',
                     padding: '0.65rem 0.75rem',
                     borderLeft: '2px solid #e9d5ff'
                   }}>
-                    {formatGradeValue(pAnual)}
+                    {renderConceptOrGrade(pAnual, isConceptual)}
                   </td>
                 </tr>
               );
@@ -2536,27 +2558,27 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               </td>
               {period === '2do Semestre' && (
                 <td style={{ textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 800, color: '#334155', background: '#f1f5f9' }}>
-                  {formatGradeValue(courseAverages.avgS1)}
+                  {renderConceptOrGrade(courseAverages.avgS1, isConceptual)}
                 </td>
               )}
               {evalColumns.map(col => {
                 const colAvg = calculateColumnAverage(col.id);
                 return (
                   <td key={col.id} style={{ textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 800, color: colAvg ? (colAvg < 4.0 ? '#dc2626' : '#1e293b') : '#94a3b8' }}>
-                    {formatGradeValue(colAvg)}
+                    {renderConceptOrGrade(colAvg, isConceptual)}
                   </td>
                 );
               })}
               {period !== '2do Semestre' && (
                 <td style={{ textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 800, color: '#1d4ed8', background: '#eff6ff' }}>
-                  {formatGradeValue(courseAverages.avgS1)}
+                  {renderConceptOrGrade(courseAverages.avgS1, isConceptual)}
                 </td>
               )}
               <td style={{ textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 800, color: '#047857', background: '#ecfdf5' }}>
-                {formatGradeValue(courseAverages.avgS2)}
+                {renderConceptOrGrade(courseAverages.avgS2, isConceptual)}
               </td>
               <td style={{ textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 900, color: '#6b21a8', background: '#faf5ff' }}>
-                {formatGradeValue(courseAverages.avgAnual)}
+                {renderConceptOrGrade(courseAverages.avgAnual, isConceptual)}
               </td>
             </tr>
           </tfoot>
@@ -2601,6 +2623,25 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               }
             });
 
+            // Desglose limpio para 1er y 2do semestre del sujeto activo en pantalla (excluyendo columnas FINAL de promedio manual)
+            const s1NVals: Record<string, number | string> = {};
+            const cleanS1Cols = s1Columns.filter(c => !c.id.includes('FINAL') && c.title.toLowerCase().trim() !== 'promedio');
+            cleanS1Cols.slice(0, 10).forEach((col, cIdx) => {
+              const val = gradesMap[`${s.id}_${col.id}`];
+              s1NVals[`n${cIdx + 1}`] = (val !== undefined && val > 0)
+                ? (isCurrConcept ? numberToConcept(val) : (gradeScaleMode === 'entera' ? Math.round(roundGrade(val) * 10) : roundGrade(val)))
+                : '-';
+            });
+
+            const s2NVals: Record<string, number | string> = {};
+            const cleanS2Cols = s2Columns.filter(c => !c.id.includes('FINAL') && c.title.toLowerCase().trim() !== 'promedio');
+            cleanS2Cols.slice(0, 10).forEach((col, cIdx) => {
+              const val = gradesMap[`${s.id}_${col.id}`];
+              s2NVals[`n${cIdx + 1}`] = (val !== undefined && val > 0)
+                ? (isCurrConcept ? numberToConcept(val) : (gradeScaleMode === 'entera' ? Math.round(roundGrade(val) * 10) : roundGrade(val)))
+                : '-';
+            });
+
             let azulCount = 0;
             let rojaCount = 0;
             evalColumns.forEach(col => {
@@ -2621,6 +2662,10 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
               ? (isCurrConcept ? numberToConcept(currentPeriodAvg) : roundGrade(currentPeriodAvg))
               : '-';
 
+            const p1 = getStudentSemester1Avg(s.id);
+            const p2 = getStudentSemester2Avg(s.id);
+            const pAnual = getStudentAnnualAvg(s.id);
+
             return {
               id: s.id,
               listNumber: s.list_number || idx + 1,
@@ -2638,14 +2683,32 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                 const perf = overviewSt?.subjectGrades?.[sub.name] ||
                   (overviewSt?.subjectGrades ? Object.entries(overviewSt.subjectGrades).find(([k]) => normalizeStr(k) === normalizeStr(sub.name))?.[1] as any : null);
                 if (sub.id === subjectId) {
+                  const s1EffectiveAvg = isCurrConcept
+                    ? (p1 !== null ? numberToConcept(p1) : (perf?.sem1?.average ? (typeof perf.sem1.average === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.sem1.average.toUpperCase()) ? perf.sem1.average.toUpperCase() : numberToConcept(perf.sem1.average)) : '-'))
+                    : (p1 !== null ? roundGrade(p1) : (perf?.sem1?.average || '-'));
+                  const s2EffectiveAvg = isCurrConcept
+                    ? (p2 !== null ? numberToConcept(p2) : (perf?.sem2?.average ? (typeof perf.sem2.average === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.sem2.average.toUpperCase()) ? perf.sem2.average.toUpperCase() : numberToConcept(perf.sem2.average)) : '-'))
+                    : (p2 !== null ? roundGrade(p2) : (perf?.sem2?.average || '-'));
+                  const annEffectiveAvg = isCurrConcept
+                    ? (pAnual !== null ? numberToConcept(pAnual) : (perf?.annualAverage ? (typeof perf.annualAverage === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.annualAverage.toUpperCase()) ? perf.annualAverage.toUpperCase() : numberToConcept(perf.annualAverage)) : activeAvg))
+                    : (pAnual !== null ? roundGrade(pAnual) : (perf?.annualAverage || activeAvg));
+
                   return {
                     name: sub.name,
                     isConceptual: isCurrConcept,
                     ...nVals,
                     average: activeAvg,
-                    annualAverage: isCurrConcept ? (typeof perf?.annualAverage === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.annualAverage.toUpperCase()) ? perf.annualAverage.toUpperCase() : numberToConcept(perf?.annualAverage || activeAvg)) : (perf?.annualAverage || activeAvg),
-                    sem1: perf?.sem1,
-                    sem2: perf?.sem2
+                    annualAverage: annEffectiveAvg,
+                    sem1: {
+                      ...(perf?.sem1 || {}),
+                      ...s1NVals,
+                      average: s1EffectiveAvg
+                    },
+                    sem2: {
+                      ...(perf?.sem2 || {}),
+                      ...s2NVals,
+                      average: s2EffectiveAvg
+                    }
                   };
                 }
                 if (perf && Array.isArray(perf.grades)) {
@@ -2661,14 +2724,37 @@ export const GradesSheet: React.FC<GradesSheetProps> = ({
                   const effAnnAvg = isSubConcept
                     ? (typeof perf.annualAverage === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.annualAverage.toUpperCase()) ? perf.annualAverage.toUpperCase() : numberToConcept(perf.annualAverage || effAvg))
                     : (perf.annualAverage || perf.average || '-');
+
+                  const sem1Sub = perf?.sem1 ? {
+                    ...perf.sem1,
+                    average: isSubConcept ? (typeof perf.sem1.average === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.sem1.average.toUpperCase()) ? perf.sem1.average.toUpperCase() : numberToConcept(perf.sem1.average)) : perf.sem1.average
+                  } : undefined;
+                  if (sem1Sub && isSubConcept) {
+                    for (let i = 1; i <= 10; i++) {
+                      const sVal = (sem1Sub as any)[`n${i}`];
+                      if (sVal !== undefined && sVal !== '-') (sem1Sub as any)[`n${i}`] = numberToConcept(sVal);
+                    }
+                  }
+
+                  const sem2Sub = perf?.sem2 ? {
+                    ...perf.sem2,
+                    average: isSubConcept ? (typeof perf.sem2.average === 'string' && ['MB', 'B', 'S', 'I'].includes(perf.sem2.average.toUpperCase()) ? perf.sem2.average.toUpperCase() : numberToConcept(perf.sem2.average)) : perf.sem2.average
+                  } : undefined;
+                  if (sem2Sub && isSubConcept) {
+                    for (let i = 1; i <= 10; i++) {
+                      const sVal = (sem2Sub as any)[`n${i}`];
+                      if (sVal !== undefined && sVal !== '-') (sem2Sub as any)[`n${i}`] = numberToConcept(sVal);
+                    }
+                  }
+
                   return {
                     name: sub.name,
                     isConceptual: isSubConcept,
                     ...subNVals,
                     average: effAvg,
                     annualAverage: effAnnAvg,
-                    sem1: perf.sem1,
-                    sem2: perf.sem2
+                    sem1: sem1Sub,
+                    sem2: sem2Sub
                   };
                 }
                 return {
