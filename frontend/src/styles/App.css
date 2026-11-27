@@ -575,7 +575,7 @@ table {
 /* ========================================================================== */
 /* RESPONSIVE LAYOUT PARA TABLETS Y DISPOSITIVOS MÓVILES (<= 1024px)          */
 /* ========================================================================== */
-@media (max-width: 1024px) {
+@media screen and (max-width: 1024px) {
   .app-container {
     flex-direction: column !important;
     width: 100vw !important;
@@ -886,7 +886,7 @@ table {
   }
 }
 
-@media (max-width: 600px) {
+@media screen and (max-width: 600px) {
   .quick-actions-row {
     width: 100% !important;
   }
@@ -988,8 +988,17 @@ table {
 
 @media print {
   /* Ocultar botones de navegación, menús laterales, el header superior de AdminDashboard y tabs */
-  button, nav, header, aside, .sidebar-container, .navbar-container {
+  button, nav, header, aside, .sidebar-container, .navbar-container,
+  .mobile-top-bar, .mobile-top-bar-left, .mobile-top-bar-center, .mobile-top-bar-right,
+  .top-bar, .sidebar, .app-sidebar, .admin-sidebar, .no-print, .mobile-drawer-backdrop {
     display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
   }
 
   /* Asegurarse de que el contendor principal ocupe toda la página sin scroll ni recortes */
@@ -1040,7 +1049,7 @@ table {
 /* ==========================================================
    MOBILE UX ENHANCEMENTS - BOTTOM SHEET MODALS & TABLES
    ========================================================== */
-@media (max-width: 768px) {
+@media screen and (max-width: 768px) {
   /* Make SweetAlert2 modals behave like bottom-sheets on mobile */
   .swal2-popup {
     margin: 0 !important;
@@ -1270,7 +1279,7 @@ input:focus, select:focus, textarea:focus {
   transform-origin: center center;
 }
 
-@media (max-width: 640px) {
+@media screen and (max-width: 640px) {
   .modal-dialog-panel {
     border-radius: 16px 16px 0 0;
     max-height: 94vh;
@@ -1287,7 +1296,7 @@ input:focus, select:focus, textarea:focus {
   align-items: start;
 }
 
-@media (max-width: 1024px) {
+@media screen and (max-width: 1024px) {
   .lab-split-layout {
     grid-template-columns: 1fr;
   }

@@ -1152,7 +1152,7 @@ export const AdminDashboard: React.FC = () => {
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', minHeight: '100vh', position: 'relative' }}>
       {/* BANNER SUPERIOR DE MODO MAESTRO / IMPERSONACIÓN */}
       {isImpersonating && (
-        <div style={{
+        <div className="no-print" style={{
           width: '100%',
           zIndex: 99999,
           background: 'linear-gradient(90deg, #7c3aed 0%, #4338ca 100%)',
@@ -1202,7 +1202,7 @@ export const AdminDashboard: React.FC = () => {
 
       <div className="app-container" style={{ flex: 1 }}>
         {/* BARRA SUPERIOR STICKY PARA MÓVIL / TABLET */}
-        <header className="mobile-top-bar">
+        <header className="mobile-top-bar no-print">
           <div className="mobile-top-bar-left">
             <button
               type="button"
@@ -1653,7 +1653,7 @@ export const AdminDashboard: React.FC = () => {
           transition: 'margin-left 0.22s cubic-bezier(0.16, 1, 0.3, 1), width 0.22s cubic-bezier(0.16, 1, 0.3, 1)' 
         }}
       >
-        <div className="top-bar">
+        <div className="top-bar no-print">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flex: 1 }}>
             {(activeTab !== 'home' || selectedStudent || printStudent) && (
               <button

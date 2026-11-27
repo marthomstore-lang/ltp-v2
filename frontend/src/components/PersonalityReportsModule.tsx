@@ -475,8 +475,15 @@ export const PersonalityReportsModule: React.FC<PersonalityReportsModuleProps> =
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          .app-sidebar, .sidebar, .header, .nav, .app-header, .no-print, .tab-buttons, .admin-sidebar, .header-container, .top-bar {
+          .app-sidebar, .sidebar, .header, .nav, .app-header, .no-print, .tab-buttons, .admin-sidebar, .header-container, .top-bar, .mobile-top-bar, .mobile-top-bar-left, .mobile-top-bar-center, .mobile-top-bar-right, header, nav, aside {
             display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            max-height: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            overflow: hidden !important;
+            opacity: 0 !important;
           }
           #root, .app-container, .main-content, .dashboard-container, .dashboard-layout, .module-wrapper, .admin-layout, .admin-content {
             display: block !important;

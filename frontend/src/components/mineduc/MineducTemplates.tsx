@@ -25,10 +25,17 @@ export const MineducPrintStyles: React.FC = () => (
       }
       /* Ocultar elementos de navegacion y UI externa */
       nav, header, aside, button, .sidebar, .app-sidebar, .admin-sidebar,
-      .sidebar-container, .navbar-container, .top-bar, .app-header,
+      .sidebar-container, .navbar-container, .top-bar, .mobile-top-bar, .mobile-top-bar-left, .mobile-top-bar-center, .mobile-top-bar-right, .app-header,
       .no-print, .swal2-container, .tab-buttons, .header-container, .sub-nav-tabs,
       .card-grid, .user-profile-badge, .status-dot {
         display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        max-height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: hidden !important;
+        opacity: 0 !important;
       }
       /* Permitir flujo de paginacion nativo y limpio */
       #root, .app-container, .main-content, .dashboard-container,
